@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::Result;
 #[cfg(not(target_arch = "wasm32"))]
 use datadog_api_client::datadogV2::api_rum::{ListRUMEventsOptionalParams, RUMAPI};
 #[cfg(not(target_arch = "wasm32"))]
@@ -30,12 +30,11 @@ use crate::util;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn apps_list(cfg: &Config) -> Result<()> {
-    // RUM apps is OAuth-excluded — require API keys
-    if !cfg.has_api_keys() {
-        bail!("RUM apps requires API key authentication (DD_API_KEY + DD_APP_KEY)");
-    }
     let dd_cfg = client::make_dd_config(cfg);
-    let api = RUMAPI::with_config(dd_cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => RUMAPI::with_client_and_config(dd_cfg, c),
+        None => RUMAPI::with_config(dd_cfg),
+    };
     let resp = api
         .get_rum_applications()
         .await
@@ -51,11 +50,11 @@ pub async fn apps_list(cfg: &Config) -> Result<()> {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn apps_get(cfg: &Config, app_id: &str) -> Result<()> {
-    if !cfg.has_api_keys() {
-        bail!("RUM apps requires API key authentication (DD_API_KEY + DD_APP_KEY)");
-    }
     let dd_cfg = client::make_dd_config(cfg);
-    let api = RUMAPI::with_config(dd_cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => RUMAPI::with_client_and_config(dd_cfg, c),
+        None => RUMAPI::with_config(dd_cfg),
+    };
     let resp = api
         .get_rum_application(app_id.to_string())
         .await
@@ -72,11 +71,11 @@ pub async fn apps_get(cfg: &Config, app_id: &str) -> Result<()> {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn apps_create(cfg: &Config, name: &str, app_type: Option<String>) -> Result<()> {
-    if !cfg.has_api_keys() {
-        bail!("RUM apps requires API key authentication (DD_API_KEY + DD_APP_KEY)");
-    }
     let dd_cfg = client::make_dd_config(cfg);
-    let api = RUMAPI::with_config(dd_cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => RUMAPI::with_client_and_config(dd_cfg, c),
+        None => RUMAPI::with_config(dd_cfg),
+    };
     let mut attrs = RUMApplicationCreateAttributes::new(name.to_string());
     if let Some(t) = app_type {
         attrs = attrs.type_(t);
@@ -108,11 +107,11 @@ pub async fn apps_create(cfg: &Config, name: &str, app_type: Option<String>) -> 
 
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn apps_delete(cfg: &Config, app_id: &str) -> Result<()> {
-    if !cfg.has_api_keys() {
-        bail!("RUM apps requires API key authentication (DD_API_KEY + DD_APP_KEY)");
-    }
     let dd_cfg = client::make_dd_config(cfg);
-    let api = RUMAPI::with_config(dd_cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => RUMAPI::with_client_and_config(dd_cfg, c),
+        None => RUMAPI::with_config(dd_cfg),
+    };
     api.delete_rum_application(app_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete RUM app: {e:?}"))?;
@@ -239,11 +238,11 @@ pub async fn sessions_search(
 
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn apps_update(cfg: &Config, app_id: &str, file: &str) -> Result<()> {
-    if !cfg.has_api_keys() {
-        bail!("RUM apps requires API key authentication (DD_API_KEY + DD_APP_KEY)");
-    }
     let dd_cfg = client::make_dd_config(cfg);
-    let api = RUMAPI::with_config(dd_cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => RUMAPI::with_client_and_config(dd_cfg, c),
+        None => RUMAPI::with_config(dd_cfg),
+    };
     let body: RUMApplicationUpdateRequest = crate::util::read_json_file(file)?;
     let resp = api
         .update_rum_application(app_id.to_string(), body)
@@ -264,11 +263,11 @@ pub async fn apps_update(cfg: &Config, app_id: &str, file: &str) -> Result<()> {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn metrics_list(cfg: &Config) -> Result<()> {
-    if !cfg.has_api_keys() {
-        bail!("RUM metrics requires API key authentication (DD_API_KEY + DD_APP_KEY)");
-    }
     let dd_cfg = client::make_dd_config(cfg);
-    let api = RumMetricsAPI::with_config(dd_cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => RumMetricsAPI::with_client_and_config(dd_cfg, c),
+        None => RumMetricsAPI::with_config(dd_cfg),
+    };
     let resp = api
         .list_rum_metrics()
         .await
@@ -284,11 +283,11 @@ pub async fn metrics_list(cfg: &Config) -> Result<()> {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn metrics_get(cfg: &Config, metric_id: &str) -> Result<()> {
-    if !cfg.has_api_keys() {
-        bail!("RUM metrics requires API key authentication (DD_API_KEY + DD_APP_KEY)");
-    }
     let dd_cfg = client::make_dd_config(cfg);
-    let api = RumMetricsAPI::with_config(dd_cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => RumMetricsAPI::with_client_and_config(dd_cfg, c),
+        None => RumMetricsAPI::with_config(dd_cfg),
+    };
     let resp = api
         .get_rum_metric(metric_id.to_string())
         .await
@@ -305,11 +304,11 @@ pub async fn metrics_get(cfg: &Config, metric_id: &str) -> Result<()> {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn metrics_create(cfg: &Config, file: &str) -> Result<()> {
-    if !cfg.has_api_keys() {
-        bail!("RUM metrics requires API key authentication (DD_API_KEY + DD_APP_KEY)");
-    }
     let dd_cfg = client::make_dd_config(cfg);
-    let api = RumMetricsAPI::with_config(dd_cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => RumMetricsAPI::with_client_and_config(dd_cfg, c),
+        None => RumMetricsAPI::with_config(dd_cfg),
+    };
     let body: RumMetricCreateRequest = crate::util::read_json_file(file)?;
     let resp = api
         .create_rum_metric(body)
@@ -327,11 +326,11 @@ pub async fn metrics_create(cfg: &Config, file: &str) -> Result<()> {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn metrics_update(cfg: &Config, metric_id: &str, file: &str) -> Result<()> {
-    if !cfg.has_api_keys() {
-        bail!("RUM metrics requires API key authentication (DD_API_KEY + DD_APP_KEY)");
-    }
     let dd_cfg = client::make_dd_config(cfg);
-    let api = RumMetricsAPI::with_config(dd_cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => RumMetricsAPI::with_client_and_config(dd_cfg, c),
+        None => RumMetricsAPI::with_config(dd_cfg),
+    };
     let body: RumMetricUpdateRequest = crate::util::read_json_file(file)?;
     let resp = api
         .update_rum_metric(metric_id.to_string(), body)
@@ -350,11 +349,11 @@ pub async fn metrics_update(cfg: &Config, metric_id: &str, file: &str) -> Result
 
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn metrics_delete(cfg: &Config, metric_id: &str) -> Result<()> {
-    if !cfg.has_api_keys() {
-        bail!("RUM metrics requires API key authentication (DD_API_KEY + DD_APP_KEY)");
-    }
     let dd_cfg = client::make_dd_config(cfg);
-    let api = RumMetricsAPI::with_config(dd_cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => RumMetricsAPI::with_client_and_config(dd_cfg, c),
+        None => RumMetricsAPI::with_config(dd_cfg),
+    };
     api.delete_rum_metric(metric_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete RUM metric: {e:?}"))?;
@@ -374,11 +373,11 @@ pub async fn metrics_delete(cfg: &Config, metric_id: &str) -> Result<()> {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn retention_filters_list(cfg: &Config, app_id: &str) -> Result<()> {
-    if !cfg.has_api_keys() {
-        bail!("RUM retention filters requires API key authentication (DD_API_KEY + DD_APP_KEY)");
-    }
     let dd_cfg = client::make_dd_config(cfg);
-    let api = RumRetentionFiltersAPI::with_config(dd_cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => RumRetentionFiltersAPI::with_client_and_config(dd_cfg, c),
+        None => RumRetentionFiltersAPI::with_config(dd_cfg),
+    };
     let resp = api
         .list_retention_filters(app_id.to_string())
         .await
@@ -395,11 +394,11 @@ pub async fn retention_filters_list(cfg: &Config, app_id: &str) -> Result<()> {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn retention_filters_get(cfg: &Config, app_id: &str, filter_id: &str) -> Result<()> {
-    if !cfg.has_api_keys() {
-        bail!("RUM retention filters requires API key authentication (DD_API_KEY + DD_APP_KEY)");
-    }
     let dd_cfg = client::make_dd_config(cfg);
-    let api = RumRetentionFiltersAPI::with_config(dd_cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => RumRetentionFiltersAPI::with_client_and_config(dd_cfg, c),
+        None => RumRetentionFiltersAPI::with_config(dd_cfg),
+    };
     let resp = api
         .get_retention_filter(app_id.to_string(), filter_id.to_string())
         .await
@@ -416,11 +415,11 @@ pub async fn retention_filters_get(cfg: &Config, app_id: &str, filter_id: &str) 
 
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn retention_filters_create(cfg: &Config, app_id: &str, file: &str) -> Result<()> {
-    if !cfg.has_api_keys() {
-        bail!("RUM retention filters requires API key authentication (DD_API_KEY + DD_APP_KEY)");
-    }
     let dd_cfg = client::make_dd_config(cfg);
-    let api = RumRetentionFiltersAPI::with_config(dd_cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => RumRetentionFiltersAPI::with_client_and_config(dd_cfg, c),
+        None => RumRetentionFiltersAPI::with_config(dd_cfg),
+    };
     let body: RumRetentionFilterCreateRequest = crate::util::read_json_file(file)?;
     let resp = api
         .create_retention_filter(app_id.to_string(), body)
@@ -444,11 +443,11 @@ pub async fn retention_filters_update(
     filter_id: &str,
     file: &str,
 ) -> Result<()> {
-    if !cfg.has_api_keys() {
-        bail!("RUM retention filters requires API key authentication (DD_API_KEY + DD_APP_KEY)");
-    }
     let dd_cfg = client::make_dd_config(cfg);
-    let api = RumRetentionFiltersAPI::with_config(dd_cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => RumRetentionFiltersAPI::with_client_and_config(dd_cfg, c),
+        None => RumRetentionFiltersAPI::with_config(dd_cfg),
+    };
     let body: RumRetentionFilterUpdateRequest = crate::util::read_json_file(file)?;
     let resp = api
         .update_retention_filter(app_id.to_string(), filter_id.to_string(), body)
@@ -472,11 +471,11 @@ pub async fn retention_filters_update(
 
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn retention_filters_delete(cfg: &Config, app_id: &str, filter_id: &str) -> Result<()> {
-    if !cfg.has_api_keys() {
-        bail!("RUM retention filters requires API key authentication (DD_API_KEY + DD_APP_KEY)");
-    }
     let dd_cfg = client::make_dd_config(cfg);
-    let api = RumRetentionFiltersAPI::with_config(dd_cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => RumRetentionFiltersAPI::with_client_and_config(dd_cfg, c),
+        None => RumRetentionFiltersAPI::with_config(dd_cfg),
+    };
     api.delete_retention_filter(app_id.to_string(), filter_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete RUM retention filter: {e:?}"))?;
@@ -555,11 +554,11 @@ pub async fn sessions_list(cfg: &Config, from: String, to: String, limit: i32) -
 
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn playlists_list(cfg: &Config) -> Result<()> {
-    if !cfg.has_api_keys() {
-        bail!("RUM playlists requires API key authentication (DD_API_KEY + DD_APP_KEY)");
-    }
     let dd_cfg = client::make_dd_config(cfg);
-    let api = RumReplayPlaylistsAPI::with_config(dd_cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => RumReplayPlaylistsAPI::with_client_and_config(dd_cfg, c),
+        None => RumReplayPlaylistsAPI::with_config(dd_cfg),
+    };
     let resp = api
         .list_rum_replay_playlists(ListRumReplayPlaylistsOptionalParams::default())
         .await
@@ -575,11 +574,11 @@ pub async fn playlists_list(cfg: &Config) -> Result<()> {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn playlists_get(cfg: &Config, playlist_id: i32) -> Result<()> {
-    if !cfg.has_api_keys() {
-        bail!("RUM playlists requires API key authentication (DD_API_KEY + DD_APP_KEY)");
-    }
     let dd_cfg = client::make_dd_config(cfg);
-    let api = RumReplayPlaylistsAPI::with_config(dd_cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => RumReplayPlaylistsAPI::with_client_and_config(dd_cfg, c),
+        None => RumReplayPlaylistsAPI::with_config(dd_cfg),
+    };
     let resp = api
         .get_rum_replay_playlist(playlist_id)
         .await
@@ -598,11 +597,11 @@ pub async fn playlists_get(cfg: &Config, playlist_id: i32) -> Result<()> {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn heatmaps_query(cfg: &Config, view_name: &str) -> Result<()> {
-    if !cfg.has_api_keys() {
-        bail!("RUM heatmaps requires API key authentication (DD_API_KEY + DD_APP_KEY)");
-    }
     let dd_cfg = client::make_dd_config(cfg);
-    let api = RumReplayHeatmapsAPI::with_config(dd_cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => RumReplayHeatmapsAPI::with_client_and_config(dd_cfg, c),
+        None => RumReplayHeatmapsAPI::with_config(dd_cfg),
+    };
     let resp = api
         .list_replay_heatmap_snapshots(
             view_name.to_string(),

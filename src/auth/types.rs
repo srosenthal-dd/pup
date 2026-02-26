@@ -40,45 +40,95 @@ pub struct ClientCredentials {
 }
 
 /// Default OAuth scopes requested during login.
+/// Cross-referenced with Datadog API route registrations (lambo) to ensure
+/// all pup commands that support OAuth have the required scopes.
 pub fn default_scopes() -> Vec<&'static str> {
     vec![
+        // API Keys
+        "api_keys_read",
+        // APM & Tracing
+        "apm_read",
+        "apm_service_catalog_read",
+        // App Keys
+        "org_app_keys_read",
+        "user_app_keys",
+        "service_account_read",
+        // Audit Logs
+        "audit_logs_read",
+        // Cases
+        "cases_read",
+        "cases_write",
+        // CI/CD & Testing
+        "ci_visibility_read",
+        "code_coverage_read",
+        "test_optimization_read",
+        // Cloud Integrations
+        "azure_configuration_read",
+        // Dashboards
         "dashboards_read",
         "dashboards_write",
+        // Events
+        "events_read",
+        // Hosts & Infrastructure
+        "hosts_read",
+        // Incidents
+        "incident_read",
+        "incident_write",
+        // Integrations
+        "integrations_read",
+        // Logs
+        "logs_read_data",
+        "logs_read_index_data",
+        "logs_read_archives",
+        "logs_read_config",
+        // Metrics
+        "metrics_read",
+        "timeseries_query",
+        // Monitors
         "monitors_read",
         "monitors_write",
         "monitors_downtime",
-        "apm_read",
+        // Notebooks
+        "notebooks_read",
+        "notebooks_write",
+        // Organizations
+        "org_management",
+        // RUM
+        "rum_apps_read",
+        "rum_apps_write",
+        "rum_generate_metrics",
+        "rum_retention_filters_read",
+        "rum_retention_filters_write",
+        "rum_session_replay_read",
+        // Security
+        "appsec_vm_read",
+        "security_monitoring_signals_read",
+        "security_monitoring_rules_read",
+        "security_monitoring_findings_read",
+        "security_monitoring_suppressions_read",
+        "security_monitoring_filters_read",
+        // SLOs
         "slos_read",
         "slos_write",
         "slos_corrections",
-        "incident_read",
-        "incident_write",
+        // Status Pages
+        "status_pages_settings_read",
+        // Synthetics
         "synthetics_read",
         "synthetics_write",
         "synthetics_global_variable_read",
         "synthetics_global_variable_write",
         "synthetics_private_location_read",
         "synthetics_private_location_write",
-        "security_monitoring_signals_read",
-        "security_monitoring_rules_read",
-        "security_monitoring_findings_read",
-        "security_monitoring_suppressions_read",
-        "security_monitoring_filters_read",
-        "rum_apps_read",
-        "rum_apps_write",
-        "rum_retention_filters_read",
-        "rum_retention_filters_write",
-        "hosts_read",
-        "user_access_read",
-        "user_self_profile_read",
-        "cases_read",
-        "cases_write",
-        "events_read",
-        "logs_read_data",
-        "logs_read_index_data",
-        "metrics_read",
-        "timeseries_query",
+        // Teams (On-Call)
+        "teams_read",
+        "teams_write",
+        // Usage & Cost
         "usage_read",
+        // Users & Access
+        "user_access_read",
+        "user_access_manage",
+        "user_self_profile_read",
     ]
 }
 
@@ -125,10 +175,21 @@ mod tests {
     #[test]
     fn test_default_scopes() {
         let scopes = default_scopes();
-        assert!(scopes.len() > 20);
+        assert!(
+            scopes.len() >= 60,
+            "expected >= 60 scopes, got {}",
+            scopes.len()
+        );
         assert!(scopes.contains(&"dashboards_read"));
         assert!(scopes.contains(&"monitors_read"));
         assert!(scopes.contains(&"logs_read_data"));
+        // Expanded OAuth scopes
+        assert!(scopes.contains(&"api_keys_read"));
+        assert!(scopes.contains(&"ci_visibility_read"));
+        assert!(scopes.contains(&"notebooks_read"));
+        assert!(scopes.contains(&"teams_read"));
+        assert!(scopes.contains(&"rum_session_replay_read"));
+        assert!(scopes.contains(&"status_pages_settings_read"));
     }
 
     #[test]

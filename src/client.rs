@@ -242,19 +242,14 @@ fn find_endpoint_requirement(method: &str, path: &str) -> Option<&'static Endpoi
 // Static tables (native only)
 // ---------------------------------------------------------------------------
 
-/// Endpoints that don't support OAuth (52 patterns across 7 API groups).
+/// Endpoints that don't support OAuth (35 patterns across 6 API groups).
 /// Trailing "/" means prefix match for ID-parameterized paths.
+///
+/// NOTE: Logs search, all RUM endpoints, API keys (read), and notebooks
+/// (read/write) were removed — these now support OAuth per lambo route data.
 #[cfg(not(target_arch = "wasm32"))]
 static OAUTH_EXCLUDED_ENDPOINTS: &[EndpointRequirement] = &[
-    // Logs API (11)
-    EndpointRequirement {
-        path: "/api/v2/logs/events",
-        method: "POST",
-    },
-    EndpointRequirement {
-        path: "/api/v2/logs/events/search",
-        method: "POST",
-    },
+    // Logs API — aggregate + config endpoints (9)
     EndpointRequirement {
         path: "/api/v2/logs/analytics/aggregate",
         method: "POST",
@@ -291,56 +286,12 @@ static OAUTH_EXCLUDED_ENDPOINTS: &[EndpointRequirement] = &[
         path: "/api/v2/logs/config/metrics/",
         method: "DELETE",
     },
-    // RUM API (10)
+    // Events (1)
     EndpointRequirement {
-        path: "/api/v2/rum/applications",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/v2/rum/applications/",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/v2/rum/applications",
+        path: "/api/v2/events/search",
         method: "POST",
     },
-    EndpointRequirement {
-        path: "/api/v2/rum/applications/",
-        method: "PATCH",
-    },
-    EndpointRequirement {
-        path: "/api/v2/rum/applications/",
-        method: "DELETE",
-    },
-    EndpointRequirement {
-        path: "/api/v2/rum/metrics",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/v2/rum/metrics/",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/v2/rum/retention_filters",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/v2/rum/retention_filters/",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/v2/rum/events/search",
-        method: "POST",
-    },
-    // API/App Keys (8)
-    EndpointRequirement {
-        path: "/api/v2/api_keys",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/v2/api_keys/",
-        method: "GET",
-    },
+    // API Keys — create + delete only (2)
     EndpointRequirement {
         path: "/api/v2/api_keys",
         method: "POST",
@@ -349,6 +300,7 @@ static OAUTH_EXCLUDED_ENDPOINTS: &[EndpointRequirement] = &[
         path: "/api/v2/api_keys/",
         method: "DELETE",
     },
+    // Application Keys (5)
     EndpointRequirement {
         path: "/api/v2/application_keys",
         method: "GET",
@@ -369,11 +321,6 @@ static OAUTH_EXCLUDED_ENDPOINTS: &[EndpointRequirement] = &[
         path: "/api/v2/application_keys/",
         method: "DELETE",
     },
-    // Events (1)
-    EndpointRequirement {
-        path: "/api/v2/events/search",
-        method: "POST",
-    },
     // Error Tracking (2)
     EndpointRequirement {
         path: "/api/v2/error_tracking/issues/search",
@@ -383,7 +330,7 @@ static OAUTH_EXCLUDED_ENDPOINTS: &[EndpointRequirement] = &[
         path: "/api/v2/error_tracking/issues/",
         method: "GET",
     },
-    // Fleet Automation (15)
+    // Fleet Automation (15) — not registered in API gateway
     EndpointRequirement {
         path: "/api/v2/fleet/agents",
         method: "GET",
@@ -444,23 +391,7 @@ static OAUTH_EXCLUDED_ENDPOINTS: &[EndpointRequirement] = &[
         path: "/api/v2/fleet/schedules/",
         method: "POST",
     },
-    // Notebooks (5)
-    EndpointRequirement {
-        path: "/api/v1/notebooks",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/v1/notebooks",
-        method: "POST",
-    },
-    EndpointRequirement {
-        path: "/api/v1/notebooks/",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/v1/notebooks/",
-        method: "PUT",
-    },
+    // Notebooks — delete only (1)
     EndpointRequirement {
         path: "/api/v1/notebooks/",
         method: "DELETE",
@@ -583,20 +514,24 @@ mod tests {
 
     #[test]
     fn test_requires_api_key_fallback_logs() {
-        assert!(requires_api_key_fallback("POST", "/api/v2/logs/events"));
+        // Logs search now supports OAuth — only aggregate + config remain excluded
+        assert!(!requires_api_key_fallback("POST", "/api/v2/logs/events/search"));
         assert!(requires_api_key_fallback(
             "POST",
-            "/api/v2/logs/events/search"
+            "/api/v2/logs/analytics/aggregate"
         ));
+        assert!(requires_api_key_fallback("GET", "/api/v2/logs/config/archives"));
     }
 
     #[test]
-    fn test_requires_api_key_fallback_rum() {
-        assert!(requires_api_key_fallback("GET", "/api/v2/rum/applications"));
-        assert!(requires_api_key_fallback(
+    fn test_rum_now_supports_oauth() {
+        // All RUM endpoints were removed from the exclusion list
+        assert!(!requires_api_key_fallback("GET", "/api/v2/rum/applications"));
+        assert!(!requires_api_key_fallback(
             "GET",
             "/api/v2/rum/applications/abc-123"
         ));
+        assert!(!requires_api_key_fallback("POST", "/api/v2/rum/events/search"));
     }
 
     #[test]
@@ -615,19 +550,19 @@ mod tests {
     fn test_prefix_matching_with_id() {
         // Trailing "/" in the pattern should match paths with IDs
         assert!(requires_api_key_fallback(
-            "GET",
-            "/api/v2/rum/applications/some-uuid-here"
+            "DELETE",
+            "/api/v2/logs/config/archives/archive-123"
         ));
         assert!(requires_api_key_fallback(
             "DELETE",
-            "/api/v2/logs/config/archives/archive-123"
+            "/api/v2/api_keys/key-123"
         ));
     }
 
     #[test]
     fn test_method_must_match() {
-        // Logs events is POST-excluded, but GET should not match
-        assert!(!requires_api_key_fallback("GET", "/api/v2/logs/events"));
+        // Logs config archives is GET-excluded, but POST should not match
+        assert!(!requires_api_key_fallback("POST", "/api/v2/logs/config/archives"));
     }
 
     #[test]
@@ -637,7 +572,7 @@ mod tests {
 
     #[test]
     fn test_oauth_excluded_count() {
-        assert_eq!(OAUTH_EXCLUDED_ENDPOINTS.len(), 53);
+        assert_eq!(OAUTH_EXCLUDED_ENDPOINTS.len(), 35);
     }
 
     #[test]
@@ -707,9 +642,11 @@ mod tests {
 
     #[test]
     fn test_requires_api_key_fallback_notebooks() {
-        assert!(requires_api_key_fallback("GET", "/api/v1/notebooks"));
-        assert!(requires_api_key_fallback("GET", "/api/v1/notebooks/12345"));
-        assert!(requires_api_key_fallback("POST", "/api/v1/notebooks"));
+        // Notebooks read/write now support OAuth — only delete remains excluded
+        assert!(!requires_api_key_fallback("GET", "/api/v1/notebooks"));
+        assert!(!requires_api_key_fallback("GET", "/api/v1/notebooks/12345"));
+        assert!(!requires_api_key_fallback("POST", "/api/v1/notebooks"));
+        assert!(requires_api_key_fallback("DELETE", "/api/v1/notebooks/12345"));
     }
 
     #[test]
@@ -723,7 +660,8 @@ mod tests {
 
     #[test]
     fn test_requires_api_key_fallback_api_keys() {
-        assert!(requires_api_key_fallback("GET", "/api/v2/api_keys"));
+        // API keys read now supports OAuth — only create + delete remain excluded
+        assert!(!requires_api_key_fallback("GET", "/api/v2/api_keys"));
         assert!(requires_api_key_fallback("POST", "/api/v2/api_keys"));
         assert!(requires_api_key_fallback(
             "DELETE",

@@ -27,17 +27,11 @@ pub async fn search(
     to: String,
     limit: i32,
 ) -> Result<()> {
-    // Logs search API doesn't support OAuth/bearer - force API keys
-    if !cfg.has_api_keys() {
-        bail!(
-            "logs search requires API+APP key authentication (DD_API_KEY + DD_APP_KEY).\n\
-             This endpoint does not support bearer token auth."
-        );
-    }
-
     let dd_cfg = client::make_dd_config(cfg);
-    // Force API key auth only - do NOT use bearer middleware
-    let api = LogsAPI::with_config(dd_cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => LogsAPI::with_client_and_config(dd_cfg, c),
+        None => LogsAPI::with_config(dd_cfg),
+    };
 
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;
