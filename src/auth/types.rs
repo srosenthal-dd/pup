@@ -91,6 +91,15 @@ pub fn default_scopes() -> Vec<&'static str> {
         "oci_configurations_manage",
         "timeseries_query",
         "usage_read",
+        // CI Visibility (pipelines, tests, code coverage, flaky tests)
+        "ci_visibility_read",
+        "ci_visibility_pipelines_write",
+        // Service Catalog
+        "apm_service_catalog_read",
+        "apm_service_catalog_write",
+        // Teams (on-call)
+        "teams_read",
+        "teams_write",
     ]
 }
 
@@ -141,6 +150,10 @@ mod tests {
         assert!(scopes.contains(&"dashboards_read"));
         assert!(scopes.contains(&"monitors_read"));
         assert!(scopes.contains(&"logs_read_data"));
+        // CI Visibility, Service Catalog, Teams
+        assert!(scopes.contains(&"ci_visibility_read"));
+        assert!(scopes.contains(&"apm_service_catalog_read"));
+        assert!(scopes.contains(&"teams_read"));
     }
 
     #[test]

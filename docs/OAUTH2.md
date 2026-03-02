@@ -224,6 +224,18 @@ Pup requests the following OAuth scopes based on PR #84:
 ### Usage
 - `usage_read` - Read usage data
 
+### CI Visibility
+- `ci_visibility_read` - Read CI pipelines, tests, code coverage, and flaky tests
+- `ci_visibility_pipelines_write` - Send CI pipeline events
+
+### Service Catalog
+- `apm_service_catalog_read` - Read service definitions
+- `apm_service_catalog_write` - Create/update/delete service definitions
+
+### Teams
+- `teams_read` - Read teams and team memberships
+- `teams_write` - Create/update/delete teams and memberships
+
 ## Token Management
 
 ### Automatic Refresh
