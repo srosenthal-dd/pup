@@ -93,10 +93,11 @@ pub fn default_scopes() -> Vec<&'static str> {
         "usage_read",
         // CI Visibility (pipelines, tests, code coverage, flaky tests)
         "ci_visibility_read",
-        "ci_visibility_pipelines_write",
+        "test_optimization_read",
+        "test_optimization_write",
+        "dora_metrics_write",
         // Service Catalog
         "apm_service_catalog_read",
-        "apm_service_catalog_write",
         // Teams (on-call)
         "teams_read",
         "teams_manage",
