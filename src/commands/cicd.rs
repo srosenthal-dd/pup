@@ -474,19 +474,19 @@ pub async fn flaky_tests_search(cfg: &Config, query: Option<String>) -> Result<(
         None => TestOptimizationAPI::with_config(dd_cfg),
     };
 
-    let mut body = FlakyTestsSearchRequest::new();
+    use datadog_api_client::datadogV2::model::{
+        FlakyTestsSearchFilter, FlakyTestsSearchRequestAttributes, FlakyTestsSearchRequestData,
+        FlakyTestsSearchRequestDataType,
+    };
+    let mut attrs = FlakyTestsSearchRequestAttributes::new();
     if let Some(q) = query {
-        use datadog_api_client::datadogV2::model::{
-            FlakyTestsSearchFilter, FlakyTestsSearchRequestAttributes, FlakyTestsSearchRequestData,
-            FlakyTestsSearchRequestDataType,
-        };
         let filter = FlakyTestsSearchFilter::new().query(q);
-        let attrs = FlakyTestsSearchRequestAttributes::new().filter(filter);
-        let data = FlakyTestsSearchRequestData::new()
-            .attributes(attrs)
-            .type_(FlakyTestsSearchRequestDataType::SEARCH_FLAKY_TESTS_REQUEST);
-        body = body.data(data);
+        attrs = attrs.filter(filter);
     }
+    let data = FlakyTestsSearchRequestData::new()
+        .attributes(attrs)
+        .type_(FlakyTestsSearchRequestDataType::SEARCH_FLAKY_TESTS_REQUEST);
+    let body = FlakyTestsSearchRequest::new().data(data);
 
     let params = SearchFlakyTestsOptionalParams::default().body(body);
     let resp = api
@@ -498,19 +498,16 @@ pub async fn flaky_tests_search(cfg: &Config, query: Option<String>) -> Result<(
 
 #[cfg(target_arch = "wasm32")]
 pub async fn flaky_tests_search(cfg: &Config, query: Option<String>) -> Result<()> {
-    let mut body = serde_json::json!({});
+    let mut attrs = serde_json::json!({});
     if let Some(q) = query {
-        body = serde_json::json!({
-            "data": {
-                "attributes": {
-                    "filter": {
-                        "query": q
-                    }
-                },
-                "type": "search_flaky_tests_request"
-            }
-        });
+        attrs = serde_json::json!({ "filter": { "query": q } });
     }
+    let body = serde_json::json!({
+        "data": {
+            "attributes": attrs,
+            "type": "search_flaky_tests_request"
+        }
+    });
     let data = crate::api::post(cfg, "/api/v2/ci/tests/flaky", &body).await?;
     crate::formatter::output(cfg, &data)
 }
