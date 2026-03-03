@@ -99,7 +99,7 @@ pub fn default_scopes() -> Vec<&'static str> {
         "apm_service_catalog_write",
         // Teams (on-call)
         "teams_read",
-        "teams_write",
+        "teams_manage",
     ]
 }
 
@@ -154,6 +154,7 @@ mod tests {
         assert!(scopes.contains(&"ci_visibility_read"));
         assert!(scopes.contains(&"apm_service_catalog_read"));
         assert!(scopes.contains(&"teams_read"));
+        assert!(scopes.contains(&"teams_manage"));
     }
 
     #[test]

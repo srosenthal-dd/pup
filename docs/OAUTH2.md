@@ -234,7 +234,7 @@ Pup requests the following OAuth scopes based on PR #84:
 
 ### Teams
 - `teams_read` - Read teams and team memberships
-- `teams_write` - Create/update/delete teams and memberships
+- `teams_manage` - Create/update/delete teams and memberships
 
 ## Token Management
 
