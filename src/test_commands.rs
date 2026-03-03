@@ -1993,7 +1993,15 @@ fn test_read_only_guard_nested_read() {
 #[test]
 fn test_read_only_guard_nested_write() {
     let matches = crate::Cli::command()
-        .try_get_matches_from(["pup", "cases", "jira", "create-issue", "123", "--file", "f.json"])
+        .try_get_matches_from([
+            "pup",
+            "cases",
+            "jira",
+            "create-issue",
+            "123",
+            "--file",
+            "f.json",
+        ])
         .unwrap();
     let leaf = crate::get_leaf_subcommand_name(&matches).unwrap();
     assert!(crate::is_write_command_name(&leaf));

@@ -4744,18 +4744,34 @@ fn build_compact_agent_schema(cmd: &clap::Command) -> serde_json::Value {
 /// Returns true if a leaf subcommand name represents a write (mutating) operation.
 /// Used by both the read-only runtime guard and the agent JSON schema.
 pub(crate) fn is_write_command_name(name: &str) -> bool {
-    name == "delete" || name == "create" || name == "update"
-        || name == "cancel" || name == "trigger" || name == "set"
-        || name == "add" || name == "remove" || name == "assign"
-        || name == "archive" || name == "unarchive"
-        || name == "activate" || name == "deactivate"
-        || name == "move" || name == "link" || name == "unlink"
-        || name == "configure" || name == "upgrade"
-        || name.starts_with("update-") || name.starts_with("create-")
-        || name == "submit" || name == "send" || name == "import"
-        || name == "register" || name == "unregister"
+    name == "delete"
+        || name == "create"
+        || name == "update"
+        || name == "cancel"
+        || name == "trigger"
+        || name == "set"
+        || name == "add"
+        || name == "remove"
+        || name == "assign"
+        || name == "archive"
+        || name == "unarchive"
+        || name == "activate"
+        || name == "deactivate"
+        || name == "move"
+        || name == "link"
+        || name == "unlink"
+        || name == "configure"
+        || name == "upgrade"
+        || name.starts_with("update-")
+        || name.starts_with("create-")
+        || name == "submit"
+        || name == "send"
+        || name == "import"
+        || name == "register"
+        || name == "unregister"
         || name.contains("delete")
-        || name == "patch" || name.starts_with("patch-")
+        || name == "patch"
+        || name.starts_with("patch-")
 }
 
 fn build_command_schema(cmd: &clap::Command, parent_path: &str) -> serde_json::Value {
