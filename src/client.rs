@@ -491,7 +491,10 @@ mod tests {
 
     #[test]
     fn test_no_fallback_for_rum() {
-        assert!(!requires_api_key_fallback("GET", "/api/v2/rum/applications"));
+        assert!(!requires_api_key_fallback(
+            "GET",
+            "/api/v2/rum/applications"
+        ));
         assert!(!requires_api_key_fallback(
             "GET",
             "/api/v2/rum/applications/abc-123"
