@@ -13,10 +13,10 @@ use datadog_api_client::datadogV2::api_security_monitoring::{
 use datadog_api_client::datadogV2::model::{
     SecurityMonitoringRuleBulkExportAttributes, SecurityMonitoringRuleBulkExportData,
     SecurityMonitoringRuleBulkExportDataType, SecurityMonitoringRuleBulkExportPayload,
-    SecurityMonitoringSignalListRequest, SecurityMonitoringSignalListRequestFilter,
-    SecurityMonitoringSignalListRequestPage, SecurityMonitoringSignalsSort,
-    SecurityMonitoringSuppressionCreateRequest, SecurityMonitoringSuppressionSort,
-    SecurityMonitoringSuppressionUpdateRequest,
+    SecurityMonitoringRuleSort, SecurityMonitoringSignalListRequest,
+    SecurityMonitoringSignalListRequestFilter, SecurityMonitoringSignalListRequestPage,
+    SecurityMonitoringSignalsSort, SecurityMonitoringSuppressionCreateRequest,
+    SecurityMonitoringSuppressionSort, SecurityMonitoringSuppressionUpdateRequest,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -26,23 +26,52 @@ use crate::formatter;
 use crate::util;
 
 #[cfg(not(target_arch = "wasm32"))]
-pub async fn rules_list(cfg: &Config) -> Result<()> {
+pub async fn rules_list(cfg: &Config, sort: Option<String>) -> Result<()> {
     let dd_cfg = client::make_dd_config(cfg);
     let api = match client::make_bearer_client(cfg) {
         Some(c) => SecurityMonitoringAPI::with_client_and_config(dd_cfg, c),
         None => SecurityMonitoringAPI::with_config(dd_cfg),
     };
+    let mut params = ListSecurityMonitoringRulesOptionalParams::default();
+    if let Some(s) = sort {
+        params = params.sort(parse_rule_sort(&s));
+    }
     let resp = api
-        .list_security_monitoring_rules(ListSecurityMonitoringRulesOptionalParams::default())
+        .list_security_monitoring_rules(params)
         .await
         .map_err(|e| anyhow::anyhow!("failed to list rules: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
 
 #[cfg(target_arch = "wasm32")]
-pub async fn rules_list(cfg: &Config) -> Result<()> {
-    let data = crate::api::get(cfg, "/api/v2/security_monitoring/rules", &[]).await?;
+pub async fn rules_list(cfg: &Config, sort: Option<String>) -> Result<()> {
+    let mut q: Vec<(&str, String)> = vec![];
+    if let Some(s) = sort {
+        q.push(("sort", s));
+    }
+    let data = crate::api::get(cfg, "/api/v2/security_monitoring/rules", &q).await?;
     crate::formatter::output(cfg, &data)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn parse_rule_sort(s: &str) -> SecurityMonitoringRuleSort {
+    match s {
+        "name" => SecurityMonitoringRuleSort::NAME,
+        "-name" => SecurityMonitoringRuleSort::NAME_DESCENDING,
+        "creation_date" => SecurityMonitoringRuleSort::CREATION_DATE,
+        "-creation_date" => SecurityMonitoringRuleSort::CREATION_DATE_DESCENDING,
+        "update_date" => SecurityMonitoringRuleSort::UPDATE_DATE,
+        "-update_date" => SecurityMonitoringRuleSort::UPDATE_DATE_DESCENDING,
+        "enabled" => SecurityMonitoringRuleSort::ENABLED,
+        "-enabled" => SecurityMonitoringRuleSort::ENABLED_DESCENDING,
+        "type" => SecurityMonitoringRuleSort::TYPE,
+        "-type" => SecurityMonitoringRuleSort::TYPE_DESCENDING,
+        "highest_severity" => SecurityMonitoringRuleSort::HIGHEST_SEVERITY,
+        "-highest_severity" => SecurityMonitoringRuleSort::HIGHEST_SEVERITY_DESCENDING,
+        "source" => SecurityMonitoringRuleSort::SOURCE,
+        "-source" => SecurityMonitoringRuleSort::SOURCE_DESCENDING,
+        _ => SecurityMonitoringRuleSort::NAME,
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]

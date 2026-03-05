@@ -2037,6 +2037,11 @@ enum IncidentActions {
         #[command(subcommand)]
         action: IncidentPostmortemActions,
     },
+    /// Import an incident
+    Import {
+        #[arg(long, help = "JSON file with request body (required)")]
+        file: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -2536,6 +2541,8 @@ enum SecurityRuleActions {
     List {
         #[arg(long, help = "Filter query")]
         filter: Option<String>,
+        #[arg(long, help = "Sort order (name, -name, creation_date, -creation_date, update_date, -update_date, enabled, -enabled, type, -type, highest_severity, -highest_severity, source, -source)")]
+        sort: Option<String>,
     },
     /// Get rule details
     Get { rule_id: String },
@@ -3931,6 +3938,8 @@ enum StatusPageThirdPartyActions {
 // ---- Integrations ----
 #[derive(Subcommand)]
 enum IntegrationActions {
+    /// List all configured integrations
+    List,
     /// Manage Jira integration
     Jira {
         #[command(subcommand)]
@@ -5495,6 +5504,9 @@ async fn main_inner() -> anyhow::Result<()> {
                             .await?;
                     }
                 },
+                IncidentActions::Import { file } => {
+                    commands::incidents::import(&cfg, &file).await?;
+                }
             }
         }
         // --- Dashboards ---
@@ -5714,8 +5726,8 @@ async fn main_inner() -> anyhow::Result<()> {
             cfg.validate_auth()?;
             match action {
                 SecurityActions::Rules { action } => match action {
-                    SecurityRuleActions::List { .. } => {
-                        commands::security::rules_list(&cfg).await?
+                    SecurityRuleActions::List { sort, .. } => {
+                        commands::security::rules_list(&cfg, sort).await?
                     }
                     SecurityRuleActions::Get { rule_id } => {
                         commands::security::rules_get(&cfg, &rule_id).await?;
@@ -6613,6 +6625,9 @@ async fn main_inner() -> anyhow::Result<()> {
         Commands::Integrations { action } => {
             cfg.validate_auth()?;
             match action {
+                IntegrationActions::List => {
+                    commands::integrations::list(&cfg).await?;
+                }
                 IntegrationActions::Jira { action } => match action {
                     JiraActions::Accounts { action } => match action {
                         JiraAccountActions::List => {

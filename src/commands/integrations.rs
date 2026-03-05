@@ -9,6 +9,8 @@ use datadog_api_client::datadogV1::api_slack_integration::SlackIntegrationAPI;
 #[cfg(not(target_arch = "wasm32"))]
 use datadog_api_client::datadogV1::api_webhooks_integration::WebhooksIntegrationAPI;
 #[cfg(not(target_arch = "wasm32"))]
+use datadog_api_client::datadogV2::api_integrations::IntegrationsAPI;
+#[cfg(not(target_arch = "wasm32"))]
 use datadog_api_client::datadogV2::api_jira_integration::JiraIntegrationAPI;
 #[cfg(not(target_arch = "wasm32"))]
 use datadog_api_client::datadogV2::api_service_now_integration::ServiceNowIntegrationAPI;
@@ -485,5 +487,27 @@ pub async fn webhooks_list(cfg: &Config) -> Result<()> {
         &[],
     )
     .await?;
+    crate::formatter::output(cfg, &data)
+}
+
+// ---- Integrations v2 list ----
+
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn list(cfg: &Config) -> Result<()> {
+    let dd_cfg = client::make_dd_config(cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => IntegrationsAPI::with_client_and_config(dd_cfg, c),
+        None => IntegrationsAPI::with_config(dd_cfg),
+    };
+    let resp = api
+        .list_integrations()
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to list integrations: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub async fn list(cfg: &Config) -> Result<()> {
+    let data = crate::api::get(cfg, "/api/v2/integrations", &[]).await?;
     crate::formatter::output(cfg, &data)
 }

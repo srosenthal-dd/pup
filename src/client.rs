@@ -190,6 +190,8 @@ static UNSTABLE_OPS: &[&str] = &[
     // Flaky Tests (2)
     "v2.search_flaky_tests",
     "v2.update_flaky_tests",
+    // Incidents Import (1)
+    "v2.import_incident",
     // Change Management (6)
     "v2.create_change_request",
     "v2.create_change_request_branch",

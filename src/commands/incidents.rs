@@ -1,10 +1,12 @@
 use anyhow::{bail, Result};
 #[cfg(not(target_arch = "wasm32"))]
 use datadog_api_client::datadogV2::api_incidents::{
-    CreateGlobalIncidentHandleOptionalParams, GetIncidentOptionalParams, IncidentsAPI,
-    ListGlobalIncidentHandlesOptionalParams, ListIncidentAttachmentsOptionalParams,
+    CreateGlobalIncidentHandleOptionalParams, GetIncidentOptionalParams, ImportIncidentOptionalParams,
+    IncidentsAPI, ListGlobalIncidentHandlesOptionalParams, ListIncidentAttachmentsOptionalParams,
     ListIncidentsOptionalParams, UpdateGlobalIncidentHandleOptionalParams,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use datadog_api_client::datadogV2::model::IncidentImportRequest;
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::client;
@@ -350,4 +352,24 @@ pub async fn postmortem_templates_delete(cfg: &Config, template_id: &str) -> Res
     crate::api::delete(cfg, &path).await?;
     println!("Postmortem template {template_id} deleted.");
     Ok(())
+}
+
+// ---- Import ----
+
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn import(cfg: &Config, file: &str) -> Result<()> {
+    let body: IncidentImportRequest = util::read_json_file(file)?;
+    let api = make_api(cfg);
+    let resp = api
+        .import_incident(body, ImportIncidentOptionalParams::default())
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to import incident: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub async fn import(cfg: &Config, file: &str) -> Result<()> {
+    let body: serde_json::Value = util::read_json_file(file)?;
+    let data = crate::api::post(cfg, "/api/v2/incidents/import", &body).await?;
+    crate::formatter::output(cfg, &data)
 }

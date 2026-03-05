@@ -102,7 +102,7 @@ aes-gcm = { version = "0.10", optional = true }
 # ---- Native-only dependencies ----
 
 # Datadog API client (pins reqwest 0.11 + reqwest-middleware 0.2)
-datadog-api-client = { version = "0.27", optional = true }
+datadog-api-client = { git = "https://github.com/DataDog/datadog-api-client-rust", rev = "acbcc67bc36a4a23d4bacbb1ba9d174f06ce7997", optional = true }
 
 # HTTP middleware (version-matched to DD client)
 reqwest-middleware = { version = "0.2", optional = true }
