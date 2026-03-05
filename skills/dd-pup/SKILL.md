@@ -1,6 +1,6 @@
 ---
 name: dd-pup
-description: Datadog CLI (Go). OAuth2 auth with token refresh.
+description: Datadog CLI (pup). OAuth2 auth with token refresh.
 metadata:
   version: "1.0.0"
   author: datadog-labs
@@ -17,26 +17,25 @@ Pup CLI for Datadog API operations. Supports OAuth2 and API key auth.
 
 | Task | Command |
 |------|---------|
-| Search error logs | `pup logs search --query "status:error" --duration 1h` |
+| Search error logs | `pup logs search --query "status:error" --from 1h` |
 | List monitors | `pup monitors list` |
-| Mute a monitor | `pup monitors mute --id 123 --duration 1h` |
-| Find slow traces | `pup apm traces list --service api --min-duration 500ms` |
-| List active incidents | `pup incidents list --status active` |
-| Create incident | `pup incidents create --title "Issue" --severity SEV-2` |
+| Create downtime | `pup downtime create --file downtime.json` |
+| Find slow traces | `pup traces search --query="@duration:>500000000" --from="1h"` |
+| List incidents | `pup incidents list` |
 | Query metrics | `pup metrics query --query "avg:system.cpu.user{*}"` |
-| List hosts | `pup hosts list` |
+| List hosts | `pup infrastructure hosts list` |
 | Check SLOs | `pup slos list` |
-| Who's on call | `pup on-call who --team my-team` |
-| Security signals | `pup security signals list --severity critical` |
+| On-call teams | `pup on-call teams list` |
+| Security signals | `pup security signals list --from 24h` |
 | Check auth | `pup auth status` |
 | Refresh token | `pup auth refresh` |
 
 ## Prerequisites
 
 ```bash
-# Install pup
-go install github.com/datadog-labs/pup@latest
-export PATH="$HOME/go/bin:$PATH"
+# Install pup via Homebrew (recommended)
+brew tap datadog-labs/pack
+brew install pup
 ```
 
 ## Auth
@@ -70,126 +69,128 @@ export DD_SITE=datadoghq.com    # or datadoghq.eu, etc.
 ```bash
 pup monitors list --limit 10
 pup monitors list --tags "env:prod"
-pup monitors get --id 12345
-pup monitors mute --id 12345 --duration 1h
-pup monitors unmute --id 12345
-pup monitors create --name "High CPU" --type "metric alert" \
-  --query "avg(last_5m):avg:system.cpu.user{*} > 80" \
-  --message "CPU high @slack-ops"
+pup monitors get 12345
+pup monitors search --query "High CPU"
+pup monitors create --file monitor.json
+pup monitors update 12345 --file monitor.json
+pup monitors delete 12345
 ```
 
 ### Logs
 ```bash
-pup logs search --query "status:error" --duration 1h
-pup logs search --query "service:payment-api" --duration 1h --limit 100
-pup logs search --query "@http.status_code:5*" --duration 24h
-pup logs search --query "env:prod level:error" --duration 1h --json
+pup logs search --query "status:error" --from 1h
+pup logs search --query "service:payment-api" --from 1h --limit 100
+pup logs search --query "@http.status_code:5*" --from 24h
+pup logs aggregate --query "service:api" --compute count --from 1h
 ```
 
 ### Metrics
 ```bash
-pup metrics query --query "avg:system.cpu.user{*}" --duration 1h
-pup metrics query --query "sum:trace.express.request.hits{service:api}" --duration 1h
+pup metrics query --query "avg:system.cpu.user{*}" --from 1h
+pup metrics query --query "sum:trace.express.request.hits{service:api}" --from 1h
 pup metrics list --filter "system.*"
 ```
 
-### APM / Traces
+### APM / Services
 ```bash
-pup apm services list
-pup apm traces list --service my-service --duration 1h
-pup apm traces list --service api --min-duration 500ms --duration 1h
-pup apm traces list --service api --status error --duration 1h
-pup apm traces get abc123def456
+pup apm services list --env production
+pup apm services stats --env production
+pup apm services operations --env production --service my-service
+pup apm services resources --env production --service my-service --operation http.request
+pup apm dependencies list --env production
+```
+
+### Traces
+```bash
+# Search traces (duration in nanoseconds: 1s = 1000000000)
+pup traces search --query="service:api-gateway" --from="1h"
+pup traces search --query="service:api @duration:>1000000000" --from="1h"
+pup traces search --query="service:api status:error" --from="1h"
+pup traces aggregate --query="service:api" --compute="avg(@duration)" --group-by="resource_name" --from="1h"
 ```
 
 ### Incidents
 ```bash
-pup incidents list --status active
-pup incidents list --status resolved --duration 7d
-pup incidents create --title "API Degradation" --severity SEV-2
-pup incidents update --id abc-123 --status stable
-pup incidents resolve --id abc-123
+pup incidents list
+pup incidents list --limit 20
+pup incidents get <incident-id>
 ```
 
 ### Dashboards
 ```bash
 pup dashboards list
-pup dashboards list --tags "team:platform"
-pup dashboards get --id abc-123
-pup dashboards create --title "My Dashboard" --description "..." --widgets '[...]'
+pup dashboards get abc-123
+pup dashboards create --file dashboard.json
+pup dashboards update abc-123 --file dashboard.json
+pup dashboards delete abc-123
 ```
 
 ### SLOs
 ```bash
 pup slos list
-pup slos get --id slo-123
-pup slos history --id slo-123 --duration 30d
+pup slos get slo-123
+pup slos status slo-123 --from 30d --to now
+pup slos create --file slo.json
 ```
 
 ### Synthetics
 ```bash
-pup synthetics list
-pup synthetics results --test-id abc-123
-pup synthetics trigger --test-id abc-123
-```
-
-### On-Call
-```bash
-pup on-call teams list
-pup on-call schedules list
-pup on-call who --team platform-team
-```
-
-### Hosts / Infrastructure
-```bash
-pup hosts list --limit 50
-pup hosts list --filter "env:prod"
-pup hosts mute --hostname web-01 --duration 1h
-pup hosts get --hostname web-01
-```
-
-### Events
-```bash
-pup events list --duration 24h
-pup events list --tags "source:deploy"
-pup events post --title "Deploy started" --text "v1.2.3" --tags "env:prod"
+pup synthetics tests list
+pup synthetics tests get abc-123
+pup synthetics tests search --text "login"
+pup synthetics locations list
 ```
 
 ### Downtimes
 ```bash
 pup downtime list
-pup downtime create --scope "env:staging" --duration 2h --message "Maintenance"
-pup downtime cancel --id 12345
+pup downtime get abc-123-def
+pup downtime create --file downtime.json
+pup downtime cancel abc-123-def
+```
+
+### Infrastructure / Hosts
+```bash
+pup infrastructure hosts list
+pup infrastructure hosts list --filter "env:prod"
+pup infrastructure hosts list --count
+pup infrastructure hosts get <host-id>
+```
+
+### Events
+```bash
+pup events list --from 24h
+pup events list --tags "source:deploy" --from 24h
+pup events search --query "deploy" --from 24h
+pup events get <event-id>
 ```
 
 ### Users / Teams
 ```bash
 pup users list
-pup teams list
+pup users get <user-id>
+pup on-call teams list
+pup on-call teams get <team-id>
 ```
 
 ### Security
 ```bash
-pup security signals list --duration 24h
-pup security signals list --severity critical
+pup security signals list --from 24h
+pup security signals list --query "severity:critical" --from 24h
+pup security rules list
 ```
 
 ### Service Catalog
 ```bash
-pup services list
-pup services get --name payment-api
+pup service-catalog list
+pup service-catalog get <service-name>
 ```
 
 ### Notebooks
 ```bash
 pup notebooks list
-pup notebooks get --id 12345
-```
-
-### Workflows
-```bash
-pup workflows list
-pup workflows trigger --id workflow-123 --input '{"key": "value"}'
+pup notebooks get 12345
+pup notebooks create --file notebook.json
 ```
 
 ## Subcommand Discovery
@@ -211,79 +212,19 @@ pup <command> --help    # Command-specific help
 ## Install
 
 ```bash
-go install github.com/DataDog/pup@latest
+# Homebrew (recommended)
+brew tap datadog-labs/pack
+brew install pup
+
+# Or build from source
+cargo install --git https://github.com/datadog-labs/pup
 ```
 
 ### Verify Installation
 
 ```bash
-# Check if pup is in PATH
-which pup
-
-# If not found, check if it was installed
-ls ~/go/bin/pup
-```
-
-### PATH Troubleshooting
-
-If `pup` is installed but `which pup` returns nothing, Go's bin directory isn't in your PATH.
-
-**Check where pup is:**
-```bash
-ls ~/go/bin/pup           # Standard location
-ls $GOPATH/bin/pup        # If GOPATH is set
-ls $GOBIN/pup             # If GOBIN is set
-```
-
-**Add to PATH (pick your shell):**
-
-For **zsh** (macOS default):
-```bash
-# Add this line to ~/.zshrc
-export PATH="$HOME/go/bin:$PATH"
-
-# Then reload
-source ~/.zshrc
-```
-
-For **bash**:
-```bash
-# Add this line to ~/.bashrc or ~/.bash_profile
-export PATH="$HOME/go/bin:$PATH"
-
-# Then reload
-source ~/.bashrc
-```
-
-For **fish**:
-```fish
-# Add this line to ~/.config/fish/config.fish
-fish_add_path $HOME/go/bin
-
-# Or set permanently
-set -Ux fish_user_paths $HOME/go/bin $fish_user_paths
-
-# Then reload
-source ~/.config/fish/config.fish
-```
-
-**Verify:**
-```bash
-which pup        # Should show path
-pup --version    # Should show version
-```
-
-### Alternative: Full Path
-
-If you don't want to modify PATH, use the full path:
-```bash
-~/go/bin/pup auth login
-~/go/bin/pup monitors list
-```
-
-Or create an alias:
-```bash
-alias pup="$HOME/go/bin/pup"
+pup --version
+pup auth status
 ```
 
 ## Sites
