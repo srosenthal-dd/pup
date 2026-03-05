@@ -19,61 +19,103 @@ Distributed tracing, service maps, and performance analysis.
 Datadog Labs Pup should be installed via:
 
 ```bash
-go install github.com/datadog-labs/pup@latest
+brew tap datadog-labs/pack
+brew install pup
 ```
 
 ## Quick Start
 
 ```bash
 pup auth login
-pup apm services list
-pup apm traces list --service api-gateway --duration 1h
+pup apm services list --env production
+pup traces search --query="service:api-gateway" --from="1h"
 ```
 
 ## Services
 
 ### List Services
 
+`--env` is **required** for all `apm services` commands.
+
 ```bash
-pup apm services list
 pup apm services list --env production
+pup apm services list --env staging
 ```
 
-### Service Details
+### Service Statistics
 
 ```bash
-pup apm services get api-gateway --json
+pup apm services stats --env production
+pup apm services stats --env production --from 4h
 ```
 
-### Service Map
+### Service Operations and Resources
 
 ```bash
-# View dependencies
-pup apm service-map --service api-gateway --json
+# List operations for a service
+pup apm services operations --env production --service api-gateway
+
+# List resources (endpoints) for an operation
+pup apm services resources --env production --service api-gateway --operation http.request
+```
+
+### Service Dependencies
+
+```bash
+pup apm dependencies list --env production
+```
+
+### Flow Map
+
+```bash
+# View service flow map (--query and --env required)
+pup apm flow-map --query "service:api-gateway" --env production
 ```
 
 ## Traces
+
+Traces are searched via the top-level `traces` command (not under `apm`).
+
+**Important:** APM durations are in **nanoseconds**: 1 second = 1,000,000,000 ns.
 
 ### Search Traces
 
 ```bash
 # By service
-pup apm traces list --service api-gateway --duration 1h
+pup traces search --query="service:api-gateway" --from="1h"
 
 # Errors only
-pup apm traces list --service api-gateway --status error
+pup traces search --query="service:api-gateway status:error" --from="1h"
 
-# Slow traces (>1s)
-pup apm traces list --service api-gateway --min-duration 1000ms
+# Slow traces (>1 second = 1000000000 ns)
+pup traces search --query="service:api-gateway @duration:>1000000000" --from="1h"
 
 # With specific tag
-pup apm traces list --query "@http.url:/api/users"
+pup traces search --query="service:api @http.url:/api/users" --from="1h"
 ```
 
-### Get Trace Detail
+### Aggregate Traces
 
 ```bash
-pup apm traces get <trace_id> --json
+# Average duration by resource
+pup traces aggregate \
+  --query="service:api-gateway" \
+  --compute="avg(@duration)" \
+  --group-by="resource_name" \
+  --from="1h"
+
+# Error count by service
+pup traces aggregate \
+  --query="status:error" \
+  --compute="count" \
+  --group-by="service" \
+  --from="1h"
+
+# p99 latency
+pup traces aggregate \
+  --query="service:api-gateway" \
+  --compute="percentile(@duration, 99)" \
+  --from="1h"
 ```
 
 ## Key Metrics
@@ -95,11 +137,6 @@ pup apm traces get <trace_id> --json
 | **Error/Slow** | All errors, slow traces |
 | **Retention** | What's indexed (billed) |
 
-```bash
-# Check retention filters
-pup apm retention-filters list
-```
-
 ### Trace Retention Costs
 
 | Retention | Cost |
@@ -114,21 +151,16 @@ pup apm retention-filters list
 Link APM to SLOs:
 
 ```bash
-pup slos create \
-  --name "API Latency p99 < 200ms" \
-  --type metric \
-  --numerator "sum:trace.http.request.hits{service:api,@duration:<200000000}" \
-  --denominator "sum:trace.http.request.hits{service:api}" \
-  --target 99.0
+pup slos create --file slo.json
 ```
 
 ## Common Queries
 
 | Goal | Query |
 |------|-------|
-| Slowest endpoints | `avg:trace.http.request.duration{*} by {resource_name}` |
-| Error rate | `sum:trace.http.request.errors{*} / sum:trace.http.request.hits{*}` |
-| Throughput | `sum:trace.http.request.hits{*}.as_rate()` |
+| Slowest endpoints | `pup traces aggregate --query="service:api" --compute="avg(@duration)" --group-by="resource_name" --from="1h"` |
+| Error rate by service | `pup traces aggregate --query="status:error" --compute="count" --group-by="service" --from="1h"` |
+| Throughput | `pup traces aggregate --query="service:api" --compute="count" --group-by="resource_name" --from="1h"` |
 
 ## Troubleshooting
 
@@ -138,6 +170,7 @@ pup slos create \
 | Missing service | Verify DD_SERVICE env var |
 | Traces not linked | Check trace headers propagated |
 | High cardinality | Don't tag with user_id/request_id |
+| `--env` required error | Always pass `--env` to `apm services` commands |
 
 ## References/Docs
 
