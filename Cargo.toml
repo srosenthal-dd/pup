@@ -32,6 +32,13 @@ native = [
     "dep:clap_complete",
     "tokio/full",
     "comfy-table/tty",
+    "dep:tokio-tungstenite",
+    "dep:yamux",
+    "dep:russh",
+    "dep:russh-keys",
+    "dep:ssh-key",
+    "dep:futures",
+    "dep:tokio-util",
 ]
 wasi = [
     "dep:sha2",
@@ -100,6 +107,15 @@ openssl = { version = "0.10", features = ["vendored"], optional = true }
 aes-gcm = { version = "0.10", optional = true }
 
 # ---- Native-only dependencies ----
+
+# Synthetics tunnel
+tokio-tungstenite = { version = "0.20", features = ["native-tls"], optional = true }
+yamux = { version = "0.13", optional = true }
+russh = { version = "0.44", optional = true }
+russh-keys = { version = "0.44", optional = true }
+ssh-key = { version = "0.6", features = ["p256", "std"], optional = true }
+futures = { version = "0.3", optional = true }
+tokio-util = { version = "0.7", features = ["compat", "io"], optional = true }
 
 # Datadog API client (pins reqwest 0.11 + reqwest-middleware 0.2)
 datadog-api-client = { git = "https://github.com/DataDog/datadog-api-client-rust", rev = "acbcc67bc36a4a23d4bacbb1ba9d174f06ce7997", optional = true }

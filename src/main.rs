@@ -6,6 +6,8 @@ mod commands;
 mod config;
 mod formatter;
 mod skills;
+#[cfg(not(target_arch = "wasm32"))]
+mod tunnel;
 mod useragent;
 mod util;
 mod version;
@@ -2305,6 +2307,17 @@ enum SyntheticsTestActions {
         count: i64,
         #[arg(long, default_value_t = 0)]
         start: i64,
+    },
+    /// Run synthetic tests via a local tunnel (requires DD_API_KEY + DD_APP_KEY)
+    Run {
+        /// Public IDs of tests to run (e.g. abc-def-ghi)
+        public_ids: Vec<String>,
+        /// Maximum seconds to wait for results
+        #[arg(long, default_value_t = 1800)]
+        timeout: u64,
+        /// Seconds between result polls
+        #[arg(long, default_value_t = 5)]
+        poll_interval: u64,
     },
 }
 
@@ -5608,6 +5621,14 @@ async fn main_inner() -> anyhow::Result<()> {
                     }
                     SyntheticsTestActions::Search { text, count, start } => {
                         commands::synthetics::tests_search(&cfg, text, count, start).await?;
+                    }
+                    SyntheticsTestActions::Run {
+                        public_ids,
+                        timeout,
+                        poll_interval,
+                    } => {
+                        commands::synthetics::tests_run(&cfg, public_ids, timeout, poll_interval)
+                            .await?;
                     }
                 },
                 SyntheticsActions::Locations { action } => match action {

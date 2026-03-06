@@ -19,6 +19,155 @@ use crate::config::Config;
 use crate::formatter;
 
 #[cfg(not(target_arch = "wasm32"))]
+fn synthetics_intake_base_url(cfg: &Config) -> String {
+    if cfg.site == "datadoghq.com" || cfg.site == "datad0g.com" {
+        format!("https://intake.synthetics.{}/api/v1", cfg.site)
+    } else {
+        format!("{}/api/v1", cfg.api_base_url())
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn build_auth_headers(cfg: &Config) -> anyhow::Result<reqwest::header::HeaderMap> {
+    use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+    let api_key = cfg
+        .api_key
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("DD_API_KEY is required for 'synthetics tests run'"))?;
+    let app_key = cfg
+        .app_key
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("DD_APP_KEY is required for 'synthetics tests run'"))?;
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        HeaderName::from_static("dd-api-key"),
+        HeaderValue::from_str(api_key)?,
+    );
+    headers.insert(
+        HeaderName::from_static("dd-application-key"),
+        HeaderValue::from_str(app_key)?,
+    );
+    Ok(headers)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn tests_run(
+    cfg: &Config,
+    public_ids: Vec<String>,
+    timeout_secs: u64,
+    poll_interval_secs: u64,
+) -> Result<()> {
+    if public_ids.is_empty() {
+        anyhow::bail!("at least one public ID is required");
+    }
+
+    let auth_headers = build_auth_headers(cfg)?;
+    let intake_url = synthetics_intake_base_url(cfg);
+    let client = reqwest::Client::new();
+
+    eprintln!(
+        "Fetching tunnel presigned URL for {} test(s)...",
+        public_ids.len()
+    );
+    let query: Vec<(&str, &str)> = public_ids
+        .iter()
+        .map(|id| ("test_id", id.as_str()))
+        .collect();
+    let tunnel_resp = client
+        .get(format!("{intake_url}/synthetics/ci/tunnel"))
+        .query(&query)
+        .headers(auth_headers.clone())
+        .send()
+        .await?;
+    if !tunnel_resp.status().is_success() {
+        let status = tunnel_resp.status();
+        let body = tunnel_resp.text().await.unwrap_or_default();
+        anyhow::bail!("failed to get tunnel URL (HTTP {status}): {body}");
+    }
+    let tunnel_json: serde_json::Value = tunnel_resp.json().await?;
+    let presigned_url = tunnel_json["url"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("missing 'url' in tunnel response"))?
+        .to_string();
+
+    eprintln!("Starting tunnel...");
+    let (tunnel_info, tunnel) =
+        crate::tunnel::Tunnel::start(&presigned_url, public_ids.clone()).await?;
+    eprintln!("Tunnel connected (id: {})", tunnel_info.id);
+
+    let tests_payload: Vec<serde_json::Value> = public_ids
+        .iter()
+        .map(|id| {
+            serde_json::json!({
+                "public_id": id,
+                "tunnel": {
+                    "id": tunnel_info.id,
+                    "host": tunnel_info.host,
+                    "privateKey": tunnel_info.private_key,
+                }
+            })
+        })
+        .collect();
+    let trigger_payload = serde_json::json!({ "tests": tests_payload });
+
+    eprintln!("Triggering {} test(s)...", public_ids.len());
+    let trigger_resp = client
+        .post(format!("{intake_url}/synthetics/tests/trigger/ci"))
+        .headers(auth_headers.clone())
+        .json(&trigger_payload)
+        .send()
+        .await?;
+    if !trigger_resp.status().is_success() {
+        let status = trigger_resp.status();
+        let body = trigger_resp.text().await.unwrap_or_default();
+        tunnel.stop();
+        anyhow::bail!("failed to trigger tests (HTTP {status}): {body}");
+    }
+    let trigger_json: serde_json::Value = trigger_resp.json().await?;
+    let batch_id = trigger_json["batch_id"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("missing 'batch_id' in trigger response"))?
+        .to_string();
+    eprintln!("Batch ID: {batch_id}");
+
+    let poll_url = format!(
+        "{}/api/v1/synthetics/ci/batch/{batch_id}",
+        cfg.api_base_url()
+    );
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
+
+    let final_result = loop {
+        tokio::time::sleep(std::time::Duration::from_secs(poll_interval_secs)).await;
+
+        let batch_resp = client
+            .get(&poll_url)
+            .headers(auth_headers.clone())
+            .send()
+            .await?;
+        if !batch_resp.status().is_success() {
+            let status = batch_resp.status();
+            let body = batch_resp.text().await.unwrap_or_default();
+            tunnel.stop();
+            anyhow::bail!("failed to poll batch (HTTP {status}): {body}");
+        }
+        let batch_json: serde_json::Value = batch_resp.json().await?;
+        let status = batch_json["data"]["status"].as_str().unwrap_or("unknown");
+        eprintln!("Batch status: {status}");
+
+        if status != "in_progress" {
+            break batch_json;
+        }
+        if std::time::Instant::now() >= deadline {
+            tunnel.stop();
+            anyhow::bail!("timeout after {timeout_secs}s waiting for test results");
+        }
+    };
+
+    tunnel.stop();
+    formatter::output(cfg, &final_result)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub async fn tests_list(cfg: &Config) -> Result<()> {
     let dd_cfg = client::make_dd_config(cfg);
     let api = match client::make_bearer_client(cfg) {
