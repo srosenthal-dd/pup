@@ -277,7 +277,10 @@ mod tests {
     fn test_read_only_scopes_subset_of_default() {
         let default: std::collections::HashSet<&str> = default_scopes().into_iter().collect();
         for scope in read_only_scopes() {
-            assert!(default.contains(scope), "read_only scope not in default_scopes: {scope}");
+            assert!(
+                default.contains(scope),
+                "read_only scope not in default_scopes: {scope}"
+            );
         }
     }
 

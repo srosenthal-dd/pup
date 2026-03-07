@@ -5325,8 +5325,15 @@ fn resolve_login_scopes(
 }
 
 #[cfg(target_arch = "wasm32")]
-fn resolve_login_scopes(_cli_scopes: Option<&str>, _org: Option<&str>, _read_only: bool) -> Vec<String> {
-    crate::auth::types::default_scopes().into_iter().map(String::from).collect()
+fn resolve_login_scopes(
+    _cli_scopes: Option<&str>,
+    _org: Option<&str>,
+    _read_only: bool,
+) -> Vec<String> {
+    crate::auth::types::default_scopes()
+        .into_iter()
+        .map(String::from)
+        .collect()
 }
 
 async fn main_inner() -> anyhow::Result<()> {
@@ -7081,7 +7088,8 @@ async fn main_inner() -> anyhow::Result<()> {
         Commands::Auth { action } => match action {
             AuthActions::Login { scopes, read_only } => {
                 let is_read_only = read_only || cfg.read_only;
-                let resolved = resolve_login_scopes(scopes.as_deref(), cfg.org.as_deref(), is_read_only);
+                let resolved =
+                    resolve_login_scopes(scopes.as_deref(), cfg.org.as_deref(), is_read_only);
                 commands::auth::login(&cfg, resolved).await?
             }
             AuthActions::Logout => commands::auth::logout(&cfg).await?,

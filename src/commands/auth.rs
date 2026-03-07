@@ -30,9 +30,16 @@ pub async fn login(cfg: &Config, scopes: Vec<String>) -> Result<()> {
 
     let scope_strs: Vec<&str> = scopes.iter().map(String::as_str).collect();
     if scopes.len() > 10 {
-        eprintln!("🔑 Requesting {} scope(s) (use --scopes to customize)", scopes.len());
+        eprintln!(
+            "🔑 Requesting {} scope(s) (use --scopes to customize)",
+            scopes.len()
+        );
     } else {
-        eprintln!("🔑 Requesting {} scope(s): {}", scopes.len(), scopes.join(", "));
+        eprintln!(
+            "🔑 Requesting {} scope(s): {}",
+            scopes.len(),
+            scopes.join(", ")
+        );
     }
 
     // 2. Load existing client credentials (lock released before any await)
@@ -192,7 +199,8 @@ pub fn status(cfg: &Config) -> Result<()> {
                     .map(|dt| dt.with_timezone(&chrono::Local).to_rfc3339())
                     .unwrap_or_default();
 
-                let scopes: Vec<&str> = tokens.scope
+                let scopes: Vec<&str> = tokens
+                    .scope
                     .split_whitespace()
                     .filter(|s| !s.is_empty())
                     .collect();
@@ -323,7 +331,8 @@ pub fn list(cfg: &Config) -> Result<()> {
                     let expires_at = chrono::DateTime::from_timestamp(expires_at_ts, 0)
                         .map(|dt| dt.with_timezone(&chrono::Local).to_rfc3339())
                         .unwrap_or_default();
-                    let scopes: Vec<&str> = t.scope
+                    let scopes: Vec<&str> = t
+                        .scope
                         .split_whitespace()
                         .filter(|s| !s.is_empty())
                         .collect();
