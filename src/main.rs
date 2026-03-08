@@ -2288,12 +2288,10 @@ enum SyntheticsActions {
 enum SyntheticsTestActions {
     /// List synthetic tests
     List {
-        #[arg(long, help = "Return only facets (no test results)")]
-        facets_only: bool,
-        #[arg(long, help = "Include full test configuration in results")]
-        include_full_config: bool,
-        #[arg(long, help = "Sort order")]
-        sort: Option<String>,
+        #[arg(long, default_value_t = 10, help = "Results per page")]
+        page_size: i64,
+        #[arg(long, default_value_t = 0, help = "Page number")]
+        page_number: i64,
     },
     /// Get test details
     Get { public_id: String },
@@ -2301,10 +2299,24 @@ enum SyntheticsTestActions {
     Search {
         #[arg(long, help = "Search text query")]
         text: Option<String>,
-        #[arg(long, default_value_t = 50)]
+        #[arg(long, help = "Return only facets (no test results)")]
+        facets_only: bool,
+        #[arg(long, help = "Include full test configuration in results")]
+        include_full_config: bool,
+        #[arg(
+            long,
+            default_value_t = 50,
+            help = "Maximum number of results to return"
+        )]
         count: i64,
-        #[arg(long, default_value_t = 0)]
+        #[arg(
+            long,
+            default_value_t = 0,
+            help = "Offset from which to start returning results"
+        )]
         start: i64,
+        #[arg(long, help = "Sort order")]
+        sort: Option<String>,
     },
 }
 
@@ -5673,14 +5685,31 @@ async fn main_inner() -> anyhow::Result<()> {
             cfg.validate_auth()?;
             match action {
                 SyntheticsActions::Tests { action } => match action {
-                    SyntheticsTestActions::List { .. } => {
-                        commands::synthetics::tests_list(&cfg).await?
-                    }
+                    SyntheticsTestActions::List {
+                        page_size,
+                        page_number,
+                    } => commands::synthetics::tests_list(&cfg, page_size, page_number).await?,
                     SyntheticsTestActions::Get { public_id } => {
                         commands::synthetics::tests_get(&cfg, &public_id).await?;
                     }
-                    SyntheticsTestActions::Search { text, count, start } => {
-                        commands::synthetics::tests_search(&cfg, text, count, start).await?;
+                    SyntheticsTestActions::Search {
+                        text,
+                        facets_only,
+                        include_full_config,
+                        count,
+                        start,
+                        sort,
+                    } => {
+                        commands::synthetics::tests_search(
+                            &cfg,
+                            text,
+                            facets_only,
+                            include_full_config,
+                            count,
+                            start,
+                            sort,
+                        )
+                        .await?;
                     }
                 },
                 SyntheticsActions::Locations { action } => match action {
