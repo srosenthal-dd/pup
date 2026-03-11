@@ -15,6 +15,7 @@ pub mod code_coverage;
 pub mod cost;
 pub mod dashboards;
 pub mod data_governance;
+pub mod ddsql;
 pub mod downtime;
 pub mod error_tracking;
 pub mod events;

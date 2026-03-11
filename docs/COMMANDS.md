@@ -1,6 +1,6 @@
 # Command Reference
 
-Complete reference for all 42 command groups in Pup.
+Complete reference for all 43 command groups in Pup.
 
 ## Command Pattern
 
@@ -25,6 +25,7 @@ pup <domain> <subgroup> <action> [options] # Nested commands
 | traces | - | - | ❌ |
 | monitors | list, get, delete, search | src/commands/monitors.rs | ✅ |
 | dashboards | list, get, delete, url | src/commands/dashboards.rs | ✅ |
+| ddsql | table, csv, time-series | src/commands/ddsql.rs | ✅ |
 | slos | list, get, delete, status | src/commands/slos.rs | ✅ |
 | incidents | list, get, attachments, settings, handles, postmortem-templates | src/commands/incidents.rs | ✅ |
 | rum | apps, metrics, retention-filters, sessions, playlists, heatmaps | src/commands/rum.rs | ✅ |
@@ -63,7 +64,7 @@ pup <domain> <subgroup> <action> [options] # Nested commands
 | fleet | agents (list, get, versions), deployments (list, get, configure, upgrade, cancel), schedules (list, get, create, update, delete, trigger) | src/commands/fleet.rs | ✅ |
 | skills | list, install, path | src/commands/skills.rs | ✅ |
 
-**Summary:** 39 working, 0 API-blocked, 2 placeholders
+**Summary:** 40 working, 0 API-blocked, 2 placeholders
 
 **Note:** RUM command is fully operational. Apps and sessions work completely. Metrics and retention-filters support list/get operations (create/update/delete operations pending due to complex API type structures).
 
@@ -116,6 +117,7 @@ pup infrastructure hosts list
 - **traces** - APM traces (not yet implemented - use `apm` commands instead)
 - **rum** - Real User Monitoring (apps, metrics, retention-filters, sessions)
 - **events** - Infrastructure events (list, search, get)
+- **ddsql** - DDSQL queries (table, csv, time-series)
 
 ### Monitoring & Alerting
 - **monitors** - Monitor management (list, get, delete)
