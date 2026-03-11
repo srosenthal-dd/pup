@@ -25,7 +25,7 @@ pup <domain> <subgroup> <action> [options] # Nested commands
 | traces | - | - | ❌ |
 | monitors | list, get, delete, search | src/commands/monitors.rs | ✅ |
 | dashboards | list, get, delete, url | src/commands/dashboards.rs | ✅ |
-| ddsql | table, csv, time-series | src/commands/ddsql.rs | ✅ |
+| ddsql | table, time-series | src/commands/ddsql.rs | ✅ |
 | slos | list, get, delete, status | src/commands/slos.rs | ✅ |
 | incidents | list, get, attachments, settings, handles, postmortem-templates | src/commands/incidents.rs | ✅ |
 | rum | apps, metrics, retention-filters, sessions, playlists, heatmaps | src/commands/rum.rs | ✅ |

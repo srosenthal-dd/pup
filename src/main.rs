@@ -718,13 +718,12 @@ enum Commands {
     /// DDSQL lets you query metrics, logs, and reference tables using SQL syntax.
     ///
     /// COMMANDS:
-    ///   table        Execute query and return columnar table data
-    ///   csv          Execute query and return CSV
+    ///   table        Execute query and return table data (supports -o json/yaml/table/csv)
     ///   time-series  Execute query and return time series data
     ///
     /// EXAMPLES:
     ///   pup ddsql table --query "SELECT * FROM reference_tables.offices_ips LIMIT 5"
-    ///   pup ddsql csv --query "SELECT * FROM reference_tables.offices_ips" > results.csv
+    ///   pup ddsql table --query "SELECT * FROM reference_tables.offices_ips" -o csv > results.csv
     ///   pup ddsql time-series --query "SELECT avg(system.cpu.user) FROM metrics GROUP BY host" --from 1h --interval 300000
     ///
     /// AUTHENTICATION:
@@ -2508,21 +2507,6 @@ enum DdsqlActions {
         interval: Option<i64>,
         #[arg(long, default_value_t = 50, help = "Maximum number of rows to return")]
         limit: i32,
-        #[arg(long, help = "Number of rows to skip (for pagination)")]
-        offset: Option<i32>,
-    },
-    /// Execute DDSQL query and return CSV (all rows by default)
-    Csv {
-        #[arg(long, help = "DDSQL query string")]
-        query: String,
-        #[arg(long, default_value = "1h", help = "Start time")]
-        from: String,
-        #[arg(long, default_value = "now", help = "End time")]
-        to: String,
-        #[arg(long, help = "Aggregation interval in milliseconds (default: 60000)")]
-        interval: Option<i64>,
-        #[arg(long, help = "Maximum number of rows to return (default: all)")]
-        limit: Option<i32>,
         #[arg(long, help = "Number of rows to skip (for pagination)")]
         offset: Option<i32>,
     },
@@ -7188,16 +7172,6 @@ async fn main_inner() -> anyhow::Result<()> {
                 } => {
                     commands::ddsql::table(&cfg, &query, &from, &to, interval, Some(limit), offset)
                         .await?;
-                }
-                DdsqlActions::Csv {
-                    query,
-                    from,
-                    to,
-                    interval,
-                    limit,
-                    offset,
-                } => {
-                    commands::ddsql::csv(&cfg, &query, &from, &to, interval, limit, offset).await?;
                 }
                 DdsqlActions::TimeSeries {
                     query,

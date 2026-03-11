@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
 
 use crate::client;
-use crate::config::{Config, OutputFormat};
+use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
@@ -65,37 +65,8 @@ pub async fn table(
         offset,
     )?;
     let data = client::raw_post(cfg, "/api/v2/ddsql/table", body).await?;
-    formatter::output(cfg, &data)
-}
-
-pub async fn csv(
-    cfg: &Config,
-    query: &str,
-    from: &str,
-    to: &str,
-    interval: Option<i64>,
-    limit: Option<i32>,
-    offset: Option<i32>,
-) -> Result<()> {
-    let body = build_request(
-        "ddsql_table_request",
-        query,
-        from,
-        to,
-        interval,
-        limit,
-        offset,
-    )?;
-    let data = client::raw_post(cfg, "/api/v2/ddsql/csv", body).await?;
-
-    // Default format is "json", which we treat as "no explicit format" — print raw CSV.
-    if cfg.output_format == OutputFormat::Json && !cfg.agent_mode {
-        let csv_str = extract_csv(&data)?;
-        print!("{csv_str}");
-        Ok(())
-    } else {
-        formatter::output(cfg, &data)
-    }
+    let rows = columnar_to_rows(&data)?;
+    formatter::output(cfg, &rows)
 }
 
 pub async fn time_series(
@@ -118,23 +89,50 @@ pub async fn time_series(
     formatter::output(cfg, &data)
 }
 
-/// Extract raw CSV string from the JSON:API response.
-fn extract_csv(resp: &Value) -> Result<String> {
-    // Try array shape first: {"data": [{"attributes": {"csv": "..."}}]}
-    if let Some(csv) = resp
-        .pointer("/data/0/attributes/csv")
-        .and_then(Value::as_str)
-    {
-        return Ok(csv.to_string());
+/// Transform a DDSQL columnar response into a row-based JSON array.
+///
+/// The table endpoint returns columns in one of two shapes:
+///   Array: {"data": [{"attributes": {"columns": [...]}}]}
+///   Object: {"data": {"attributes": {"columns": [...]}}}
+///
+/// Each column is: {"name": "col1", "values": ["a", "b"]}
+///
+/// This transforms it to: [{"col1": "a", "col2": 1}, {"col1": "b", "col2": 2}]
+fn columnar_to_rows(resp: &Value) -> Result<Value> {
+    // Try array shape first (observed in production), then object shape.
+    let columns = resp
+        .pointer("/data/0/attributes/columns")
+        .or_else(|| resp.pointer("/data/attributes/columns"))
+        .and_then(Value::as_array)
+        .ok_or_else(|| anyhow!("unexpected response: missing columns in response"))?;
+
+    if columns.is_empty() {
+        return Ok(json!([]));
     }
-    // Fallback to object shape: {"data": {"attributes": {"csv": "..."}}}
-    if let Some(csv) = resp.pointer("/data/attributes/csv").and_then(Value::as_str) {
-        return Ok(csv.to_string());
+
+    let num_rows = columns[0]
+        .get("values")
+        .and_then(Value::as_array)
+        .map(|v| v.len())
+        .unwrap_or(0);
+
+    let mut rows = Vec::with_capacity(num_rows);
+    for i in 0..num_rows {
+        let mut row = serde_json::Map::new();
+        for col in columns {
+            let name = col.get("name").and_then(Value::as_str).unwrap_or("unknown");
+            let value = col
+                .get("values")
+                .and_then(Value::as_array)
+                .and_then(|vals| vals.get(i))
+                .cloned()
+                .unwrap_or(Value::Null);
+            row.insert(name.to_string(), value);
+        }
+        rows.push(Value::Object(row));
     }
-    Err(anyhow!(
-        "could not extract CSV from response:\n{}",
-        serde_json::to_string_pretty(resp).unwrap_or_else(|_| resp.to_string())
-    ))
+
+    Ok(Value::Array(rows))
 }
 
 #[cfg(test)]
@@ -249,34 +247,67 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_csv_valid_array() {
+    fn test_columnar_to_rows_array_shape() {
+        // Actual production shape: {"data": [{"attributes": {"columns": [...]}}]}
+        let resp: Value = serde_json::from_str(
+            r#"{"data":[{"attributes":{"columns":[
+                {"name":"host","type":"string","values":["h1","h2"]},
+                {"name":"cpu","type":"float64","values":[10,20]}
+            ]},"id":"ddsql_response","type":"scalar_response"}]}"#,
+        )
+        .unwrap();
+        let rows = columnar_to_rows(&resp).unwrap();
+        let arr = rows.as_array().unwrap();
+        assert_eq!(arr.len(), 2);
+        assert_eq!(arr[0]["host"], "h1");
+        assert_eq!(arr[0]["cpu"], 10);
+        assert_eq!(arr[1]["host"], "h2");
+        assert_eq!(arr[1]["cpu"], 20);
+    }
+
+    #[test]
+    fn test_columnar_to_rows_object_shape() {
+        // Fallback shape: {"data": {"attributes": {"columns": [...]}}}
+        let resp: Value = serde_json::from_str(
+            r#"{"data":{"attributes":{"columns":[
+                {"name":"id","values":[42]}
+            ]}}}"#,
+        )
+        .unwrap();
+        let rows = columnar_to_rows(&resp).unwrap();
+        let arr = rows.as_array().unwrap();
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0]["id"], 42);
+    }
+
+    #[test]
+    fn test_columnar_to_rows_empty_columns() {
         let resp: Value =
-            serde_json::from_str(r#"{"data":[{"attributes":{"csv":"a,b\n1,2"}}]}"#).unwrap();
-        assert_eq!(extract_csv(&resp).unwrap(), "a,b\n1,2");
+            serde_json::from_str(r#"{"data":[{"attributes":{"columns":[]}}]}"#).unwrap();
+        let rows = columnar_to_rows(&resp).unwrap();
+        assert_eq!(rows, json!([]));
     }
 
     #[test]
-    fn test_extract_csv_valid_object() {
-        let resp: Value =
-            serde_json::from_str(r#"{"data":{"attributes":{"csv":"x,y\n3,4"}}}"#).unwrap();
-        assert_eq!(extract_csv(&resp).unwrap(), "x,y\n3,4");
-    }
-
-    #[test]
-    fn test_extract_csv_empty_array() {
-        let resp: Value = serde_json::from_str(r#"{"data":[]}"#).unwrap();
-        assert!(extract_csv(&resp).is_err());
-    }
-
-    #[test]
-    fn test_extract_csv_missing_key() {
+    fn test_columnar_to_rows_missing_columns() {
         let resp: Value = serde_json::from_str(r#"{"data":[{"attributes":{}}]}"#).unwrap();
-        assert!(extract_csv(&resp).is_err());
+        assert!(columnar_to_rows(&resp).is_err());
     }
 
     #[test]
-    fn test_extract_csv_no_attributes() {
-        let resp: Value = serde_json::from_str(r#"{"data":[{}]}"#).unwrap();
-        assert!(extract_csv(&resp).is_err());
+    fn test_columnar_to_rows_null_values() {
+        let resp: Value = serde_json::from_str(
+            r#"{"data":[{"attributes":{"columns":[
+                {"name":"a","values":[1,null]},
+                {"name":"b","values":[null,"x"]}
+            ]}}]}"#,
+        )
+        .unwrap();
+        let rows = columnar_to_rows(&resp).unwrap();
+        let arr = rows.as_array().unwrap();
+        assert_eq!(arr[0]["a"], 1);
+        assert!(arr[0]["b"].is_null());
+        assert!(arr[1]["a"].is_null());
+        assert_eq!(arr[1]["b"], "x");
     }
 }
