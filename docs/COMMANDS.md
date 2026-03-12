@@ -1,6 +1,6 @@
 # Command Reference
 
-Complete reference for all 42 command groups in Pup.
+Complete reference for all 43 command groups in Pup.
 
 ## Command Pattern
 
