@@ -81,6 +81,7 @@ pub fn format_and_print<T: Serialize>(
         OutputFormat::Yaml => print_yaml(data),
         OutputFormat::Table => print_table(data),
         OutputFormat::Csv => print_csv(data),
+        OutputFormat::Tsv => print_tsv(data),
     }
 }
 
@@ -307,6 +308,66 @@ fn print_csv<T: Serialize>(data: &T) -> Result<()> {
 
     Ok(())
 }
+
+/// Escape a single TSV field: literal tab characters in values are replaced with \t.
+/// No quoting is applied.
+fn tsv_escape(s: &str) -> String {
+    s.replace('\t', "\\t")
+}
+
+fn print_tsv<T: Serialize>(data: &T) -> Result<()> {
+    let value = serde_json::to_value(data)?;
+    let raw_rows = extract_rows(&value);
+
+    if raw_rows.is_empty() {
+        return Ok(());
+    }
+
+    // Deep-flatten every row so all nested sub-fields become columns.
+    let flat_rows: Vec<serde_json::Map<String, serde_json::Value>> = raw_rows
+        .iter()
+        .map(|r| {
+            let mut out = serde_json::Map::new();
+            flatten_deep(r, "", &mut out);
+            out
+        })
+        .collect();
+
+    // Collect all headers, preserving first-seen insertion order.
+    let mut header_set = std::collections::HashSet::new();
+    let mut headers: Vec<String> = Vec::new();
+    for row in &flat_rows {
+        for key in row.keys() {
+            if header_set.insert(key.clone()) {
+                headers.push(key.clone());
+            }
+        }
+    }
+    headers.sort();
+
+    // Print header row.
+    println!(
+        "{}",
+        headers
+            .iter()
+            .map(|h| tsv_escape(h))
+            .collect::<Vec<_>>()
+            .join("\t")
+    );
+
+    // Print data rows.
+    for row in &flat_rows {
+        let line = headers
+            .iter()
+            .map(|h| tsv_escape(&csv_cell(row.get(h.as_str()))))
+            .collect::<Vec<_>>()
+            .join("\t");
+        println!("{line}");
+    }
+
+    Ok(())
+}
+
 
 /// Extract displayable rows from a JSON value.
 /// Handles: arrays, objects with "data" field, single objects.
@@ -949,5 +1010,47 @@ mod tests {
         }
         let data = serde_json::json!([obj]);
         assert!(print_table(&data).is_ok());
+    }
+
+    #[test]
+    fn test_tsv_escape_plain() {
+        assert_eq!(tsv_escape("hello"), "hello");
+    }
+
+    #[test]
+    fn test_tsv_escape_with_tab() {
+        // Tab characters in values should be replaced with literal \t
+        assert_eq!(tsv_escape("a\tb"), "a\\tb");
+    }
+
+    #[test]
+    fn test_tsv_escape_no_quoting_for_comma() {
+        // Commas are not special in TSV — no quoting applied.
+        assert_eq!(tsv_escape("a,b"), "a,b");
+    }
+
+    #[test]
+    fn test_print_tsv_basic() {
+        let data = serde_json::json!([{"id": 1, "name": "test"}]);
+        assert!(print_tsv(&data).is_ok());
+    }
+
+    #[test]
+    fn test_print_tsv_empty() {
+        let data = serde_json::json!([]);
+        assert!(print_tsv(&data).is_ok());
+    }
+
+    #[test]
+    fn test_print_tsv_nested() {
+        let data = serde_json::json!([{"id": 1, "attrs": {"host": "web", "env": "prod"}}]);
+        assert!(print_tsv(&data).is_ok());
+    }
+
+    #[test]
+    fn test_format_and_print_tsv() {
+        let data = serde_json::json!([{"id": 1, "name": "test"}]);
+        let result = format_and_print(&data, &OutputFormat::Tsv, false, None);
+        assert!(result.is_ok());
     }
 }

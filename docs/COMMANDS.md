@@ -63,10 +63,13 @@ pup <domain> <subgroup> <action> [options] # Nested commands
 | hamr | connections (get, create) | src/commands/hamr.rs | ✅ |
 | fleet | agents (list, get, versions), deployments (list, get, configure, upgrade, cancel), schedules (list, get, create, update, delete, trigger) | src/commands/fleet.rs | ✅ |
 | skills | list, install, path | src/commands/skills.rs | ✅ |
+| workflows | get, create, update, delete, run, instances (list, get, cancel) | src/commands/workflows.rs | ✅ |
 
 **Summary:** 40 working, 0 API-blocked, 2 placeholders
 
 **Note:** RUM command is fully operational. Apps and sessions work completely. Metrics and retention-filters support list/get operations (create/update/delete operations pending due to complex API type structures).
+
+**Auth note:** All workflow commands require `DD_API_KEY` + `DD_APP_KEY`. OAuth2 bearer tokens are not supported for workflow operations.
 
 ## Common Patterns
 
@@ -156,6 +159,7 @@ pup infrastructure hosts list
 - **cases** - Case management (create, search, assign, archive, projects, jira, servicenow, move)
 - **hamr** - High Availability Multi-Region connections
 - **fleet** - Fleet Automation (agents, deployments, schedules)
+- **workflows** - Workflow Automation (get, create, update, delete, run, instances)
 
 ### Organization & Access
 - **users** - User management (list, get, roles)

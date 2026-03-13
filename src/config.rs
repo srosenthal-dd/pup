@@ -24,6 +24,7 @@ pub enum OutputFormat {
     Table,
     Yaml,
     Csv,
+    Tsv,
 }
 
 impl std::fmt::Display for OutputFormat {
@@ -33,6 +34,7 @@ impl std::fmt::Display for OutputFormat {
             OutputFormat::Table => write!(f, "table"),
             OutputFormat::Yaml => write!(f, "yaml"),
             OutputFormat::Csv => write!(f, "csv"),
+            OutputFormat::Tsv => write!(f, "tsv"),
         }
     }
 }
@@ -45,7 +47,8 @@ impl std::str::FromStr for OutputFormat {
             "table" => Ok(OutputFormat::Table),
             "yaml" => Ok(OutputFormat::Yaml),
             "csv" => Ok(OutputFormat::Csv),
-            _ => bail!("invalid output format: {s:?} (expected json, table, yaml, or csv)"),
+            "tsv" => Ok(OutputFormat::Tsv),
+            _ => bail!("invalid output format: {s:?} (expected json, table, yaml, csv, or tsv)"),
         }
     }
 }
@@ -386,6 +389,8 @@ mod tests {
         assert_eq!("yaml".parse::<OutputFormat>().unwrap(), OutputFormat::Yaml);
         assert_eq!("csv".parse::<OutputFormat>().unwrap(), OutputFormat::Csv);
         assert_eq!("CSV".parse::<OutputFormat>().unwrap(), OutputFormat::Csv);
+        assert_eq!("tsv".parse::<OutputFormat>().unwrap(), OutputFormat::Tsv);
+        assert_eq!("TSV".parse::<OutputFormat>().unwrap(), OutputFormat::Tsv);
         assert!("xml".parse::<OutputFormat>().is_err());
     }
 
@@ -395,6 +400,7 @@ mod tests {
         assert_eq!(OutputFormat::Table.to_string(), "table");
         assert_eq!(OutputFormat::Yaml.to_string(), "yaml");
         assert_eq!(OutputFormat::Csv.to_string(), "csv");
+        assert_eq!(OutputFormat::Tsv.to_string(), "tsv");
     }
 
     #[test]

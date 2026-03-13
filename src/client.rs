@@ -114,6 +114,7 @@ pub fn make_bearer_client(cfg: &Config) -> Option<ClientWithMiddleware> {
 static UNSTABLE_OPS: &[&str] = &[
     // Incidents (16)
     "v2.list_incidents",
+    "v2.search_incidents",
     "v2.get_incident",
     "v2.create_incident",
     "v2.update_incident",
@@ -552,7 +553,7 @@ mod tests {
 
     #[test]
     fn test_unstable_ops_count() {
-        assert_eq!(UNSTABLE_OPS.len(), 76);
+        assert_eq!(UNSTABLE_OPS.len(), 77);
     }
 
     #[test]
