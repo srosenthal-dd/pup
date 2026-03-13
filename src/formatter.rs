@@ -368,7 +368,6 @@ fn print_tsv<T: Serialize>(data: &T) -> Result<()> {
     Ok(())
 }
 
-
 /// Extract displayable rows from a JSON value.
 /// Handles: arrays, objects with "data" field, single objects.
 fn extract_rows(value: &serde_json::Value) -> Vec<&serde_json::Value> {
