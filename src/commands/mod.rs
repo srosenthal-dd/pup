@@ -12,6 +12,7 @@ pub mod cicd;
 pub mod cloud;
 pub mod cloud_auth;
 pub mod code_coverage;
+pub mod completions;
 pub mod cost;
 pub mod dashboards;
 pub mod data_governance;
