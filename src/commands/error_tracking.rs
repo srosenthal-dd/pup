@@ -8,7 +8,8 @@ use datadog_api_client::datadogV2::api_error_tracking::{
 #[cfg(not(target_arch = "wasm32"))]
 use datadog_api_client::datadogV2::model::{
     IssuesSearchRequest, IssuesSearchRequestData, IssuesSearchRequestDataAttributes,
-    IssuesSearchRequestDataAttributesTrack, IssuesSearchRequestDataType,
+    IssuesSearchRequestDataAttributesPersona, IssuesSearchRequestDataAttributesTrack,
+    IssuesSearchRequestDataType,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -22,7 +23,15 @@ pub async fn issues_search(
     query: Option<String>,
     _limit: i32,
     track: Option<String>,
+    persona: Option<String>,
 ) -> Result<()> {
+    if track.is_some() && persona.is_some() {
+        anyhow::bail!("--track and --persona are mutually exclusive; specify one or the other");
+    }
+    if track.is_none() && persona.is_none() {
+        anyhow::bail!("either --track or --persona must be specified");
+    }
+
     let dd_cfg = client::make_dd_config(cfg);
     let api = match client::make_bearer_client(cfg) {
         Some(c) => ErrorTrackingAPI::with_client_and_config(dd_cfg, c),
@@ -45,6 +54,19 @@ pub async fn issues_search(
             ),
         };
         attrs = attrs.track(track_value);
+    }
+    if let Some(ref p) = persona {
+        let persona_value = match p.to_uppercase().as_str() {
+            "ALL" => IssuesSearchRequestDataAttributesPersona::ALL,
+            "BROWSER" => IssuesSearchRequestDataAttributesPersona::BROWSER,
+            "MOBILE" => IssuesSearchRequestDataAttributesPersona::MOBILE,
+            "BACKEND" => IssuesSearchRequestDataAttributesPersona::BACKEND,
+            other => anyhow::bail!(
+                "invalid persona value '{}': must be ALL, BROWSER, MOBILE, or BACKEND",
+                other
+            ),
+        };
+        attrs = attrs.persona(persona_value);
     }
     let data = IssuesSearchRequestData::new(attrs, IssuesSearchRequestDataType::SEARCH_REQUEST);
     let body = IssuesSearchRequest::new(data);
@@ -70,7 +92,15 @@ pub async fn issues_search(
     query: Option<String>,
     _limit: i32,
     track: Option<String>,
+    persona: Option<String>,
 ) -> Result<()> {
+    if track.is_some() && persona.is_some() {
+        anyhow::bail!("--track and --persona are mutually exclusive; specify one or the other");
+    }
+    if track.is_none() && persona.is_none() {
+        anyhow::bail!("either --track or --persona must be specified");
+    }
+
     let now = chrono::Utc::now().timestamp_millis();
     let one_day_ago = now - 86_400_000;
     let query_str = query.unwrap_or_else(|| "*".to_string());
@@ -86,6 +116,17 @@ pub async fn issues_search(
             }
             other => anyhow::bail!(
                 "invalid track value '{}': must be trace, logs, or rum",
+                other
+            ),
+        }
+    }
+    if let Some(ref p) = persona {
+        match p.to_uppercase().as_str() {
+            "ALL" | "BROWSER" | "MOBILE" | "BACKEND" => {
+                attributes["persona"] = serde_json::Value::String(p.to_uppercase());
+            }
+            other => anyhow::bail!(
+                "invalid persona value '{}': must be ALL, BROWSER, MOBILE, or BACKEND",
                 other
             ),
         }

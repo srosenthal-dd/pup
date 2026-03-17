@@ -4033,6 +4033,8 @@ enum ErrorTrackingIssueActions {
         order_by: String,
         #[arg(long, help = "Error source track: trace, logs, or rum")]
         track: Option<String>,
+        #[arg(long, help = "Client persona filter: ALL, BROWSER, MOBILE, or BACKEND")]
+        persona: Option<String>,
     },
     /// Get issue details
     Get { issue_id: String },
@@ -6889,9 +6891,11 @@ async fn main_inner() -> anyhow::Result<()> {
                         query,
                         limit,
                         track,
+                        persona,
                         ..
                     } => {
-                        commands::error_tracking::issues_search(&cfg, query, limit, track).await?;
+                        commands::error_tracking::issues_search(&cfg, query, limit, track, persona)
+                            .await?;
                     }
                     ErrorTrackingIssueActions::Get { issue_id } => {
                         commands::error_tracking::issues_get(&cfg, &issue_id).await?;

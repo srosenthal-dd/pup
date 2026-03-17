@@ -1767,7 +1767,9 @@ async fn test_error_tracking_issues_search() {
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
-    let _ = crate::commands::error_tracking::issues_search(&cfg, None, 10, None).await;
+    let _ =
+        crate::commands::error_tracking::issues_search(&cfg, None, 10, Some("trace".into()), None)
+            .await;
     cleanup_env();
 }
 
