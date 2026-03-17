@@ -140,6 +140,13 @@ impl Config {
     /// Validate that sufficient auth credentials are configured.
     pub fn validate_auth(&self) -> Result<()> {
         if self.access_token.is_none() && (self.api_key.is_none() || self.app_key.is_none()) {
+            #[cfg(all(not(feature = "browser"), not(target_arch = "wasm32")))]
+            if has_stored_refresh_token(&self.site, self.org.as_deref()) {
+                bail!(
+                    "authentication expired. Run 'pup auth refresh' to renew your session, \
+                     or 'pup auth login' to start a new one"
+                );
+            }
             bail!(
                 "authentication required: set DD_ACCESS_TOKEN for bearer auth, \
                  run 'pup auth login' for OAuth2, \
@@ -305,6 +312,23 @@ pub fn load_token_from_storage(site: &str, org: Option<&str>) -> Option<String> 
     }
 }
 
+/// Returns true if a non-empty refresh token exists in storage for the given site/org.
+/// Used to tailor the auth-required error message.
+#[cfg(all(not(feature = "browser"), not(target_arch = "wasm32")))]
+fn has_stored_refresh_token(site: &str, org: Option<&str>) -> bool {
+    let Ok(guard) = crate::auth::storage::get_storage() else {
+        return false;
+    };
+    let Ok(lock) = guard.lock() else { return false };
+    let Some(store) = lock.as_ref() else {
+        return false;
+    };
+    matches!(
+        store.load_tokens(site, org),
+        Ok(Some(ref t)) if !t.refresh_token.is_empty()
+    )
+}
+
 #[cfg(all(not(feature = "browser"), not(target_arch = "wasm32")))]
 enum ResolvedToken {
     Valid(String),
@@ -436,13 +460,30 @@ mod tests {
     #[test]
     fn test_validate_auth_none() {
         let cfg = make_cfg(None, None, None);
-        assert!(cfg.validate_auth().is_err());
+        let err = cfg.validate_auth().unwrap_err();
+        assert!(err.to_string().contains("pup auth login"));
     }
 
     #[test]
     fn test_validate_auth_partial_keys() {
         let cfg = make_cfg(Some("key"), None, None);
         assert!(cfg.validate_auth().is_err());
+    }
+
+    #[test]
+    fn test_validate_auth_error_message_suggests_login_by_default() {
+        // Use a site name that will never have stored tokens.
+        let mut cfg = make_cfg(None, None, None);
+        cfg.site = "no-tokens.test.invalid".into();
+        let err = cfg.validate_auth().unwrap_err().to_string();
+        assert!(
+            err.contains("pup auth login"),
+            "should suggest 'pup auth login' when no stored session: {err}"
+        );
+        assert!(
+            !err.contains("pup auth refresh"),
+            "should not suggest 'pup auth refresh' when no stored session: {err}"
+        );
     }
 
     #[test]
