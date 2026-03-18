@@ -143,6 +143,10 @@ release:
 
     # Linux (arm64)
     curl -L https://github.com/datadog-labs/pup/releases/download/{{ .Tag }}/pup_{{ .Version }}_Linux_arm64.tar.gz | tar xz
+
+    # Windows (x86_64)
+    curl -L https://github.com/datadog-labs/pup/releases/download/{{ .Tag }}/pup_{{ .Version }}_Windows_x86_64.zip -o pup.zip
+    tar -xf pup.zip
     ```
 
     ### WASM

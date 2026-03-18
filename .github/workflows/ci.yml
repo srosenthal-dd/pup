@@ -186,6 +186,40 @@ jobs:
             ls -lh "target/${target}/release/pup"
           done
 
+  windows:
+    name: Windows Build & Test
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: cargo-windows-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-windows-
+      - name: Enable long paths
+        run: git config --global core.longpaths true
+      - name: Install NASM
+        run: |
+          choco install nasm -y
+          echo "C:\Program Files\NASM" >> "$GITHUB_PATH"
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Build
+        run: cargo build --release
+      - name: Run tests
+        run: cargo test --verbose -- --test-threads=1
+      - name: Report binary size
+        run: ls -lh target/release/pup.exe
+
   wasm:
     name: WASM (WASI + Browser)
     runs-on: ubuntu-latest

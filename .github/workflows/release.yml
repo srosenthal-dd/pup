@@ -38,3 +38,60 @@ jobs:
           args: release --clean --parallelism 4
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  windows:
+    name: Windows Build
+    needs: goreleaser
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Enable long paths
+        run: git config --global core.longpaths true
+      - name: Install NASM
+        run: |
+          choco install nasm -y
+          echo "C:\Program Files\NASM" >> "$GITHUB_PATH"
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Build
+        run: cargo build --release
+      - name: Get version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - name: Package
+        run: |
+          mkdir -p staging
+          cp target/release/pup.exe staging/
+          cp LICENSE staging/
+          cp LICENSE-3rdparty.csv staging/
+          cp README.md staging/
+          cd staging
+          7z a "../pup_${{ steps.version.outputs.version }}_Windows_x86_64.zip" .
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+      - name: Upload to release
+        run: gh release upload "$GITHUB_REF_NAME" "pup_${{ steps.version.outputs.version }}_Windows_x86_64.zip" --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Add to checksums and re-sign
+        run: |
+          ZIP="pup_${{ steps.version.outputs.version }}_Windows_x86_64.zip"
+          CHECKSUMS="pup_${{ steps.version.outputs.version }}_checksums.txt"
+          SHA=$(sha256sum "$ZIP" | awk '{print $1}')
+          gh release download "$GITHUB_REF_NAME" --pattern "$CHECKSUMS" --output "$CHECKSUMS"
+          echo "$SHA  $ZIP" >> "$CHECKSUMS"
+          gh release upload "$GITHUB_REF_NAME" "$CHECKSUMS" --clobber
+          cosign sign-blob \
+            --bundle="${CHECKSUMS}.sigstore.json" \
+            "$CHECKSUMS" \
+            --yes
+          gh release upload "$GITHUB_REF_NAME" "${CHECKSUMS}.sigstore.json" --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
