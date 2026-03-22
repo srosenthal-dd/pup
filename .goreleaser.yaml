@@ -9,7 +9,6 @@ report_sizes: true
 before:
   hooks:
     - rustup default stable
-    - cargo install --locked cargo-zigbuild
     - cargo fetch --locked
     # Verify Cargo.toml version matches git tag
     - >-
@@ -18,7 +17,6 @@ before:
     - rustup target add wasm32-wasip2 wasm32-unknown-unknown
     - cargo build --release --target wasm32-wasip2 --no-default-features --features wasi
     - sh -c 'mkdir -p wasm-out && cp target/wasm32-wasip2/release/pup.wasm wasm-out/pup_wasi.wasm'
-    - cargo install wasm-pack
     - wasm-pack build --target web --no-default-features --features browser
     - sh -c 'tar czf wasm-out/pup_browser_wasm.tar.gz -C pkg .'
 
