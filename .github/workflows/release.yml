@@ -18,15 +18,38 @@ jobs:
           fetch-depth: 0
       - name: Fetch all tags
         run: git fetch --force --tags
-      - name: Install Zig
+      - name: Cache Zig
+        id: cache-zig
+        uses: actions/cache@v5
+        with:
+          path: ${{ github.workspace }}/zig-macos-aarch64-0.13.0
+          key: zig-0.13.0-macos-aarch64
+      - name: Download Zig
+        if: steps.cache-zig.outputs.cache-hit != 'true'
         run: |
           ZIG_VERSION="0.13.0"
           curl -sL "https://ziglang.org/download/${ZIG_VERSION}/zig-macos-aarch64-${ZIG_VERSION}.tar.xz" | tar xJ
-          echo "$PWD/zig-macos-aarch64-${ZIG_VERSION}" >> "$GITHUB_PATH"
+      - name: Add Zig to PATH
+        run: echo "${{ github.workspace }}/zig-macos-aarch64-0.13.0" >> "$GITHUB_PATH"
       - name: Install Rust
         run: |
           rustup toolchain install stable --profile minimal
           rustup default stable
+      - name: Cache Rust dependencies
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@main
+      - name: Install build tools
+        run: cargo binstall --no-confirm cargo-zigbuild wasm-pack
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
       - name: Install syft
@@ -60,6 +83,17 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal
           rustup default stable
+      - name: Cache Rust dependencies
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
       - name: Build
         run: cargo build --release
       - name: Get version from tag
