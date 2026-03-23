@@ -206,9 +206,9 @@ Available on all commands:
 
 ### v0.34.1 — ACP Server (Datadog AI Agent Integration)
 
-- ✅ **acp** (new) — Local ACP + OpenAI-compatible server that proxies to Datadog's lassie-ng agent API
+- ✅ **acp** (new) — Local ACP + OpenAI-compatible server that proxies to Datadog Bits AI
   - `serve` — Start the server (default port 9099)
-  - `serve --agent-id <uuid>` — Target a specific lassie-ng agent (auto-discovers if omitted)
+  - `serve --agent-id <uuid>` — Target a specific Datadog Bits AI agent (auto-discovers if omitted)
   - `serve --port 8080 --host 0.0.0.0` — Custom bind address
   - Implements [Agent Communication Protocol (ACP)](https://agentcommunicationprotocol.dev/) at `POST /runs` and `POST /runs/stream`
   - Also exposes OpenAI-compatible `POST /chat/completions` and `GET /models` for tools like [opencode](https://opencode.ai)

@@ -638,7 +638,7 @@ export PUP_LOG_LEVEL="debug"
 ## ACP Server (AI Agent Integration)
 
 `pup acp serve` starts a local HTTP server that lets AI coding assistants and agents
-talk directly to your Datadog AI agent (lassie-ng). It speaks two protocols:
+talk directly to Datadog Bits AI. It speaks two protocols:
 
 - **ACP** ([Agent Communication Protocol](https://agentcommunicationprotocol.dev/)) — for ACP-native clients
 - **OpenAI-compatible** — for tools like [opencode](https://opencode.ai), Cursor, or any `@ai-sdk/openai-compatible` client
@@ -649,7 +649,7 @@ talk directly to your Datadog AI agent (lassie-ng). It speaks two protocols:
 # Authenticate first (notebooks_read + notebooks_write scopes required)
 pup auth login
 
-# Start the server (auto-discovers your first lassie-ng agent)
+# Start the server (auto-discovers your first Datadog Bits AI agent)
 pup acp serve
 
 # Specify a particular agent

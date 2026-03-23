@@ -1,8 +1,8 @@
 use crate::config::Config;
-/// ACP (Agent Communication Protocol) server that proxies to Datadog lassie-ng.
+/// ACP (Agent Communication Protocol) server that proxies to Datadog Bits AI.
 ///
 /// Starts a local HTTP server implementing ACP and delegates requests to
-/// the lassie-ng agent endpoint (/api/unstable/lassie-ng/v1/agents/{id}/messages).
+/// the Datadog Bits AI agent endpoint (/api/unstable/lassie-ng/v1/agents/{id}/messages).
 /// Requires OAuth2 with notebooks_read + notebooks_write scopes, or API key auth.
 ///
 /// Protocol:  https://agentcommunicationprotocol.dev/
@@ -56,7 +56,7 @@ pub async fn serve(cfg: &Config, port: u16, host: &str, agent_id: Option<String>
     eprintln!("  Agent card:  GET  {base_url}/agent.json");
     eprintln!("  Sync run:    POST {base_url}/runs");
     eprintln!("  Stream run:  POST {base_url}/runs/stream");
-    eprintln!("  Lassie agent: {app_base}{LASSIE_BASE}/agents/{agent_id}");
+    eprintln!("  Datadog Bits AI agent: {app_base}{LASSIE_BASE}/agents/{agent_id}");
     eprintln!("Press Ctrl+C to stop.");
 
     loop {
@@ -85,7 +85,7 @@ pub async fn serve(cfg: &Config, port: u16, host: &str, agent_id: Option<String>
     }
 }
 
-/// Fetches the first available agent from lassie-ng GET /agents.
+/// Fetches the first available Datadog Bits AI agent via GET /agents.
 #[cfg(not(target_arch = "wasm32"))]
 async fn resolve_agent_id(
     app_base: &str,
@@ -121,7 +121,7 @@ async fn resolve_agent_id(
 
     if agents.is_empty() {
         anyhow::bail!(
-            "No agents found in lassie-ng. Create one first or pass --agent-id.\n\
+            "No Datadog Bits AI agents found. Create one first or pass --agent-id.\n\
              Hint: use the Datadog UI at app.datadoghq.com to create an agent."
         );
     }
@@ -256,7 +256,7 @@ async fn handle_connection(
 async fn write_agent_card(writer: &mut OwnedWriteHalf, agent_id: &str) -> Result<()> {
     let card = serde_json::json!({
         "name": "Datadog AI Agent",
-        "description": "Datadog lassie-ng AI agent — answers questions about your Datadog environment, metrics, logs, monitors, and more.",
+        "description": "Datadog Bits AI Agent — answers questions about your Datadog environment, metrics, logs, monitors, and more.",
         "version": "1.0.0",
         "url": "",
         "capabilities": {
@@ -264,7 +264,7 @@ async fn write_agent_card(writer: &mut OwnedWriteHalf, agent_id: &str) -> Result
         },
         "metadata": {
             "provider": "Datadog",
-            "backend": "lassie-ng",
+            "backend": "datadog-bits-ai",
             "agent_id": agent_id,
             "endpoint": format!("{LASSIE_BASE}/agents/{agent_id}/messages")
         }
@@ -311,7 +311,7 @@ async fn handle_run(
 
     let acp_run_id = uuid::Uuid::new_v4().to_string();
 
-    // lassie-ng request: {"input": "...", "stream": bool}
+    // Bits AI request: {"input": "...", "stream": bool}
     let lassie_body = serde_json::json!({
         "input": message,
         "stream": streaming,
@@ -361,7 +361,7 @@ async fn handle_run(
         return write_json_response(
             writer,
             status,
-            serde_json::json!({"error": format!("lassie-ng error (HTTP {status}): {err_body}")}),
+            serde_json::json!({"error": format!("Datadog Bits AI error (HTTP {status}): {err_body}")}),
         )
         .await;
     }
@@ -373,7 +373,7 @@ async fn handle_run(
     }
 }
 
-/// Handles OpenAI-compatible POST /chat/completions, proxying to lassie-ng.
+/// Handles OpenAI-compatible POST /chat/completions, proxying to Datadog Bits AI.
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(clippy::too_many_arguments)]
 async fn handle_openai_completions(
@@ -466,7 +466,7 @@ async fn handle_openai_completions(
         return write_json_response(
             writer,
             status,
-            serde_json::json!({"error": {"message": format!("lassie-ng error (HTTP {status}): {err_body}"), "type": "api_error"}}),
+            serde_json::json!({"error": {"message": format!("Datadog Bits AI error (HTTP {status}): {err_body}"), "type": "api_error"}}),
         )
         .await;
     }
@@ -478,7 +478,7 @@ async fn handle_openai_completions(
     }
 }
 
-/// Collects lassie-ng JSON response and returns OpenAI chat completion format.
+/// Collects Datadog Bits AI response and returns OpenAI chat completion format.
 #[cfg(not(target_arch = "wasm32"))]
 async fn collect_lassie_as_openai(
     writer: &mut OwnedWriteHalf,
@@ -488,7 +488,7 @@ async fn collect_lassie_as_openai(
     let val: serde_json::Value = resp
         .json()
         .await
-        .map_err(|e| anyhow::anyhow!("Failed to parse lassie-ng response: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("Failed to parse Datadog Bits AI response: {e}"))?;
 
     let text = extract_lassie_text(&val);
     let completion_id = format!("chatcmpl-{}", uuid::Uuid::new_v4());
@@ -516,7 +516,7 @@ async fn collect_lassie_as_openai(
     write_json_response(writer, 200, body).await
 }
 
-/// Streams lassie-ng SSE as OpenAI chat completion chunks.
+/// Streams Datadog Bits AI SSE as OpenAI chat completion chunks.
 #[cfg(not(target_arch = "wasm32"))]
 async fn stream_lassie_as_openai(
     writer: &mut OwnedWriteHalf,
@@ -626,7 +626,7 @@ async fn stream_lassie_as_openai(
     Ok(())
 }
 
-/// Collects the full lassie-ng JSON response and returns a single ACP run response.
+/// Collects the full Datadog Bits AI response and returns a single ACP run response.
 #[cfg(not(target_arch = "wasm32"))]
 async fn collect_lassie_to_acp(
     writer: &mut OwnedWriteHalf,
@@ -637,7 +637,7 @@ async fn collect_lassie_to_acp(
     let val: serde_json::Value = resp
         .json()
         .await
-        .map_err(|e| anyhow::anyhow!("Failed to parse lassie-ng response: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("Failed to parse Datadog Bits AI response: {e}"))?;
 
     let text = extract_lassie_text(&val);
     let lassie_run_id = val.get("run_id").and_then(|v| v.as_str()).unwrap_or(run_id);
@@ -652,7 +652,7 @@ async fn collect_lassie_to_acp(
     write_json_response(writer, 200, body).await
 }
 
-/// Streams lassie-ng SSE output as ACP SSE events.
+/// Streams Datadog Bits AI SSE output as ACP SSE events.
 #[cfg(not(target_arch = "wasm32"))]
 async fn stream_lassie_to_acp(
     writer: &mut OwnedWriteHalf,

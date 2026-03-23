@@ -5188,10 +5188,10 @@ enum TracesActions {
 // ---- ACP ----
 #[derive(Subcommand)]
 enum AcpActions {
-    /// Start an ACP server that delegates to Datadog lassie-ng
+    /// Start an ACP server that delegates to Datadog Bits AI
     ///
     /// Spawns a local HTTP server implementing the Agent Communication Protocol (ACP).
-    /// Requests are proxied to the lassie-ng agent endpoint
+    /// Requests are proxied to the Datadog Bits AI agent endpoint
     /// (/api/unstable/lassie-ng/v1/agents/{id}/messages).
     ///
     /// Endpoints served:
@@ -5224,7 +5224,7 @@ enum AcpActions {
         host: String,
         #[arg(
             long,
-            help = "Lassie-ng agent ID to proxy (auto-discovered if omitted)"
+            help = "Datadog Bits AI agent ID to proxy (auto-discovered if omitted)"
         )]
         agent_id: Option<String>,
     },

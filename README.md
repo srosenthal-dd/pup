@@ -476,7 +476,7 @@ Pup is also available as a **Claude Code plugin marketplace**:
 
 ## ACP Server
 
-`pup acp serve` turns pup into a local AI agent server, letting coding tools talk directly to your Datadog AI agent (powered by lassie-ng). It supports two protocols:
+`pup acp serve` turns pup into a local AI agent server, letting coding tools talk directly to Datadog Bits AI. It supports two protocols:
 
 - **[ACP](https://agentcommunicationprotocol.dev/)** — Agent Communication Protocol for ACP-native clients
 - **OpenAI-compatible** — `POST /chat/completions` for [opencode](https://opencode.ai), Cursor, and any `@ai-sdk/openai-compatible` client
