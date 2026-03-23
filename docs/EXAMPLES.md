@@ -635,6 +635,89 @@ export PUP_OUTPUT="json"
 export PUP_LOG_LEVEL="debug"
 ```
 
+## ACP Server (AI Agent Integration)
+
+`pup acp serve` starts a local HTTP server that lets AI coding assistants and agents
+talk directly to your Datadog AI agent (lassie-ng). It speaks two protocols:
+
+- **ACP** ([Agent Communication Protocol](https://agentcommunicationprotocol.dev/)) — for ACP-native clients
+- **OpenAI-compatible** — for tools like [opencode](https://opencode.ai), Cursor, or any `@ai-sdk/openai-compatible` client
+
+### Quick Start
+
+```bash
+# Authenticate first (notebooks_read + notebooks_write scopes required)
+pup auth login
+
+# Start the server (auto-discovers your first lassie-ng agent)
+pup acp serve
+
+# Specify a particular agent
+pup acp serve --agent-id <uuid>
+
+# Custom port or bind address
+pup acp serve --port 8080
+pup acp serve --host 0.0.0.0 --port 9099
+```
+
+### Endpoints
+
+| Method | Path | Protocol | Description |
+|--------|------|----------|-------------|
+| GET | `/agent.json` | ACP | Agent card / capability discovery |
+| POST | `/runs` | ACP | Synchronous run — returns full response |
+| POST | `/runs/stream` | ACP | Streaming run — SSE events |
+| GET | `/models` or `/v1/models` | OpenAI | Model list |
+| POST | `/chat/completions` or `/v1/chat/completions` | OpenAI | Chat completions (streaming or sync) |
+
+### Testing with curl
+
+```bash
+# ACP sync
+curl -s -X POST http://127.0.0.1:9099/runs \
+  -H "Content-Type: application/json" \
+  -d '{"input": [{"role": "user", "content": [{"type": "text", "text": "list my monitors with status alert"}]}]}' \
+  | jq .output[0].content[0].text
+
+# ACP streaming
+curl -X POST http://127.0.0.1:9099/runs/stream \
+  -H "Content-Type: application/json" \
+  -d '{"input": [{"role": "user", "content": [{"type": "text", "text": "what services have errors in the last hour?"}]}]}'
+
+# OpenAI-compatible
+curl -s -X POST http://127.0.0.1:9099/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "datadog-ai", "messages": [{"role": "user", "content": "how many monitors are currently alerting?"}]}' \
+  | jq .choices[0].message.content
+```
+
+### opencode Setup
+
+Add to `~/Library/Application Support/opencode/opencode.jsonc` (macOS) or
+`~/.config/opencode/opencode.jsonc` (Linux):
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "datadog": {
+      "name": "Datadog AI",
+      "npm": "@ai-sdk/openai-compatible",
+      "models": {
+        "datadog-ai": {
+          "name": "Datadog AI Agent"
+        }
+      },
+      "options": {
+        "baseURL": "http://127.0.0.1:9099"
+      }
+    }
+  }
+}
+```
+
+Then start the server (`pup acp serve`) and select the **Datadog AI** provider in opencode.
+
 ## Configuration File
 
 Create `~/.config/pup/config.yaml`:

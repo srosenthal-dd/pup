@@ -19,6 +19,7 @@ pup <domain> <subgroup> <action> [options] # Nested commands
 
 | Domain | Subcommands | File | Status |
 |--------|-------------|------|--------|
+| acp | serve | src/commands/acp.rs | ✅ |
 | auth | login, logout, status, refresh | src/commands/auth.rs | ✅ |
 | metrics | query, list, get, search | src/commands/metrics.rs | ✅ |
 | logs | search, list, aggregate | src/commands/logs.rs | ✅ |
@@ -71,7 +72,7 @@ pup <domain> <subgroup> <action> [options] # Nested commands
 | change-requests | create, get, update, create-branch, decisions (update, delete) | src/commands/change_management.rs | ✅ |
 | app-builder | list, get, create, update, delete, delete-batch, publish, unpublish | src/commands/app_builder.rs | ✅ |
 
-**Summary:** 50 working, 0 API-blocked, 0 placeholders
+**Summary:** 51 working, 0 API-blocked, 0 placeholders
 
 **Note:** RUM command is fully operational. Apps and sessions work completely. Metrics and retention-filters support list/get operations (create/update/delete operations pending due to complex API type structures).
 
@@ -202,6 +203,16 @@ Available on all commands:
 ```
 
 ## Recent Enhancements
+
+### v0.34.1 — ACP Server (Datadog AI Agent Integration)
+
+- ✅ **acp** (new) — Local ACP + OpenAI-compatible server that proxies to Datadog's lassie-ng agent API
+  - `serve` — Start the server (default port 9099)
+  - `serve --agent-id <uuid>` — Target a specific lassie-ng agent (auto-discovers if omitted)
+  - `serve --port 8080 --host 0.0.0.0` — Custom bind address
+  - Implements [Agent Communication Protocol (ACP)](https://agentcommunicationprotocol.dev/) at `POST /runs` and `POST /runs/stream`
+  - Also exposes OpenAI-compatible `POST /chat/completions` and `GET /models` for tools like [opencode](https://opencode.ai)
+  - Requires OAuth2 (`pup auth login`) with `notebooks_read` + `notebooks_write` scopes
 
 ### v0.33.4 — IDP Commands for Service Catalog
 
