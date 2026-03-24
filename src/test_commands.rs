@@ -2123,9 +2123,8 @@ fn test_read_only_guard_exempts_auth() {
 }
 
 // =========================================================================
-// LLM Observability analytics commands — use specific path mocks since all
-// new commands call client::raw_post (not the typed DD client), so mockito
-// can match exact paths.
+// LLM Observability commands — all use client::raw_post / client::raw_get
+// (not the typed DD client), so mockito can match exact paths.
 // =========================================================================
 
 // Helper: create a mock for a specific POST path
@@ -2142,6 +2141,472 @@ async fn mock_post(
         .with_body(body)
         .create_async()
         .await
+}
+
+// Helper: create a mock for a specific GET path
+async fn mock_get(
+    server: &mut mockito::Server,
+    path: &str,
+    status: usize,
+    body: &str,
+) -> mockito::Mock {
+    server
+        .mock("GET", path)
+        .match_query(mockito::Matcher::Any)
+        .with_status(status)
+        .with_header("content-type", "application/json")
+        .with_body(body)
+        .create_async()
+        .await
+}
+
+// Helper: create a mock for a specific PATCH path
+async fn mock_patch(
+    server: &mut mockito::Server,
+    path: &str,
+    status: usize,
+    body: &str,
+) -> mockito::Mock {
+    server
+        .mock("PATCH", path)
+        .with_status(status)
+        .with_header("content-type", "application/json")
+        .with_body(body)
+        .create_async()
+        .await
+}
+
+// Helper: write a temp JSON file and return its path
+fn write_temp_json(name: &str, content: &str) -> std::path::PathBuf {
+    let path = std::env::temp_dir().join(name);
+    std::fs::write(&path, content).unwrap();
+    path
+}
+
+// -------------------------------------------------------------------------
+// LLM Observability management commands (projects, experiments, datasets)
+// -------------------------------------------------------------------------
+
+// --- projects list ---
+
+#[tokio::test]
+async fn test_llm_obs_projects_list() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+
+    // Intentionally omits `description` — the field the old typed client required.
+    // This test proves the raw HTTP fix handles schema drift gracefully.
+    let body = r#"{"data":[{"id":"proj-1","type":"projects","attributes":{"name":"my-project"}}]}"#;
+    let _mock = mock_get(&mut server, "/api/v2/llm-obs/v1/projects", 200, body).await;
+
+    let result = crate::commands::llm_obs::projects_list(&cfg).await;
+    assert!(result.is_ok(), "projects_list failed: {:?}", result.err());
+    cleanup_env();
+}
+
+#[tokio::test]
+async fn test_llm_obs_projects_list_404() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+    let _mock = mock_get(
+        &mut server,
+        "/api/v2/llm-obs/v1/projects",
+        404,
+        r#"{"errors":["not found"]}"#,
+    )
+    .await;
+
+    let result = crate::commands::llm_obs::projects_list(&cfg).await;
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("404"));
+    cleanup_env();
+}
+
+#[tokio::test]
+async fn test_llm_obs_projects_list_no_auth() {
+    let _lock = lock_env();
+    let cfg = Config {
+        api_key: None,
+        app_key: None,
+        access_token: None,
+        site: "datadoghq.com".into(),
+        org: None,
+        output_format: OutputFormat::Json,
+        auto_approve: false,
+        agent_mode: false,
+        read_only: false,
+    };
+    let result = crate::commands::llm_obs::projects_list(&cfg).await;
+    assert!(result.is_err(), "should fail without auth");
+    cleanup_env();
+}
+
+// --- projects create ---
+
+#[tokio::test]
+async fn test_llm_obs_projects_create() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+
+    let tmp = write_temp_json(
+        "pup_test_proj_create.json",
+        r#"{"data":{"type":"projects","attributes":{"name":"test"}}}"#,
+    );
+    let body = r#"{"data":{"id":"proj-1","type":"projects","attributes":{"name":"test"}}}"#;
+    let _mock = mock_post(&mut server, "/api/v2/llm-obs/v1/projects", 200, body).await;
+
+    let result = crate::commands::llm_obs::projects_create(&cfg, tmp.to_str().unwrap()).await;
+    assert!(result.is_ok(), "projects_create failed: {:?}", result.err());
+    let _ = std::fs::remove_file(tmp);
+    cleanup_env();
+}
+
+#[tokio::test]
+async fn test_llm_obs_projects_create_500() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+
+    let tmp = write_temp_json(
+        "pup_test_proj_create_500.json",
+        r#"{"data":{"type":"projects","attributes":{"name":"test"}}}"#,
+    );
+    let _mock = mock_post(
+        &mut server,
+        "/api/v2/llm-obs/v1/projects",
+        500,
+        r#"{"errors":["server error"]}"#,
+    )
+    .await;
+
+    let result = crate::commands::llm_obs::projects_create(&cfg, tmp.to_str().unwrap()).await;
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("500"));
+    let _ = std::fs::remove_file(tmp);
+    cleanup_env();
+}
+
+// --- experiments list ---
+
+#[tokio::test]
+async fn test_llm_obs_experiments_list() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+
+    // Intentionally omits `config` — the field the old typed client required.
+    // This is the exact schema drift that caused the production breakage.
+    let body = r#"{"data":[{"id":"exp-1","type":"experiments","attributes":{"name":"test-exp","status":"active"}}]}"#;
+    let _mock = mock_get(&mut server, "/api/v2/llm-obs/v1/experiments", 200, body).await;
+
+    let result = crate::commands::llm_obs::experiments_list(&cfg, None, None).await;
+    assert!(
+        result.is_ok(),
+        "experiments_list failed: {:?}",
+        result.err()
+    );
+    cleanup_env();
+}
+
+#[tokio::test]
+async fn test_llm_obs_experiments_list_with_filters() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+
+    let body = r#"{"data":[]}"#;
+    let _mock = mock_get(&mut server, "/api/v2/llm-obs/v1/experiments", 200, body).await;
+
+    let result = crate::commands::llm_obs::experiments_list(
+        &cfg,
+        Some("proj-1".into()),
+        Some("ds-1".into()),
+    )
+    .await;
+    assert!(
+        result.is_ok(),
+        "experiments_list with filters failed: {:?}",
+        result.err()
+    );
+    cleanup_env();
+}
+
+#[tokio::test]
+async fn test_llm_obs_experiments_list_401() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+    let _mock = mock_get(
+        &mut server,
+        "/api/v2/llm-obs/v1/experiments",
+        401,
+        r#"{"errors":["Unauthorized"]}"#,
+    )
+    .await;
+
+    let result = crate::commands::llm_obs::experiments_list(&cfg, None, None).await;
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("401"));
+    cleanup_env();
+}
+
+// --- experiments create ---
+
+#[tokio::test]
+async fn test_llm_obs_experiments_create() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+
+    let tmp = write_temp_json(
+        "pup_test_exp_create.json",
+        r#"{"data":{"type":"experiments","attributes":{"name":"test-exp"}}}"#,
+    );
+    // Response intentionally omits `config` to prove schema drift is handled
+    let body = r#"{"data":{"id":"exp-1","type":"experiments","attributes":{"name":"test-exp","status":"active"}}}"#;
+    let _mock = mock_post(&mut server, "/api/v2/llm-obs/v1/experiments", 200, body).await;
+
+    let result = crate::commands::llm_obs::experiments_create(&cfg, tmp.to_str().unwrap()).await;
+    assert!(
+        result.is_ok(),
+        "experiments_create failed: {:?}",
+        result.err()
+    );
+    let _ = std::fs::remove_file(tmp);
+    cleanup_env();
+}
+
+#[tokio::test]
+async fn test_llm_obs_experiments_create_422() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+
+    let tmp = write_temp_json("pup_test_exp_create_422.json", r#"{"bad":"json"}"#);
+    let _mock = mock_post(
+        &mut server,
+        "/api/v2/llm-obs/v1/experiments",
+        422,
+        r#"{"errors":["invalid request body"]}"#,
+    )
+    .await;
+
+    let result = crate::commands::llm_obs::experiments_create(&cfg, tmp.to_str().unwrap()).await;
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("422"));
+    let _ = std::fs::remove_file(tmp);
+    cleanup_env();
+}
+
+// --- experiments update ---
+
+#[tokio::test]
+async fn test_llm_obs_experiments_update() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+
+    let tmp = write_temp_json(
+        "pup_test_exp_update.json",
+        r#"{"data":{"type":"experiments","attributes":{"name":"updated"}}}"#,
+    );
+    let body = r#"{"data":{"id":"exp-1","type":"experiments","attributes":{"name":"updated","status":"active"}}}"#;
+    let _mock = mock_patch(
+        &mut server,
+        "/api/v2/llm-obs/v1/experiments/exp-1",
+        200,
+        body,
+    )
+    .await;
+
+    let result =
+        crate::commands::llm_obs::experiments_update(&cfg, "exp-1", tmp.to_str().unwrap()).await;
+    assert!(
+        result.is_ok(),
+        "experiments_update failed: {:?}",
+        result.err()
+    );
+    let _ = std::fs::remove_file(tmp);
+    cleanup_env();
+}
+
+#[tokio::test]
+async fn test_llm_obs_experiments_update_404() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+
+    let tmp = write_temp_json(
+        "pup_test_exp_update_404.json",
+        r#"{"data":{"type":"experiments","attributes":{"name":"x"}}}"#,
+    );
+    let _mock = mock_patch(
+        &mut server,
+        "/api/v2/llm-obs/v1/experiments/missing",
+        404,
+        r#"{"errors":["not found"]}"#,
+    )
+    .await;
+
+    let result =
+        crate::commands::llm_obs::experiments_update(&cfg, "missing", tmp.to_str().unwrap()).await;
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("404"));
+    let _ = std::fs::remove_file(tmp);
+    cleanup_env();
+}
+
+// --- experiments delete ---
+
+#[tokio::test]
+async fn test_llm_obs_experiments_delete() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+
+    let tmp = write_temp_json(
+        "pup_test_exp_delete.json",
+        r#"{"data":{"type":"experiments_delete","attributes":{"ids":["exp-1"]}}}"#,
+    );
+    let _mock = mock_post(
+        &mut server,
+        "/api/v2/llm-obs/v1/experiments/delete",
+        200,
+        r#"{}"#,
+    )
+    .await;
+
+    let result = crate::commands::llm_obs::experiments_delete(&cfg, tmp.to_str().unwrap()).await;
+    assert!(
+        result.is_ok(),
+        "experiments_delete failed: {:?}",
+        result.err()
+    );
+    let _ = std::fs::remove_file(tmp);
+    cleanup_env();
+}
+
+#[tokio::test]
+async fn test_llm_obs_experiments_delete_500() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+
+    let tmp = write_temp_json(
+        "pup_test_exp_delete_500.json",
+        r#"{"data":{"type":"experiments_delete","attributes":{"ids":["exp-1"]}}}"#,
+    );
+    let _mock = mock_post(
+        &mut server,
+        "/api/v2/llm-obs/v1/experiments/delete",
+        500,
+        r#"{"errors":["server error"]}"#,
+    )
+    .await;
+
+    let result = crate::commands::llm_obs::experiments_delete(&cfg, tmp.to_str().unwrap()).await;
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("500"));
+    let _ = std::fs::remove_file(tmp);
+    cleanup_env();
+}
+
+// --- datasets list ---
+
+#[tokio::test]
+async fn test_llm_obs_datasets_list() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+
+    // Intentionally omits `description` — the field the old typed client required.
+    let body = r#"{"data":[{"id":"ds-1","type":"datasets","attributes":{"name":"my-dataset"}}]}"#;
+    let _mock = mock_get(
+        &mut server,
+        "/api/v2/llm-obs/v1/projects/proj-1/datasets",
+        200,
+        body,
+    )
+    .await;
+
+    let result = crate::commands::llm_obs::datasets_list(&cfg, "proj-1").await;
+    assert!(result.is_ok(), "datasets_list failed: {:?}", result.err());
+    cleanup_env();
+}
+
+#[tokio::test]
+async fn test_llm_obs_datasets_list_403() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+    let _mock = mock_get(
+        &mut server,
+        "/api/v2/llm-obs/v1/projects/proj-1/datasets",
+        403,
+        r#"{"errors":["Forbidden"]}"#,
+    )
+    .await;
+
+    let result = crate::commands::llm_obs::datasets_list(&cfg, "proj-1").await;
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("403"));
+    cleanup_env();
+}
+
+// --- datasets create ---
+
+#[tokio::test]
+async fn test_llm_obs_datasets_create() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+
+    let tmp = write_temp_json(
+        "pup_test_ds_create.json",
+        r#"{"data":{"type":"datasets","attributes":{"name":"test-dataset"}}}"#,
+    );
+    let body = r#"{"data":{"id":"ds-1","type":"datasets","attributes":{"name":"test-dataset"}}}"#;
+    let _mock = mock_post(
+        &mut server,
+        "/api/v2/llm-obs/v1/projects/proj-1/datasets",
+        200,
+        body,
+    )
+    .await;
+
+    let result =
+        crate::commands::llm_obs::datasets_create(&cfg, "proj-1", tmp.to_str().unwrap()).await;
+    assert!(result.is_ok(), "datasets_create failed: {:?}", result.err());
+    let _ = std::fs::remove_file(tmp);
+    cleanup_env();
+}
+
+#[tokio::test]
+async fn test_llm_obs_datasets_create_no_auth() {
+    let _lock = lock_env();
+    let tmp = write_temp_json(
+        "pup_test_ds_create_noauth.json",
+        r#"{"data":{"type":"datasets","attributes":{"name":"x"}}}"#,
+    );
+    let cfg = Config {
+        api_key: None,
+        app_key: None,
+        access_token: None,
+        site: "datadoghq.com".into(),
+        org: None,
+        output_format: OutputFormat::Json,
+        auto_approve: false,
+        agent_mode: false,
+        read_only: false,
+    };
+    let result =
+        crate::commands::llm_obs::datasets_create(&cfg, "proj-1", tmp.to_str().unwrap()).await;
+    assert!(result.is_err(), "should fail without auth");
+    let _ = std::fs::remove_file(tmp);
+    cleanup_env();
 }
 
 // -------------------------------------------------------------------------
@@ -2164,7 +2629,11 @@ async fn test_llm_obs_experiments_summary() {
     .await;
 
     let result = crate::commands::llm_obs::experiments_summary(&cfg, "exp-1").await;
-    assert!(result.is_ok(), "experiments_summary failed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "experiments_summary failed: {:?}",
+        result.err()
+    );
     cleanup_env();
 }
 
@@ -2251,7 +2720,11 @@ async fn test_llm_obs_experiments_events_list() {
         &cfg, "exp-1", 20, 0, None, None, None, None, "desc",
     )
     .await;
-    assert!(result.is_ok(), "experiments_events_list failed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "experiments_events_list failed: {:?}",
+        result.err()
+    );
     cleanup_env();
 }
 
@@ -2261,7 +2734,8 @@ async fn test_llm_obs_experiments_events_list_with_filters() {
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
-    let body = r#"{"status":"success","data":{"events":[],"total_matching":0,"returned":0,"offset":0}}"#;
+    let body =
+        r#"{"status":"success","data":{"events":[],"total_matching":0,"returned":0,"offset":0}}"#;
     let _mock = mock_post(
         &mut server,
         "/api/unstable/llm-obs-mcp/v1/experiment/events",
@@ -2332,9 +2806,12 @@ async fn test_llm_obs_experiments_events_get() {
     )
     .await;
 
-    let result =
-        crate::commands::llm_obs::experiments_events_get(&cfg, "exp-1", "evt-1").await;
-    assert!(result.is_ok(), "experiments_events_get failed: {:?}", result.err());
+    let result = crate::commands::llm_obs::experiments_events_get(&cfg, "exp-1", "evt-1").await;
+    assert!(
+        result.is_ok(),
+        "experiments_events_get failed: {:?}",
+        result.err()
+    );
     cleanup_env();
 }
 
@@ -2374,8 +2851,7 @@ async fn test_llm_obs_experiments_events_get_no_auth() {
         read_only: false,
     };
 
-    let result =
-        crate::commands::llm_obs::experiments_events_get(&cfg, "exp-1", "evt-1").await;
+    let result = crate::commands::llm_obs::experiments_events_get(&cfg, "exp-1", "evt-1").await;
     assert!(result.is_err(), "should fail without auth");
     cleanup_env();
 }
@@ -2399,11 +2875,14 @@ async fn test_llm_obs_experiments_metric_values() {
     )
     .await;
 
-    let result = crate::commands::llm_obs::experiments_metric_values(
-        &cfg, "exp-1", "accuracy", None, None,
-    )
-    .await;
-    assert!(result.is_ok(), "experiments_metric_values failed: {:?}", result.err());
+    let result =
+        crate::commands::llm_obs::experiments_metric_values(&cfg, "exp-1", "accuracy", None, None)
+            .await;
+    assert!(
+        result.is_ok(),
+        "experiments_metric_values failed: {:?}",
+        result.err()
+    );
     cleanup_env();
 }
 
@@ -2452,10 +2931,9 @@ async fn test_llm_obs_experiments_metric_values_500() {
     )
     .await;
 
-    let result = crate::commands::llm_obs::experiments_metric_values(
-        &cfg, "exp-1", "accuracy", None, None,
-    )
-    .await;
+    let result =
+        crate::commands::llm_obs::experiments_metric_values(&cfg, "exp-1", "accuracy", None, None)
+            .await;
     assert!(result.is_err(), "should fail on 500");
     assert!(result.unwrap_err().to_string().contains("500"));
     cleanup_env();
@@ -2480,8 +2958,7 @@ async fn test_llm_obs_experiments_dimension_values() {
     )
     .await;
 
-    let result =
-        crate::commands::llm_obs::experiments_dimension_values(&cfg, "exp-1", "env").await;
+    let result = crate::commands::llm_obs::experiments_dimension_values(&cfg, "exp-1", "env").await;
     assert!(
         result.is_ok(),
         "experiments_dimension_values failed: {:?}",
@@ -2504,8 +2981,7 @@ async fn test_llm_obs_experiments_dimension_values_403() {
     )
     .await;
 
-    let result =
-        crate::commands::llm_obs::experiments_dimension_values(&cfg, "exp-1", "env").await;
+    let result = crate::commands::llm_obs::experiments_dimension_values(&cfg, "exp-1", "env").await;
     assert!(result.is_err(), "should fail on 403");
     assert!(result.unwrap_err().to_string().contains("403"));
     cleanup_env();
@@ -2568,7 +3044,11 @@ async fn test_llm_obs_spans_search_empty_results() {
         &cfg, None, None, None, None, None, None, false, None, None, 20, None,
     )
     .await;
-    assert!(result.is_ok(), "spans_search empty failed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "spans_search empty failed: {:?}",
+        result.err()
+    );
     cleanup_env();
 }
 

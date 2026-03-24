@@ -10,7 +10,7 @@ pub async fn services_list(cfg: &Config, env: String, from: String, to: String) 
     let from_ts = util::parse_time_to_unix(&from)?;
     let to_ts = util::parse_time_to_unix(&to)?;
     let path = format!("/api/v2/apm/services?start={from_ts}&end={to_ts}&filter[env]={env}");
-    let data = client::raw_get(cfg, &path).await?;
+    let data = client::raw_get(cfg, &path, &[]).await?;
     formatter::output(cfg, &data)
 }
 
@@ -32,7 +32,7 @@ pub async fn services_stats(cfg: &Config, env: String, from: String, to: String)
     let from_ts = util::parse_time_to_unix(&from)?;
     let to_ts = util::parse_time_to_unix(&to)?;
     let path = format!("/api/v2/apm/services/stats?start={from_ts}&end={to_ts}&filter[env]={env}");
-    let data = client::raw_get(cfg, &path).await?;
+    let data = client::raw_get(cfg, &path, &[]).await?;
     formatter::output(cfg, &data)
 }
 
@@ -54,7 +54,7 @@ pub async fn entities_list(cfg: &Config, from: String, to: String) -> Result<()>
     let from_ts = util::parse_time_to_unix(&from)?;
     let to_ts = util::parse_time_to_unix(&to)?;
     let path = format!("/api/unstable/apm/entities?start={from_ts}&end={to_ts}");
-    let data = client::raw_get(cfg, &path).await?;
+    let data = client::raw_get(cfg, &path, &[]).await?;
     formatter::output(cfg, &data)
 }
 
@@ -72,7 +72,7 @@ pub async fn dependencies_list(cfg: &Config, env: String, from: String, to: Stri
     let from_ts = util::parse_time_to_unix(&from)?;
     let to_ts = util::parse_time_to_unix(&to)?;
     let path = format!("/api/v1/service_dependencies?start={from_ts}&end={to_ts}&env={env}");
-    let data = client::raw_get(cfg, &path).await?;
+    let data = client::raw_get(cfg, &path, &[]).await?;
     formatter::output(cfg, &data)
 }
 
@@ -101,7 +101,7 @@ pub async fn services_operations(
     let to_ts = util::parse_time_to_unix(&to)?;
     let path =
         format!("/api/v1/trace/operation_names/{service}?env={env}&start={from_ts}&end={to_ts}");
-    let data = client::raw_get(cfg, &path).await?;
+    let data = client::raw_get(cfg, &path, &[]).await?;
     formatter::output(cfg, &data)
 }
 
@@ -139,7 +139,7 @@ pub async fn services_resources(
     let path = format!(
         "/api/ui/apm/resources?service={service}&operation={operation}&env={env}&start={from_ts}&end={to_ts}"
     );
-    let data = client::raw_get(cfg, &path).await?;
+    let data = client::raw_get(cfg, &path, &[]).await?;
     formatter::output(cfg, &data)
 }
 
@@ -177,7 +177,7 @@ pub async fn flow_map(
     let to_ts = util::parse_time_to_unix(&to)?;
     let path =
         format!("/api/ui/apm/flow-map?query={query}&limit={limit}&start={from_ts}&end={to_ts}");
-    let data = client::raw_get(cfg, &path).await?;
+    let data = client::raw_get(cfg, &path, &[]).await?;
     formatter::output(cfg, &data)
 }
 

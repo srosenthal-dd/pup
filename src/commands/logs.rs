@@ -511,7 +511,7 @@ pub async fn metrics_delete(cfg: &Config, metric_id: &str) -> Result<()> {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn restriction_queries_list(cfg: &Config) -> Result<()> {
-    let data = client::raw_get(cfg, "/api/v2/logs/config/restriction_queries").await?;
+    let data = client::raw_get(cfg, "/api/v2/logs/config/restriction_queries", &[]).await?;
     formatter::output(cfg, &data)
 }
 
@@ -524,7 +524,7 @@ pub async fn restriction_queries_list(cfg: &Config) -> Result<()> {
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn restriction_queries_get(cfg: &Config, query_id: &str) -> Result<()> {
     let path = format!("/api/v2/logs/config/restriction_queries/{query_id}");
-    let data = client::raw_get(cfg, &path).await?;
+    let data = client::raw_get(cfg, &path, &[]).await?;
     formatter::output(cfg, &data)
 }
 

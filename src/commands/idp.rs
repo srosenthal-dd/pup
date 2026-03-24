@@ -229,7 +229,7 @@ async fn fetch_on_call(cfg: &Config, team_id: &str) -> Option<OnCallInfo> {
     let path = format!(
         "/api/v2/on-call/teams/{team_id}/on-call?include=responders,escalations.responders"
     );
-    let data = client::raw_get(cfg, &path).await.ok()?;
+    let data = client::raw_get(cfg, &path, &[]).await.ok()?;
     let included = data.get("included")?.as_array()?;
 
     // Primary responders come from data.relationships.responders
@@ -474,8 +474,8 @@ pub async fn assist(cfg: &Config, entity: &str) -> Result<()> {
     let deps_path = "/api/v1/service_dependencies?env=prod";
 
     let (entity_res, deps_res) = tokio::join!(
-        client::raw_get(cfg, &entity_path),
-        client::raw_get(cfg, deps_path),
+        client::raw_get(cfg, &entity_path, &[]),
+        client::raw_get(cfg, deps_path, &[]),
     );
 
     let entity_data = entity_res?;
@@ -553,7 +553,7 @@ pub async fn find(cfg: &Config, query: &str) -> Result<()> {
     };
     let encoded = url_encode(&full_query);
     let path = format!("/api/v2/idp/entity_graph/entities?query={encoded}&page%5Blimit%5D=10");
-    let data = client::raw_get(cfg, &path).await?;
+    let data = client::raw_get(cfg, &path, &[]).await?;
 
     let meta = formatter::Metadata {
         count: data.get("data").and_then(|d| d.as_array()).map(|a| a.len()),
@@ -570,7 +570,7 @@ pub async fn find(cfg: &Config, query: &str) -> Result<()> {
 /// Resolve owner, team, and on-call context for an entity.
 pub async fn owner(cfg: &Config, entity: &str) -> Result<()> {
     let path = entity_query_url(entity, "owner_teams");
-    let data = client::raw_get(cfg, &path).await?;
+    let data = client::raw_get(cfg, &path, &[]).await?;
 
     let entities = data
         .get("data")
@@ -616,7 +616,7 @@ pub async fn owner(cfg: &Config, entity: &str) -> Result<()> {
 /// Show dependency and relationship context for an entity.
 pub async fn deps(cfg: &Config, entity: &str) -> Result<()> {
     let deps_path = "/api/v1/service_dependencies?env=prod";
-    let deps_data = client::raw_get(cfg, deps_path).await?;
+    let deps_data = client::raw_get(cfg, deps_path, &[]).await?;
     let (upstream, downstream) = parse_dependencies(&deps_data, entity);
 
     let response = serde_json::json!({
