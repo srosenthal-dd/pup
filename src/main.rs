@@ -2670,6 +2670,12 @@ enum DdsqlActions {
         to: String,
         #[arg(long, help = "Aggregation interval in milliseconds (default: 60000)")]
         interval: Option<i64>,
+        #[arg(
+            long,
+            default_value_t = 5000,
+            help = "Maximum number of rows to return"
+        )]
+        limit: i32,
     },
 }
 
@@ -7890,8 +7896,9 @@ async fn main_inner() -> anyhow::Result<()> {
                     from,
                     to,
                     interval,
+                    limit,
                 } => {
-                    commands::ddsql::time_series(&cfg, &query, &from, &to, interval).await?;
+                    commands::ddsql::time_series(&cfg, &query, &from, &to, interval, limit).await?;
                 }
             }
         }

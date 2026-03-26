@@ -4,44 +4,60 @@ use serde_json::{json, Value};
 use crate::client;
 use crate::config::Config;
 use crate::formatter;
+use crate::useragent;
 use crate::util;
+use crate::version;
 
-/// Build a JSON:API request envelope for DDSQL endpoints.
-fn build_request(
-    jsonapi_type: &str,
+fn client_id() -> String {
+    let agent = useragent::detect_agent_info();
+    if agent.detected {
+        format!("pup/{}/{}", version::VERSION, agent.name)
+    } else {
+        format!("pup/{}", version::VERSION)
+    }
+}
+
+/// Build a request for the Advanced Query API (tabular/scalar endpoint).
+///
+/// Endpoint: POST /api/unstable/advanced/query/tabular
+/// Supports OAuth tokens and API keys (unlike the UI-only analysis-workspace endpoint).
+fn build_advanced_table_request(
     query: &str,
     from: &str,
     to: &str,
-    interval: Option<i64>,
     limit: Option<i32>,
-    offset: Option<i32>,
 ) -> Result<Value> {
-    let default_start =
+    let from_ms =
         util::parse_time_to_unix_millis(from).map_err(|e| anyhow!("invalid --from: {e}"))?;
-    let default_end =
-        util::parse_time_to_unix_millis(to).map_err(|e| anyhow!("invalid --to: {e}"))?;
+    let to_ms = util::parse_time_to_unix_millis(to).map_err(|e| anyhow!("invalid --to: {e}"))?;
 
-    let default_interval = interval.unwrap_or(60000);
-
-    let mut attrs = json!({
-        "query": query,
-        "default_start": default_start,
-        "default_end": default_end,
-        "default_interval": default_interval,
+    let mut query_body = json!({
+        "dataset": "user_query",
+        "time_window": { "from": from_ms, "to": to_ms },
     });
-
     if let Some(l) = limit {
-        attrs["limit"] = json!(l);
-    }
-    if let Some(o) = offset {
-        attrs["offset"] = json!(o);
-        attrs["enable_pagination"] = json!(true);
+        query_body["limit"] = json!(l);
     }
 
     Ok(json!({
         "data": {
-            "type": jsonapi_type,
-            "attributes": attrs,
+            "type": "analysis_workspace_query_request",
+            "attributes": {
+                "datasets": [{
+                    "data_source": "analysis_dataset",
+                    "name": "user_query",
+                    "query": {
+                        "type": "sql_analysis",
+                        "sql_query": query,
+                    }
+                }],
+                "query": query_body,
+            }
+        },
+        "meta": {
+            "client_id": client_id(),
+            "user_query_id": uuid::Uuid::new_v4().to_string(),
+            "use_async_querying": false,
         }
     }))
 }
@@ -51,20 +67,12 @@ pub async fn table(
     query: &str,
     from: &str,
     to: &str,
-    interval: Option<i64>,
+    _interval: Option<i64>,
     limit: Option<i32>,
-    offset: Option<i32>,
+    _offset: Option<i32>,
 ) -> Result<()> {
-    let body = build_request(
-        "ddsql_table_request",
-        query,
-        from,
-        to,
-        interval,
-        limit,
-        offset,
-    )?;
-    let data = client::raw_post(cfg, "/api/v2/ddsql/table", body).await?;
+    let body = build_advanced_table_request(query, from, to, limit)?;
+    let data = client::raw_post(cfg, "/api/unstable/advanced/query/tabular", body).await?;
     let rows = columnar_to_rows(&data)?;
     formatter::output(cfg, &rows)
 }
@@ -74,19 +82,13 @@ pub async fn time_series(
     query: &str,
     from: &str,
     to: &str,
-    interval: Option<i64>,
+    _interval: Option<i64>,
+    limit: i32,
 ) -> Result<()> {
-    let body = build_request(
-        "ddsql_timeseries_request",
-        query,
-        from,
-        to,
-        interval,
-        None,
-        None,
-    )?;
-    let data = client::raw_post(cfg, "/api/v2/ddsql/time_series", body).await?;
-    formatter::output(cfg, &data)
+    let body = build_advanced_table_request(query, from, to, Some(limit))?;
+    let data = client::raw_post(cfg, "/api/unstable/advanced/query/tabular", body).await?;
+    let rows = columnar_to_rows(&data)?;
+    formatter::output(cfg, &rows)
 }
 
 /// Transform a DDSQL columnar response into a row-based JSON array.
@@ -140,109 +142,51 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_build_table_all_flags() {
-        let req = build_request(
-            "ddsql_table_request",
-            "SELECT 1",
-            "1h",
-            "now",
-            Some(300000),
-            Some(10),
-            Some(20),
-        )
-        .unwrap();
+    fn test_build_advanced_table_with_limit() {
+        let req = build_advanced_table_request("SELECT 1", "1h", "now", Some(10)).unwrap();
 
-        assert_eq!(req["data"]["type"], "ddsql_table_request");
-        assert_eq!(req["data"]["attributes"]["default_interval"], 300000);
-        assert_eq!(req["data"]["attributes"]["limit"], 10);
-        assert_eq!(req["data"]["attributes"]["offset"], 20);
-        assert_eq!(req["data"]["attributes"]["enable_pagination"], true);
-        assert!(req["data"]["attributes"]["default_start"].is_i64());
-        assert!(req["data"]["attributes"]["default_end"].is_i64());
+        assert_eq!(req["data"]["type"], "analysis_workspace_query_request");
+        let attrs = &req["data"]["attributes"];
+        assert_eq!(attrs["datasets"][0]["data_source"], "analysis_dataset");
+        assert_eq!(attrs["datasets"][0]["name"], "user_query");
+        assert_eq!(attrs["datasets"][0]["query"]["type"], "sql_analysis");
+        assert_eq!(attrs["datasets"][0]["query"]["sql_query"], "SELECT 1");
+        assert_eq!(attrs["query"]["dataset"], "user_query");
+        assert_eq!(attrs["query"]["limit"], 10);
+        assert!(attrs["query"]["time_window"]["from"].is_i64());
+        assert!(attrs["query"]["time_window"]["to"].is_i64());
 
-        let start = req["data"]["attributes"]["default_start"].as_i64().unwrap();
-        let end = req["data"]["attributes"]["default_end"].as_i64().unwrap();
         let now_ms = chrono::Utc::now().timestamp() * 1000;
-        assert!((end - now_ms).abs() < 2000);
-        assert!((start - (now_ms - 3600000)).abs() < 2000);
+        let from = attrs["query"]["time_window"]["from"].as_i64().unwrap();
+        let to = attrs["query"]["time_window"]["to"].as_i64().unwrap();
+        assert!((to - now_ms).abs() < 2000);
+        assert!((from - (now_ms - 3600000)).abs() < 2000);
+
+        assert_eq!(req["meta"]["use_async_querying"], false);
+        assert!(req["meta"]["client_id"]
+            .as_str()
+            .unwrap_or("")
+            .starts_with("pup/"));
+        assert!(!req["meta"]["user_query_id"]
+            .as_str()
+            .unwrap_or("")
+            .is_empty());
     }
 
     #[test]
-    fn test_build_table_defaults() {
-        let req = build_request(
-            "ddsql_table_request",
-            "SELECT 1",
-            "1h",
-            "now",
-            None,
-            None,
-            None,
-        )
-        .unwrap();
+    fn test_build_advanced_table_no_limit() {
+        let req = build_advanced_table_request("SELECT 1", "1h", "now", None).unwrap();
 
-        assert_eq!(req["data"]["type"], "ddsql_table_request");
-        assert_eq!(req["data"]["attributes"]["default_interval"], 60000);
+        assert_eq!(req["data"]["type"], "analysis_workspace_query_request");
         assert!(
-            req["data"]["attributes"].get("limit").is_none()
-                || req["data"]["attributes"]["limit"].is_null()
-        );
-        assert!(
-            req["data"]["attributes"].get("offset").is_none()
-                || req["data"]["attributes"]["offset"].is_null()
-        );
-        assert!(
-            req["data"]["attributes"].get("enable_pagination").is_none()
-                || req["data"]["attributes"]["enable_pagination"].is_null()
+            req["data"]["attributes"]["query"].get("limit").is_none()
+                || req["data"]["attributes"]["query"]["limit"].is_null()
         );
     }
 
     #[test]
-    fn test_build_timeseries_type() {
-        let req = build_request(
-            "ddsql_timeseries_request",
-            "SELECT avg(cpu) FROM metrics",
-            "1h",
-            "now",
-            Some(60000),
-            None,
-            None,
-        )
-        .unwrap();
-
-        assert_eq!(req["data"]["type"], "ddsql_timeseries_request");
-    }
-
-    #[test]
-    fn test_build_csv_no_interval() {
-        let req = build_request(
-            "ddsql_table_request",
-            "SELECT 1",
-            "1h",
-            "now",
-            None,
-            Some(50),
-            None,
-        )
-        .unwrap();
-
-        assert_eq!(req["data"]["type"], "ddsql_table_request");
-        assert_eq!(req["data"]["attributes"]["default_interval"], 60000);
-        assert_eq!(req["data"]["attributes"]["limit"], 50);
-    }
-
-    #[test]
-    fn test_build_invalid_from() {
-        let err = build_request(
-            "ddsql_table_request",
-            "SELECT 1",
-            "garbage",
-            "now",
-            None,
-            None,
-            None,
-        )
-        .unwrap_err();
-
+    fn test_build_advanced_table_invalid_from() {
+        let err = build_advanced_table_request("SELECT 1", "garbage", "now", None).unwrap_err();
         assert!(err.to_string().contains("invalid --from"));
     }
 

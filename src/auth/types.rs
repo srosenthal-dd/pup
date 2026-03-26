@@ -163,6 +163,7 @@ pub fn default_scopes() -> Vec<&'static str> {
         // Organizations
         "org_management",
         // RUM
+        // RUM
         "rum_apps_read",
         "rum_apps_write",
         "rum_generate_metrics",
