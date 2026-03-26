@@ -4136,6 +4136,11 @@ enum FleetAgentActions {
     List {
         #[arg(long)]
         page_size: Option<i64>,
+        #[arg(
+            long,
+            help = "Filter query (e.g. ip_address:1.2.3.4, hostname:my-host)"
+        )]
+        filter: Option<String>,
     },
     /// Get fleet agent details
     Get { agent_key: String },
@@ -4756,6 +4761,11 @@ enum ApmActions {
         #[arg(long, help = "Environment filter")]
         env: Option<String>,
     },
+    /// Troubleshoot APM instrumentation issues
+    Troubleshooting {
+        #[command(subcommand)]
+        action: ApmTroubleshootingActions,
+    },
 }
 
 #[derive(Subcommand)]
@@ -4851,6 +4861,17 @@ enum ApmDependencyActions {
         to: String,
         #[arg(long, help = "Primary tag (group:value)")]
         primary_tag: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum ApmTroubleshootingActions {
+    /// List instrumentation errors for a host
+    List {
+        #[arg(long, help = "Hostname to query (required)")]
+        hostname: String,
+        #[arg(long, help = "Time window (e.g. 4h, 24h, 1h30m)")]
+        timeframe: Option<String>,
     },
 }
 
@@ -7400,8 +7421,8 @@ async fn main_inner() -> anyhow::Result<()> {
             cfg.validate_auth()?;
             match action {
                 FleetActions::Agents { action } => match action {
-                    FleetAgentActions::List { page_size } => {
-                        commands::fleet::agents_list(&cfg, page_size).await?;
+                    FleetAgentActions::List { page_size, filter } => {
+                        commands::fleet::agents_list(&cfg, page_size, filter).await?;
                     }
                     FleetAgentActions::Get { agent_key } => {
                         commands::fleet::agents_get(&cfg, &agent_key).await?;
@@ -7894,6 +7915,14 @@ async fn main_inner() -> anyhow::Result<()> {
                 } => {
                     commands::apm::flow_map(&cfg, query, limit, from, to).await?;
                 }
+                ApmActions::Troubleshooting { action } => match action {
+                    ApmTroubleshootingActions::List {
+                        hostname,
+                        timeframe,
+                    } => {
+                        commands::apm::troubleshooting_list(&cfg, hostname, timeframe).await?;
+                    }
+                },
             }
         }
         // --- DDSQL ---

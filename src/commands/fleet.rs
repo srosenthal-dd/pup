@@ -12,7 +12,11 @@ use crate::formatter;
 use crate::util;
 
 #[cfg(not(target_arch = "wasm32"))]
-pub async fn agents_list(cfg: &Config, page_size: Option<i64>) -> Result<()> {
+pub async fn agents_list(
+    cfg: &Config,
+    page_size: Option<i64>,
+    filter: Option<String>,
+) -> Result<()> {
     let dd_cfg = client::make_dd_config(cfg);
     let api = match client::make_bearer_client(cfg) {
         Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
@@ -22,6 +26,9 @@ pub async fn agents_list(cfg: &Config, page_size: Option<i64>) -> Result<()> {
     if let Some(ps) = page_size {
         params = params.page_size(ps);
     }
+    if let Some(f) = filter {
+        params = params.filter(f);
+    }
     let resp = api
         .list_fleet_agents(params)
         .await
@@ -30,10 +37,17 @@ pub async fn agents_list(cfg: &Config, page_size: Option<i64>) -> Result<()> {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub async fn agents_list(cfg: &Config, page_size: Option<i64>) -> Result<()> {
+pub async fn agents_list(
+    cfg: &Config,
+    page_size: Option<i64>,
+    filter: Option<String>,
+) -> Result<()> {
     let mut query: Vec<(&str, String)> = Vec::new();
     if let Some(ps) = page_size {
         query.push(("page[size]", ps.to_string()));
+    }
+    if let Some(f) = filter {
+        query.push(("filter", f));
     }
     let data = crate::api::get(cfg, "/api/v2/fleet/agents", &query).await?;
     crate::formatter::output(cfg, &data)

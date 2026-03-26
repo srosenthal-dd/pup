@@ -200,3 +200,34 @@ pub async fn flow_map(
     let data = crate::api::get(cfg, "/api/ui/apm/flow-map", &q).await?;
     crate::formatter::output(cfg, &data)
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn troubleshooting_list(
+    cfg: &Config,
+    hostname: String,
+    timeframe: Option<String>,
+) -> Result<()> {
+    let path = "/api/unstable/apm/instrumentation-errors";
+    let mut query = vec![("hostname", hostname.as_str())];
+    let tf_owned;
+    if let Some(tf) = &timeframe {
+        tf_owned = tf.clone();
+        query.push(("timeframe", tf_owned.as_str()));
+    }
+    let data = client::raw_get(cfg, path, &query).await?;
+    formatter::output(cfg, &data)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub async fn troubleshooting_list(
+    cfg: &Config,
+    hostname: String,
+    timeframe: Option<String>,
+) -> Result<()> {
+    let mut query = vec![("hostname", hostname)];
+    if let Some(tf) = timeframe {
+        query.push(("timeframe", tf));
+    }
+    let data = crate::api::get(cfg, "/api/unstable/apm/instrumentation-errors", &query).await?;
+    crate::formatter::output(cfg, &data)
+}

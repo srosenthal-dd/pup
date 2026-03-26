@@ -1427,7 +1427,7 @@ async fn test_fleet_agents_list() {
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
-    let _ = crate::commands::fleet::agents_list(&cfg, None).await;
+    let _ = crate::commands::fleet::agents_list(&cfg, None, None).await;
     cleanup_env();
 }
 #[tokio::test]
@@ -2052,6 +2052,61 @@ async fn test_apm_services_list() {
     mock_all(&mut s, r#"{"data": []}"#).await;
     let _ =
         crate::commands::apm::services_list(&cfg, "prod".into(), "1h".into(), "now".into()).await;
+    cleanup_env();
+}
+#[tokio::test]
+async fn test_apm_troubleshooting_list() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+
+    let mock = server
+        .mock("GET", "/api/unstable/apm/instrumentation-errors")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "hostname".into(),
+            "my-host".into(),
+        ))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"data": []}"#)
+        .create_async()
+        .await;
+
+    let result = crate::commands::apm::troubleshooting_list(&cfg, "my-host".into(), None).await;
+    assert!(
+        result.is_ok(),
+        "troubleshooting list failed: {:?}",
+        result.err()
+    );
+    mock.assert_async().await;
+    cleanup_env();
+}
+#[tokio::test]
+async fn test_apm_troubleshooting_list_with_timeframe() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+
+    let mock = server
+        .mock("GET", "/api/unstable/apm/instrumentation-errors")
+        .match_query(mockito::Matcher::AllOf(vec![
+            mockito::Matcher::UrlEncoded("hostname".into(), "my-host".into()),
+            mockito::Matcher::UrlEncoded("timeframe".into(), "4h".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"data": []}"#)
+        .create_async()
+        .await;
+
+    let result =
+        crate::commands::apm::troubleshooting_list(&cfg, "my-host".into(), Some("4h".into())).await;
+    assert!(
+        result.is_ok(),
+        "troubleshooting list with timeframe failed: {:?}",
+        result.err()
+    );
+    mock.assert_async().await;
     cleanup_env();
 }
 
