@@ -5610,7 +5610,12 @@ enum AuthActions {
     /// Logout and clear tokens
     Logout,
     /// Check authentication status
-    Status,
+    Status {
+        /// Datadog site to check status for (e.g. datadoghq.eu, us3.datadoghq.com).
+        /// Overrides DD_SITE env var and config file. Defaults to datadoghq.com.
+        #[arg(long, value_name = "SITE")]
+        site: Option<String>,
+    },
     /// Print access token (debug builds only)
     #[cfg(debug_assertions)]
     Token,
@@ -8194,7 +8199,12 @@ async fn main_inner() -> anyhow::Result<()> {
                 commands::auth::login(&cfg, resolved).await?
             }
             AuthActions::Logout => commands::auth::logout(&cfg).await?,
-            AuthActions::Status => commands::auth::status(&cfg)?,
+            AuthActions::Status { site } => {
+                if let Some(s) = site {
+                    cfg.site = s;
+                }
+                commands::auth::status(&cfg)?
+            }
             #[cfg(debug_assertions)]
             AuthActions::Token => commands::auth::token(&cfg)?,
             AuthActions::Refresh => commands::auth::refresh(&cfg).await?,
