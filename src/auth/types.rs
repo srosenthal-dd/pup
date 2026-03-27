@@ -76,6 +76,7 @@ pub fn read_only_scopes() -> Vec<&'static str> {
         "monitors_read",
         "notebooks_read",
         "oci_configuration_read",
+        "reference_tables_read",
         "rum_apps_read",
         "rum_retention_filters_read",
         "rum_session_replay_read",
@@ -166,6 +167,9 @@ pub fn default_scopes() -> Vec<&'static str> {
         "oci_configurations_manage",
         // Organizations
         "org_management",
+        // Reference Tables
+        "reference_tables_read",
+        "reference_tables_write",
         // RUM
         // RUM
         "rum_apps_read",
@@ -246,7 +250,7 @@ mod tests {
     #[test]
     fn test_default_scopes() {
         let scopes = default_scopes();
-        assert_eq!(scopes.len(), 72);
+        assert_eq!(scopes.len(), 74);
         assert!(scopes.contains(&"dashboards_read"));
         assert!(scopes.contains(&"monitors_read"));
         assert!(scopes.contains(&"logs_read_data"));
