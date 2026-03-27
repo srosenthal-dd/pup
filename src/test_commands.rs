@@ -3170,3 +3170,43 @@ async fn test_llm_obs_spans_search_no_auth() {
     assert!(result.is_err(), "should fail without auth");
     cleanup_env();
 }
+
+// -------------------------------------------------------------------------
+// Auth status --site flag
+// -------------------------------------------------------------------------
+
+#[test]
+fn test_auth_status_accepts_site_flag() {
+    use clap::Parser;
+
+    let cli = crate::Cli::try_parse_from(["pup", "auth", "status", "--site", "datadoghq.eu"])
+        .expect("auth status --site should parse");
+
+    match cli.command {
+        crate::Commands::Auth { action } => match action {
+            crate::AuthActions::Status { site } => {
+                assert_eq!(site, Some("datadoghq.eu".to_string()));
+            }
+            _ => panic!("expected AuthActions::Status"),
+        },
+        _ => panic!("expected Commands::Auth"),
+    }
+}
+
+#[test]
+fn test_auth_status_site_flag_is_optional() {
+    use clap::Parser;
+
+    let cli = crate::Cli::try_parse_from(["pup", "auth", "status"])
+        .expect("auth status without --site should parse");
+
+    match cli.command {
+        crate::Commands::Auth { action } => match action {
+            crate::AuthActions::Status { site } => {
+                assert_eq!(site, None);
+            }
+            _ => panic!("expected AuthActions::Status"),
+        },
+        _ => panic!("expected Commands::Auth"),
+    }
+}
