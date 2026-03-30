@@ -51,6 +51,10 @@ fn apply_template(mut step: Step, tmpl: &StepTemplate) -> Result<Step> {
     fill!(url);
     fill!(method);
     fill!(body);
+    fill!(content_type);
+    fill!(accept);
+    fill!(body_file);
+    fill!(output_file);
     fill!(message);
     fill!(on_failure);
     fill!(when);

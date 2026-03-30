@@ -458,17 +458,34 @@ async fn execute_http(cfg: &Config, step: &Step, vars: &HashMap<String, String>)
 
     let rendered_url = template::render(url, vars);
     let method = step.method.as_deref().unwrap_or("GET").to_uppercase();
+    let accept = step.accept.as_deref().unwrap_or("application/json");
 
-    // Render and parse the optional body template.
-    let body: Option<serde_json::Value> = match &step.body {
-        Some(tmpl) => {
-            let rendered = template::render(tmpl, vars);
-            Some(serde_json::from_str(&rendered).map_err(|e| {
-                anyhow::anyhow!("http step '{}' body is not valid JSON: {e}", step.name)
-            })?)
-        }
-        None => None,
-    };
+    // Build the request body bytes and effective Content-Type.
+    let (body_bytes, effective_ct): (Option<Vec<u8>>, Option<String>) =
+        if let Some(file_tmpl) = &step.body_file {
+            // body_file takes precedence: read raw bytes from the rendered path.
+            let path = template::render(file_tmpl, vars);
+            let bytes = std::fs::read(&path).map_err(|e| {
+                anyhow::anyhow!(
+                    "http step '{}' could not read body_file {path:?}: {e}",
+                    step.name
+                )
+            })?;
+            let ct = step
+                .content_type
+                .clone()
+                .unwrap_or_else(|| "application/octet-stream".to_string());
+            (Some(bytes), Some(ct))
+        } else if let Some(body_tmpl) = &step.body {
+            let rendered = template::render(body_tmpl, vars);
+            let ct = step
+                .content_type
+                .clone()
+                .unwrap_or_else(|| "application/json".to_string());
+            (Some(rendered.into_bytes()), Some(ct))
+        } else {
+            (None, step.content_type.clone())
+        };
 
     // Render header value templates.
     let rendered_headers: Vec<(String, String)> = step
@@ -485,21 +502,33 @@ async fn execute_http(cfg: &Config, step: &Step, vars: &HashMap<String, String>)
         .map(|(k, v)| (k.as_str(), v.as_str()))
         .collect();
 
-    let resp = if rendered_url.starts_with('/') {
+    let http_resp = if rendered_url.starts_with('/') {
         // Datadog API path — use authenticated client helper.
-        crate::client::raw_request(cfg, &method, &rendered_url, body, &header_refs).await?
+        crate::client::raw_request(
+            cfg,
+            &method,
+            &rendered_url,
+            body_bytes,
+            effective_ct.as_deref(),
+            accept,
+            &header_refs,
+        )
+        .await?
     } else {
         // External URL — plain reqwest, no DD auth.
         let m = reqwest::Method::from_bytes(method.as_bytes())
             .map_err(|_| anyhow::anyhow!("unsupported HTTP method: {method}"))?;
         let mut req = reqwest::Client::new()
             .request(m, &rendered_url)
-            .header("Accept", "application/json");
+            .header("Accept", accept);
         for (k, v) in &header_refs {
             req = req.header(*k, *v);
         }
-        if let Some(b) = body {
-            req = req.header("Content-Type", "application/json").json(&b);
+        if let Some(b) = body_bytes {
+            if let Some(ct) = effective_ct.as_deref() {
+                req = req.header("Content-Type", ct);
+            }
+            req = req.body(b);
         }
         let resp = req
             .send()
@@ -510,16 +539,88 @@ async fn execute_http(cfg: &Config, step: &Step, vars: &HashMap<String, String>)
             let text = resp.text().await.unwrap_or_default();
             anyhow::bail!("HTTP {status}: {text}");
         }
-        if resp.status() == reqwest::StatusCode::NO_CONTENT || resp.content_length() == Some(0) {
-            serde_json::Value::Null
+        let resp_ct = resp
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        let bytes = if resp.status() == reqwest::StatusCode::NO_CONTENT {
+            vec![]
         } else {
-            resp.json::<serde_json::Value>()
-                .await
-                .unwrap_or(serde_json::Value::Null)
+            resp.bytes().await?.to_vec()
+        };
+        crate::client::HttpResponse {
+            content_type: resp_ct,
+            bytes,
         }
     };
 
-    Ok(serde_json::to_string_pretty(&resp).unwrap_or_default())
+    decode_http_response(http_resp, step, vars)
+}
+
+/// Decode an [`HttpResponse`] into a string suitable for capture / display.
+///
+/// - If `output_file` is set on the step, the raw bytes are written there and a
+///   summary string is returned.
+/// - JSON responses are pretty-printed.
+/// - YAML, CSV, and plain-text responses are returned as-is.
+/// - Unrecognised binary responses that cannot be decoded as UTF-8 require
+///   `output_file` to be set; otherwise an error is returned.
+fn decode_http_response(
+    resp: crate::client::HttpResponse,
+    step: &Step,
+    vars: &HashMap<String, String>,
+) -> Result<String> {
+    // Write to output_file if specified.
+    if let Some(file_tmpl) = &step.output_file {
+        let path = template::render(file_tmpl, vars);
+        std::fs::write(&path, &resp.bytes).map_err(|e| {
+            anyhow::anyhow!(
+                "http step '{}' could not write output_file {path:?}: {e}",
+                step.name
+            )
+        })?;
+        return Ok(format!("written {} bytes to {}", resp.bytes.len(), path));
+    }
+
+    if resp.bytes.is_empty() {
+        return Ok(String::new());
+    }
+
+    let ct = resp.content_type.to_lowercase();
+    let ct = ct.split(';').next().unwrap_or("").trim(); // strip e.g. "; charset=utf-8"
+
+    // JSON — pretty-print.
+    if ct.is_empty() || ct.contains("json") {
+        if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&resp.bytes) {
+            return Ok(serde_json::to_string_pretty(&v).unwrap_or_default());
+        }
+    }
+
+    // Text-based formats — return as UTF-8 string.
+    if ct.starts_with("text/")
+        || ct.contains("yaml")
+        || ct.contains("csv")
+        || ct.contains("xml")
+        || ct.contains("html")
+    {
+        return String::from_utf8(resp.bytes).map_err(|e| {
+            anyhow::anyhow!(
+                "http step '{}' response claimed text content-type ({ct}) but is not valid UTF-8: {e}",
+                step.name
+            )
+        });
+    }
+
+    // Binary or unknown — try UTF-8, otherwise tell the user to use output_file.
+    String::from_utf8(resp.bytes).map_err(|_| {
+        anyhow::anyhow!(
+            "http step '{}' received binary response (content-type: {ct}); \
+             add 'output_file: /path/to/save' to the step to write it to disk",
+            step.name
+        )
+    })
 }
 
 // ── Poll condition evaluator ──────────────────────────────────────────────────

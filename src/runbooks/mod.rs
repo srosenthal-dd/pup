@@ -36,6 +36,10 @@ pub struct StepTemplate {
     pub method: Option<String>,
     pub body: Option<String>,
     pub headers: Option<HashMap<String, String>>,
+    pub content_type: Option<String>,
+    pub accept: Option<String>,
+    pub body_file: Option<String>,
+    pub output_file: Option<String>,
     pub message: Option<String>,
     pub on_failure: Option<String>,
     pub when: Option<String>,
@@ -71,6 +75,17 @@ pub struct Step {
     pub body: Option<String>,
     /// Additional HTTP headers (key: value, templates rendered)
     pub headers: Option<HashMap<String, String>>,
+    /// Request Content-Type (default: application/json when `body` is set).
+    /// Use application/yaml, text/csv, text/plain, or application/octet-stream as needed.
+    pub content_type: Option<String>,
+    /// Accept header controlling the expected response format (default: application/json).
+    pub accept: Option<String>,
+    /// Read request body from this file path (template-rendered).
+    /// Takes precedence over `body`; use for binary or large payloads.
+    pub body_file: Option<String>,
+    /// Write response body to this file path (template-rendered).
+    /// Required when the response is binary (application/octet-stream, etc.).
+    pub output_file: Option<String>,
     /// Message to display for confirm steps
     pub message: Option<String>,
     /// "warn" | "confirm" | "fail" (default)

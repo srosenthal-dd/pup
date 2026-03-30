@@ -504,18 +504,30 @@ static OAUTH_EXCLUDED_ENDPOINTS: &[EndpointRequirement] = &[
 // Raw HTTP helpers
 // ---------------------------------------------------------------------------
 
+/// Raw HTTP response returned by [`raw_request`].
+pub struct HttpResponse {
+    /// The `Content-Type` header value from the response, or an empty string if absent.
+    pub content_type: String,
+    /// The raw response body bytes.
+    pub bytes: Vec<u8>,
+}
+
 /// Makes an authenticated request with any HTTP method via reqwest.
 ///
-/// `body` is sent as JSON for all methods; pass `None` for GET, HEAD, OPTIONS,
-/// or any request where no body is needed. Responses with no body (HEAD, 204)
-/// return `serde_json::Value::Null`.
+/// - `body` — raw bytes to send; `content_type` sets the `Content-Type` header when present.
+/// - `accept` — value for the `Accept` header (e.g. `"application/json"`, `"*/*"`).
+/// - `extra_headers` — additional headers applied after auth and before the body.
+/// - Returns an [`HttpResponse`] with the raw bytes and response `Content-Type`.
+///   Callers are responsible for decoding the bytes.
 pub async fn raw_request(
     cfg: &Config,
     method: &str,
     path: &str,
-    body: Option<serde_json::Value>,
+    body: Option<Vec<u8>>,
+    content_type: Option<&str>,
+    accept: &str,
     extra_headers: &[(&str, &str)],
-) -> anyhow::Result<serde_json::Value> {
+) -> anyhow::Result<HttpResponse> {
     let url = format!("{}{}", cfg.api_base_url(), path);
     let client = reqwest::Client::new();
     let method = reqwest::Method::from_bytes(method.to_uppercase().as_bytes())
@@ -533,7 +545,7 @@ pub async fn raw_request(
     }
 
     req = req
-        .header("Accept", "application/json")
+        .header("Accept", accept)
         .header("User-Agent", useragent::get());
 
     for (k, v) in extra_headers {
@@ -541,7 +553,10 @@ pub async fn raw_request(
     }
 
     if let Some(b) = body {
-        req = req.header("Content-Type", "application/json").json(&b);
+        if let Some(ct) = content_type {
+            req = req.header("Content-Type", ct);
+        }
+        req = req.body(b);
     }
 
     let resp = req.send().await?;
@@ -550,10 +565,26 @@ pub async fn raw_request(
         let text = resp.text().await.unwrap_or_default();
         anyhow::bail!("API error (HTTP {status}): {text}");
     }
-    if resp.status() == reqwest::StatusCode::NO_CONTENT || resp.content_length() == Some(0) {
-        return Ok(serde_json::Value::Null);
+
+    let resp_ct = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+
+    if resp.status() == reqwest::StatusCode::NO_CONTENT {
+        return Ok(HttpResponse {
+            content_type: resp_ct,
+            bytes: vec![],
+        });
     }
-    Ok(resp.json().await.unwrap_or(serde_json::Value::Null))
+
+    let bytes = resp.bytes().await?.to_vec();
+    Ok(HttpResponse {
+        content_type: resp_ct,
+        bytes,
+    })
 }
 
 /// Makes an authenticated GET request directly via reqwest.
