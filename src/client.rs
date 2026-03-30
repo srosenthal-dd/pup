@@ -504,6 +504,58 @@ static OAUTH_EXCLUDED_ENDPOINTS: &[EndpointRequirement] = &[
 // Raw HTTP helpers
 // ---------------------------------------------------------------------------
 
+/// Makes an authenticated request with any HTTP method via reqwest.
+///
+/// `body` is sent as JSON for all methods; pass `None` for GET, HEAD, OPTIONS,
+/// or any request where no body is needed. Responses with no body (HEAD, 204)
+/// return `serde_json::Value::Null`.
+pub async fn raw_request(
+    cfg: &Config,
+    method: &str,
+    path: &str,
+    body: Option<serde_json::Value>,
+    extra_headers: &[(&str, &str)],
+) -> anyhow::Result<serde_json::Value> {
+    let url = format!("{}{}", cfg.api_base_url(), path);
+    let client = reqwest::Client::new();
+    let method = reqwest::Method::from_bytes(method.to_uppercase().as_bytes())
+        .map_err(|_| anyhow::anyhow!("unsupported HTTP method: {method}"))?;
+    let mut req = client.request(method, &url);
+
+    if let Some(token) = &cfg.access_token {
+        req = req.header("Authorization", format!("Bearer {token}"));
+    } else if let (Some(api_key), Some(app_key)) = (&cfg.api_key, &cfg.app_key) {
+        req = req
+            .header("DD-API-KEY", api_key.as_str())
+            .header("DD-APPLICATION-KEY", app_key.as_str());
+    } else {
+        anyhow::bail!("no authentication configured");
+    }
+
+    req = req
+        .header("Accept", "application/json")
+        .header("User-Agent", useragent::get());
+
+    for (k, v) in extra_headers {
+        req = req.header(*k, *v);
+    }
+
+    if let Some(b) = body {
+        req = req.header("Content-Type", "application/json").json(&b);
+    }
+
+    let resp = req.send().await?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        anyhow::bail!("API error (HTTP {status}): {text}");
+    }
+    if resp.status() == reqwest::StatusCode::NO_CONTENT || resp.content_length() == Some(0) {
+        return Ok(serde_json::Value::Null);
+    }
+    Ok(resp.json().await.unwrap_or(serde_json::Value::Null))
+}
+
 /// Makes an authenticated GET request directly via reqwest.
 /// Used for endpoints not covered by the typed DD API client.
 /// Pass an empty slice for `query` when no query parameters are needed.

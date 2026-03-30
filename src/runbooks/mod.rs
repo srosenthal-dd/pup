@@ -38,8 +38,12 @@ pub struct Step {
     pub inputs: Option<HashMap<String, String>>,
     /// URL for http steps
     pub url: Option<String>,
-    /// HTTP method (GET, POST, etc.)
+    /// HTTP method (GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS)
     pub method: Option<String>,
+    /// Request body template (JSON string, rendered before sending)
+    pub body: Option<String>,
+    /// Additional HTTP headers (key: value, templates rendered)
+    pub headers: Option<HashMap<String, String>>,
     /// Message to display for confirm steps
     pub message: Option<String>,
     /// "warn" | "confirm" | "fail" (default)

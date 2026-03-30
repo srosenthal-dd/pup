@@ -36,7 +36,7 @@ pub fn list_runbooks(cfg: &Config, tags: &[String]) -> Result<Vec<RunbookMeta>> 
         let path = entry.path();
         let contents = std::fs::read_to_string(&path)
             .map_err(|e| anyhow::anyhow!("failed to read {:?}: {e}", path))?;
-        let runbook: Runbook = serde_yaml::from_str(&contents)
+        let runbook: Runbook = serde_norway::from_str(&contents)
             .map_err(|e| anyhow::anyhow!("failed to parse {:?}: {e}", path))?;
 
         if !tags.is_empty() {
@@ -77,7 +77,7 @@ pub fn load_runbook(cfg: &Config, name: &str) -> Result<Runbook> {
         if path.exists() {
             let contents = std::fs::read_to_string(&path)
                 .map_err(|e| anyhow::anyhow!("failed to read {:?}: {e}", path))?;
-            return serde_yaml::from_str(&contents)
+            return serde_norway::from_str(&contents)
                 .map_err(|e| anyhow::anyhow!("failed to parse runbook '{name}': {e}"));
         }
     }

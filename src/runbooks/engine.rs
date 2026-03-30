@@ -399,7 +399,7 @@ async fn execute_datadog_workflow(
         tokio::time::sleep(Duration::from_secs(15)).await;
 
         let status_path = format!("/api/v2/workflows/{workflow_id}/instances/{instance_id}");
-        let status_resp = crate::client::raw_get(cfg, &status_path)
+        let status_resp = crate::client::raw_get(cfg, &status_path, &[])
             .await
             .map_err(|e| anyhow::anyhow!("failed to poll workflow: {e}"))?;
 
@@ -459,33 +459,63 @@ async fn execute_http(cfg: &Config, step: &Step, vars: &HashMap<String, String>)
     let rendered_url = template::render(url, vars);
     let method = step.method.as_deref().unwrap_or("GET").to_uppercase();
 
-    let resp = if method == "GET" {
-        if rendered_url.starts_with('/') {
-            crate::client::raw_get(cfg, &rendered_url).await?
-        } else {
-            reqwest::Client::new()
-                .get(&rendered_url)
-                .send()
-                .await
-                .map_err(|e| anyhow::anyhow!("HTTP GET failed: {e}"))?
-                .json::<serde_json::Value>()
-                .await
-                .map_err(|e| anyhow::anyhow!("failed to parse response: {e}"))?
+    // Render and parse the optional body template.
+    let body: Option<serde_json::Value> = match &step.body {
+        Some(tmpl) => {
+            let rendered = template::render(tmpl, vars);
+            Some(serde_json::from_str(&rendered).map_err(|e| {
+                anyhow::anyhow!("http step '{}' body is not valid JSON: {e}", step.name)
+            })?)
         }
+        None => None,
+    };
+
+    // Render header value templates.
+    let rendered_headers: Vec<(String, String)> = step
+        .headers
+        .as_ref()
+        .map(|h| {
+            h.iter()
+                .map(|(k, v)| (k.clone(), template::render(v, vars)))
+                .collect()
+        })
+        .unwrap_or_default();
+    let header_refs: Vec<(&str, &str)> = rendered_headers
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+
+    let resp = if rendered_url.starts_with('/') {
+        // Datadog API path — use authenticated client helper.
+        crate::client::raw_request(cfg, &method, &rendered_url, body, &header_refs).await?
     } else {
-        let body = serde_json::json!({});
-        if rendered_url.starts_with('/') {
-            crate::client::raw_post(cfg, &rendered_url, body).await?
+        // External URL — plain reqwest, no DD auth.
+        let m = reqwest::Method::from_bytes(method.as_bytes())
+            .map_err(|_| anyhow::anyhow!("unsupported HTTP method: {method}"))?;
+        let mut req = reqwest::Client::new()
+            .request(m, &rendered_url)
+            .header("Accept", "application/json");
+        for (k, v) in &header_refs {
+            req = req.header(*k, *v);
+        }
+        if let Some(b) = body {
+            req = req.header("Content-Type", "application/json").json(&b);
+        }
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("HTTP {method} failed: {e}"))?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            anyhow::bail!("HTTP {status}: {text}");
+        }
+        if resp.status() == reqwest::StatusCode::NO_CONTENT || resp.content_length() == Some(0) {
+            serde_json::Value::Null
         } else {
-            reqwest::Client::new()
-                .post(&rendered_url)
-                .json(&body)
-                .send()
+            resp.json::<serde_json::Value>()
                 .await
-                .map_err(|e| anyhow::anyhow!("HTTP POST failed: {e}"))?
-                .json::<serde_json::Value>()
-                .await
-                .map_err(|e| anyhow::anyhow!("failed to parse response: {e}"))?
+                .unwrap_or(serde_json::Value::Null)
         }
     };
 
