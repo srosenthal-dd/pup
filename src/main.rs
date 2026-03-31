@@ -6175,6 +6175,31 @@ fn build_command_schema(cmd: &clap::Command, parent_path: &str) -> serde_json::V
     // (commands with no subcommands), matching Go behavior
     let is_write = is_write_command_name(&name);
 
+    // Positional arguments (excluding globals and help/version)
+    // Enumerated to preserve declaration order for correct CLI invocation
+    let args: Vec<serde_json::Value> = cmd
+        .get_arguments()
+        .filter(|a| {
+            let id = a.get_id().as_str();
+            id != "help" && id != "version" && !a.is_global_set() && a.get_long().is_none()
+        })
+        .enumerate()
+        .map(|(i, a)| {
+            let mut arg = serde_json::Map::new();
+            arg.insert("name".into(), serde_json::json!(a.get_id().as_str()));
+            arg.insert("type".into(), serde_json::json!("string"));
+            arg.insert("required".into(), serde_json::json!(a.is_required_set()));
+            arg.insert("index".into(), serde_json::json!(i + 1));
+            if let Some(help) = a.get_help() {
+                arg.insert("description".into(), serde_json::json!(help.to_string()));
+            }
+            serde_json::Value::Object(arg)
+        })
+        .collect();
+    if !args.is_empty() {
+        obj.insert("args".into(), serde_json::Value::Array(args));
+    }
+
     // Flags (named --flags only, excluding positional args and globals)
     let flags: Vec<serde_json::Value> = cmd
         .get_arguments()
@@ -6203,6 +6228,7 @@ fn build_command_schema(cmd: &clap::Command, parent_path: &str) -> serde_json::V
                 }
             };
             flag.insert("type".into(), serde_json::json!(type_str));
+            flag.insert("required".into(), serde_json::json!(a.is_required_set()));
             if let Some(def) = a.get_default_values().first() {
                 flag.insert(
                     "default".into(),
@@ -6247,6 +6273,129 @@ fn build_command_schema(cmd: &clap::Command, parent_path: &str) -> serde_json::V
     }
 
     serde_json::Value::Object(obj)
+}
+
+#[cfg(test)]
+mod test_agent_schema {
+    use super::*;
+
+    fn get_schema() -> serde_json::Value {
+        let cmd = Cli::command();
+        build_agent_schema(&cmd)
+    }
+
+    fn find_command<'a>(
+        commands: &'a [serde_json::Value],
+        path: &[&str],
+    ) -> Option<&'a serde_json::Value> {
+        let name = path[0];
+        let cmd = commands.iter().find(|c| c.get("name").and_then(|v| v.as_str()) == Some(name))?;
+        if path.len() == 1 {
+            Some(cmd)
+        } else {
+            let subs = cmd.get("subcommands")?.as_array()?;
+            find_command(subs, &path[1..])
+        }
+    }
+
+    #[test]
+    fn schema_has_commands_array() {
+        let schema = get_schema();
+        assert!(schema.get("commands").and_then(|v| v.as_array()).is_some());
+    }
+
+    #[test]
+    fn leaf_command_has_required_fields() {
+        let schema = get_schema();
+        let commands = schema["commands"].as_array().unwrap();
+        let cmd = find_command(commands, &["monitors", "get"]).expect("monitors get not found");
+
+        // Must have name, full_path, description, read_only
+        assert_eq!(cmd["name"].as_str(), Some("get"));
+        assert_eq!(cmd["full_path"].as_str(), Some("monitors get"));
+        assert!(cmd.get("description").is_some());
+        assert!(cmd["read_only"].is_boolean());
+    }
+
+    #[test]
+    fn positional_args_included_with_index() {
+        let schema = get_schema();
+        let commands = schema["commands"].as_array().unwrap();
+        let cmd = find_command(commands, &["monitors", "get"]).expect("monitors get not found");
+
+        let args = cmd["args"].as_array().expect("monitors get should have args");
+        assert!(!args.is_empty(), "monitors get should have at least one positional arg");
+
+        let first = &args[0];
+        assert!(first.get("name").and_then(|v| v.as_str()).is_some(), "arg must have name");
+        assert_eq!(first["type"].as_str(), Some("string"), "positional args must be string type");
+        assert!(first["required"].is_boolean(), "arg must have required field");
+        assert!(first["index"].is_u64(), "arg must have numeric index");
+        assert_eq!(first["index"].as_u64(), Some(1), "first arg should have index 1");
+    }
+
+    #[test]
+    fn flags_have_required_field() {
+        let schema = get_schema();
+        let commands = schema["commands"].as_array().unwrap();
+        let cmd = find_command(commands, &["logs", "search"]).expect("logs search not found");
+
+        let flags = cmd["flags"].as_array().expect("logs search should have flags");
+        assert!(!flags.is_empty());
+
+        for flag in flags {
+            let name = flag["name"].as_str().unwrap_or("<unknown>");
+            assert!(flag["required"].is_boolean(), "flag {name} must have required field");
+            assert!(flag["type"].as_str().is_some(), "flag {name} must have type");
+        }
+    }
+
+    #[test]
+    fn flag_has_name_type_description() {
+        let schema = get_schema();
+        let commands = schema["commands"].as_array().unwrap();
+        let cmd = find_command(commands, &["logs", "search"]).expect("logs search not found");
+
+        let flags = cmd["flags"].as_array().unwrap();
+        let query_flag = flags
+            .iter()
+            .find(|f| f["name"].as_str() == Some("--query"))
+            .expect("logs search should have --query flag");
+
+        assert_eq!(query_flag["type"].as_str(), Some("string"));
+        assert!(query_flag.get("description").and_then(|v| v.as_str()).is_some());
+    }
+
+    #[test]
+    fn multi_positional_args_ordered_by_index() {
+        let schema = get_schema();
+        let commands = schema["commands"].as_array().unwrap();
+        let cmd = find_command(commands, &["alias", "set"]).expect("alias set not found");
+
+        let args = cmd["args"].as_array().expect("alias set should have args");
+        assert!(args.len() >= 2, "alias set should have at least 2 positional args");
+
+        let indices: Vec<u64> = args.iter().filter_map(|a| a["index"].as_u64()).collect();
+        let mut sorted = indices.clone();
+        sorted.sort();
+        assert_eq!(indices, sorted, "positional args must be ordered by index");
+        assert_eq!(indices[0], 1, "first index should be 1");
+    }
+
+    #[test]
+    fn group_commands_have_subcommands_not_args() {
+        let schema = get_schema();
+        let commands = schema["commands"].as_array().unwrap();
+        let monitors = commands
+            .iter()
+            .find(|c| c["name"].as_str() == Some("monitors"))
+            .expect("monitors not found");
+
+        assert!(
+            monitors.get("subcommands").and_then(|v| v.as_array()).is_some(),
+            "group command should have subcommands"
+        );
+    }
 }
 
 // ---- Main ----

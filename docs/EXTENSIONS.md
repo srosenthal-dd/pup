@@ -270,6 +270,79 @@ Pup propagates the extension's exit code. If the extension exits with code 1, pu
 
 When pup runs in read-only mode (`--read-only`), the built-in `pup extension install`, `pup extension remove`, and `pup extension upgrade` commands are blocked. Extension dispatch itself is not blocked - instead, `PUP_READ_ONLY=true` is forwarded and the extension is responsible for honoring it.
 
+## Command Discovery via `pup agent schema`
+
+Extensions that need to know what pup commands are available (e.g., to generate tool definitions for AI assistants) can consume the output of `pup agent schema`. This outputs a JSON object describing pup's full command tree.
+
+```bash
+pup agent schema | jq '.commands[0]'
+```
+
+### Schema structure per command
+
+Each command in the `commands` array has:
+
+| Field | Type | Present | Description |
+|---|---|---|---|
+| `name` | string | Always | Command name (e.g., `"get"`) |
+| `full_path` | string | Always | Full command path (e.g., `"monitors get"`) |
+| `description` | string | When available | Human-readable description |
+| `read_only` | bool | Always | `true` if the command does not modify state |
+| `args` | array | When command has positional args | Positional arguments (see below) |
+| `flags` | array | When command has flags | Named `--flags` (see below) |
+| `subcommands` | array | When command is a group | Nested commands |
+
+### Positional args (`args[]`)
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | string | Argument identifier (e.g., `"monitor_id"`) |
+| `type` | string | Always `"string"` |
+| `required` | bool | Whether the argument is mandatory |
+| `index` | number | 1-based position order for CLI invocation |
+| `description` | string | Human-readable description (when available) |
+
+### Named flags (`flags[]`)
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | string | Flag with prefix (e.g., `"--query"`) |
+| `type` | string | `"bool"`, `"int"`, or `"string"` |
+| `required` | bool | Whether the flag is mandatory |
+| `default` | string | Default value (when one exists) |
+| `description` | string | Human-readable description (when available) |
+
+### Identifying actionable commands
+
+Only **leaf commands** (those without `subcommands`) can be executed. Group commands like `monitors` just organize subcommands. To find leaf commands, walk the tree and collect commands where `subcommands` is absent.
+
+### Constructing CLI invocations
+
+To execute a command from the schema:
+
+```
+pup --output json --yes <full_path segments> <positional args in index order> --flag value
+```
+
+Positional args must come before named flags, ordered by their `index` field.
+
+### Example: building a tool definition from schema
+
+```python
+import json, subprocess
+
+schema = json.loads(subprocess.check_output(["pup", "agent", "schema"]))
+
+for cmd in schema["commands"]:
+    for leaf in walk_leaves(cmd):  # your recursive walker
+        tool = {
+            "name": leaf["full_path"].replace(" ", "_"),
+            "description": leaf.get("description", ""),
+            "parameters": {}
+        }
+        # Merge args and flags into parameters...
+```
+
 ## Migrating a Feature to an Extension
 
 To extract an existing pup feature into an extension:
