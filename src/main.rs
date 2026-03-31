@@ -988,6 +988,55 @@ enum Commands {
         #[command(subcommand)]
         action: FleetActions,
     },
+    /// Manage feature flags
+    ///
+    /// Manage Datadog feature flags and their environments.
+    ///
+    /// Feature flags let you control the rollout of features to your users.
+    /// This command group covers flag lifecycle management as well as
+    /// environment configuration and per-environment enable/disable controls.
+    ///
+    /// COMMAND GROUPS:
+    ///   flags           Manage feature flag definitions (list, get, create, update, archive, unarchive)
+    ///   environments    Manage feature flag environments (list, get, create, update, delete)
+    ///
+    /// DIRECT COMMANDS:
+    ///   enable          Enable a feature flag in an environment
+    ///   disable         Disable a feature flag in an environment
+    ///
+    /// EXAMPLES:
+    ///   # List all feature flags
+    ///   pup feature-flags flags list
+    ///
+    ///   # Get a feature flag
+    ///   pup feature-flags flags get <flag-id>
+    ///
+    ///   # Create a feature flag from file
+    ///   pup feature-flags flags create --file=flag.json
+    ///
+    ///   # Update a feature flag
+    ///   pup feature-flags flags update <flag-id> --file=flag.json
+    ///
+    ///   # Archive a feature flag
+    ///   pup feature-flags flags archive <flag-id>
+    ///
+    ///   # List environments
+    ///   pup feature-flags environments list
+    ///
+    ///   # Enable a flag in an environment
+    ///   pup feature-flags enable <flag-id> <env-id>
+    ///
+    ///   # Disable a flag in an environment
+    ///   pup feature-flags disable <flag-id> <env-id>
+    ///
+    /// AUTHENTICATION:
+    ///   Requires either OAuth2 authentication (pup auth login) or API keys
+    ///   (DD_API_KEY and DD_APP_KEY environment variables).
+    #[command(name = "feature-flags", verbatim_doc_comment)]
+    FeatureFlags {
+        #[command(subcommand)]
+        action: FeatureFlagActions,
+    },
     /// Manage High Availability Multi-Region (HAMR)
     ///
     /// Manage Datadog High Availability Multi-Region (HAMR) connections.
@@ -4631,6 +4680,114 @@ enum CodeCoverageActions {
     },
 }
 
+// ---- Feature Flags ----
+#[derive(Subcommand)]
+enum FeatureFlagActions {
+    /// Manage feature flag definitions
+    Flags {
+        #[command(subcommand)]
+        action: FeatureFlagFlagActions,
+    },
+    /// Manage feature flag environments
+    Environments {
+        #[command(subcommand)]
+        action: FeatureFlagEnvActions,
+    },
+    /// Enable a feature flag in an environment
+    Enable {
+        #[arg(help = "Feature flag ID (UUID)")]
+        feature_flag_id: String,
+        #[arg(help = "Environment ID (UUID)")]
+        feature_flags_env_id: String,
+    },
+    /// Disable a feature flag in an environment
+    Disable {
+        #[arg(help = "Feature flag ID (UUID)")]
+        feature_flag_id: String,
+        #[arg(help = "Environment ID (UUID)")]
+        feature_flags_env_id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum FeatureFlagFlagActions {
+    /// List feature flags
+    List {
+        #[arg(long, help = "Filter by key (partial match)")]
+        key: Option<String>,
+        #[arg(long, help = "Filter by archived status")]
+        is_archived: Option<bool>,
+        #[arg(long, help = "Maximum number of results to return")]
+        limit: Option<i32>,
+        #[arg(long, help = "Number of results to skip")]
+        offset: Option<i32>,
+    },
+    /// Get a feature flag
+    Get {
+        #[arg(help = "Feature flag ID (UUID)")]
+        feature_flag_id: String,
+    },
+    /// Create a feature flag from a JSON file
+    Create {
+        #[arg(long, help = "JSON file with request body (required)")]
+        file: String,
+    },
+    /// Update a feature flag
+    Update {
+        #[arg(help = "Feature flag ID (UUID)")]
+        feature_flag_id: String,
+        #[arg(long, help = "JSON file with request body (required)")]
+        file: String,
+    },
+    /// Archive a feature flag
+    Archive {
+        #[arg(help = "Feature flag ID (UUID)")]
+        feature_flag_id: String,
+    },
+    /// Unarchive a feature flag
+    Unarchive {
+        #[arg(help = "Feature flag ID (UUID)")]
+        feature_flag_id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum FeatureFlagEnvActions {
+    /// List feature flag environments
+    List {
+        #[arg(long, help = "Filter by name (partial match)")]
+        name: Option<String>,
+        #[arg(long, help = "Filter by key (partial match)")]
+        key: Option<String>,
+        #[arg(long, help = "Maximum number of results to return")]
+        limit: Option<i32>,
+        #[arg(long, help = "Number of results to skip")]
+        offset: Option<i32>,
+    },
+    /// Get a feature flag environment
+    Get {
+        #[arg(help = "Environment ID (UUID)")]
+        feature_flags_env_id: String,
+    },
+    /// Create a feature flag environment from a JSON file
+    Create {
+        #[arg(long, help = "JSON file with request body (required)")]
+        file: String,
+    },
+    /// Update a feature flag environment
+    Update {
+        #[arg(help = "Environment ID (UUID)")]
+        feature_flags_env_id: String,
+        #[arg(long, help = "JSON file with request body (required)")]
+        file: String,
+    },
+    /// Delete a feature flag environment
+    Delete {
+        #[arg(help = "Environment ID (UUID)")]
+        feature_flags_env_id: String,
+    },
+}
+
 // ---- HAMR ----
 #[derive(Subcommand)]
 enum HamrActions {
@@ -8196,6 +8353,86 @@ async fn main_inner() -> anyhow::Result<()> {
                 }
                 CodeCoverageActions::CommitSummary { repo, commit } => {
                     commands::code_coverage::commit_summary(&cfg, repo, commit).await?;
+                }
+            }
+        }
+        // --- Feature Flags ---
+        Commands::FeatureFlags { action } => {
+            cfg.validate_auth()?;
+            match action {
+                FeatureFlagActions::Flags { action } => match action {
+                    FeatureFlagFlagActions::List {
+                        key,
+                        is_archived,
+                        limit,
+                        offset,
+                    } => {
+                        commands::feature_flags::flags_list(&cfg, key, is_archived, limit, offset)
+                            .await?;
+                    }
+                    FeatureFlagFlagActions::Get { feature_flag_id } => {
+                        commands::feature_flags::flags_get(&cfg, &feature_flag_id).await?;
+                    }
+                    FeatureFlagFlagActions::Create { file } => {
+                        commands::feature_flags::flags_create(&cfg, &file).await?;
+                    }
+                    FeatureFlagFlagActions::Update {
+                        feature_flag_id,
+                        file,
+                    } => {
+                        commands::feature_flags::flags_update(&cfg, &feature_flag_id, &file)
+                            .await?;
+                    }
+                    FeatureFlagFlagActions::Archive { feature_flag_id } => {
+                        commands::feature_flags::flags_archive(&cfg, &feature_flag_id).await?;
+                    }
+                    FeatureFlagFlagActions::Unarchive { feature_flag_id } => {
+                        commands::feature_flags::flags_unarchive(&cfg, &feature_flag_id).await?;
+                    }
+                },
+                FeatureFlagActions::Environments { action } => match action {
+                    FeatureFlagEnvActions::List {
+                        name,
+                        key,
+                        limit,
+                        offset,
+                    } => {
+                        commands::feature_flags::envs_list(&cfg, name, key, limit, offset).await?;
+                    }
+                    FeatureFlagEnvActions::Get { feature_flags_env_id } => {
+                        commands::feature_flags::envs_get(&cfg, &feature_flags_env_id).await?;
+                    }
+                    FeatureFlagEnvActions::Create { file } => {
+                        commands::feature_flags::envs_create(&cfg, &file).await?;
+                    }
+                    FeatureFlagEnvActions::Update {
+                        feature_flags_env_id,
+                        file,
+                    } => {
+                        commands::feature_flags::envs_update(&cfg, &feature_flags_env_id, &file)
+                            .await?;
+                    }
+                    FeatureFlagEnvActions::Delete { feature_flags_env_id } => {
+                        commands::feature_flags::envs_delete(&cfg, &feature_flags_env_id).await?;
+                    }
+                },
+                FeatureFlagActions::Enable {
+                    feature_flag_id,
+                    feature_flags_env_id,
+                } => {
+                    commands::feature_flags::enable(&cfg, &feature_flag_id, &feature_flags_env_id)
+                        .await?;
+                }
+                FeatureFlagActions::Disable {
+                    feature_flag_id,
+                    feature_flags_env_id,
+                } => {
+                    commands::feature_flags::disable(
+                        &cfg,
+                        &feature_flag_id,
+                        &feature_flags_env_id,
+                    )
+                    .await?;
                 }
             }
         }
