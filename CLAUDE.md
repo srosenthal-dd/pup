@@ -41,8 +41,9 @@ pup metrics query --query="avg:system.cpu.user{*}" --from="1h"
 pup/
 ├── src/
 │   ├── main.rs            # CLI entry point, clap enums, command routing
-│   ├── commands/           # 58 command modules (monitors.rs, logs.rs, etc.)
+│   ├── commands/           # 59 command modules (monitors.rs, logs.rs, runbooks.rs, etc.)
 │   ├── auth/              # OAuth2 + DCR + PKCE + token storage
+│   ├── runbooks/          # Runbook engine (loader, template renderer, executor)
 │   ├── client.rs          # Datadog API client wrapper
 │   ├── config.rs          # Configuration management
 │   ├── formatter.rs       # Output formatting (JSON, YAML, table, agent envelope)
@@ -194,8 +195,8 @@ See [TESTING.md](docs/TESTING.md) for details.
 
 ## Implementation Status
 
-- **59 command modules** implemented
-- **325+ subcommands** across 57 command groups
+- **60 command modules** implemented (including runbooks engine)
+- **325+ subcommands** across 58 command groups
 - **60 unit tests** passing
 - **155/155 API output** matches Go version exactly
 - **390/390 command descriptions** match Go version

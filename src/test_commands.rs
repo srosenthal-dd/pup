@@ -3210,3 +3210,19 @@ fn test_auth_status_site_flag_is_optional() {
         _ => panic!("expected Commands::Auth"),
     }
 }
+
+#[test]
+fn test_top_level_commands_sorted_alphabetically() {
+    let app = crate::Cli::command();
+    let names: Vec<&str> = app
+        .get_subcommands()
+        .filter(|cmd| cmd.get_name() != "help" && !cmd.is_hide_set())
+        .map(|cmd| cmd.get_name())
+        .collect();
+    let mut sorted = names.clone();
+    sorted.sort_unstable();
+    assert_eq!(
+        names, sorted,
+        "top-level commands must be in alphabetical order.\nActual:   {names:?}\nExpected: {sorted:?}"
+    );
+}

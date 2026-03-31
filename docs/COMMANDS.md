@@ -68,12 +68,13 @@ pup <domain> <subgroup> <action> [options] # Nested commands
 | hamr | connections (get, create) | src/commands/hamr.rs | ✅ |
 | fleet | agents (list, get, versions), deployments (list, get, configure, upgrade, cancel), schedules (list, get, create, update, delete, trigger) | src/commands/fleet.rs | ✅ |
 | skills | list, install, path | src/commands/skills.rs | ✅ |
+| runbooks | list, describe, run, import, validate | src/commands/runbooks.rs | ✅ |
 | workflows | get, create, update, delete, run, instances (list, get, cancel) | src/commands/workflows.rs | ✅ |
 | investigations | list, get, trigger | src/commands/investigations.rs | ✅ |
 | change-requests | create, get, update, create-branch, decisions (update, delete) | src/commands/change_management.rs | ✅ |
 | app-builder | list, get, create, update, delete, delete-batch, publish, unpublish | src/commands/app_builder.rs | ✅ |
 
-**Summary:** 52 working, 0 API-blocked, 0 placeholders
+**Summary:** 53 working, 0 API-blocked, 0 placeholders
 
 **Note:** RUM command is fully operational. Apps and sessions work completely. Metrics and retention-filters support list/get operations (create/update/delete operations pending due to complex API type structures).
 
@@ -168,6 +169,7 @@ pup infrastructure hosts list
 - **cases** - Case management (create, search, assign, archive, unarchive, update, projects, jira, servicenow, move)
 - **hamr** - High Availability Multi-Region connections
 - **fleet** - Fleet Automation (agents, deployments, schedules)
+- **runbooks** - Local runbook execution engine (list, describe, run, import, validate)
 - **workflows** - Workflow Automation (get, create, update, delete, run, instances)
 - **investigations** - Bits AI SRE investigations (list, get, trigger)
 - **change-requests** - Change request management (create, get, update, create-branch, decisions)
