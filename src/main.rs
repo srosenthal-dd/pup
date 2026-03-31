@@ -812,6 +812,38 @@ enum Commands {
         #[command(subcommand)]
         action: DdsqlActions,
     },
+    /// Manage Deployment Gates
+    ///
+    /// Deployment Gates reduce the likelihood and impact of incidents caused by deployments.
+    ///
+    /// COMMANDS:
+    ///   gates list                  List all deployment gates
+    ///   gates get <id>              Get a deployment gate by ID
+    ///   gates create --file <f>     Create a deployment gate from JSON file
+    ///   gates update <id> --file    Update a deployment gate
+    ///   gates delete <id>           Delete a deployment gate
+    ///   evaluations get <id>        Get a deployment gates evaluation result
+    ///   evaluations trigger --file  Trigger a deployment gates evaluation
+    ///   rules list <gate-id>        List rules for a deployment gate
+    ///   rules get <gate-id> <id>    Get a specific deployment rule
+    ///   rules create <gate-id> -f   Create a deployment rule
+    ///   rules update <gate-id> <id> Update a deployment rule
+    ///   rules delete <gate-id> <id> Delete a deployment rule
+    ///
+    /// EXAMPLES:
+    ///   pup deployment-gates gates list
+    ///   pup deployment-gates gates get my-gate-id
+    ///   pup deployment-gates gates create --file gate.json
+    ///   pup deployment-gates evaluations trigger --file eval.json
+    ///   pup deployment-gates rules list my-gate-id
+    ///
+    /// AUTHENTICATION:
+    ///   Requires OAuth2 (via 'pup auth login') or DD_API_KEY + DD_APP_KEY.
+    #[command(name = "deployment-gates", verbatim_doc_comment)]
+    DeploymentGates {
+        #[command(subcommand)]
+        action: DeploymentGatesActions,
+    },
     /// Manage monitor downtimes
     ///
     /// Manage downtimes to silence monitors during maintenance windows.
@@ -917,6 +949,55 @@ enum Commands {
     Extension {
         #[command(subcommand)]
         action: ExtensionActions,
+    },
+    /// Manage feature flags
+    ///
+    /// Manage Datadog feature flags and their environments.
+    ///
+    /// Feature flags let you control the rollout of features to your users.
+    /// This command group covers flag lifecycle management as well as
+    /// environment configuration and per-environment enable/disable controls.
+    ///
+    /// COMMAND GROUPS:
+    ///   flags           Manage feature flag definitions (list, get, create, update, archive, unarchive)
+    ///   environments    Manage feature flag environments (list, get, create, update, delete)
+    ///
+    /// DIRECT COMMANDS:
+    ///   enable          Enable a feature flag in an environment
+    ///   disable         Disable a feature flag in an environment
+    ///
+    /// EXAMPLES:
+    ///   # List all feature flags
+    ///   pup feature-flags flags list
+    ///
+    ///   # Get a feature flag
+    ///   pup feature-flags flags get <flag-id>
+    ///
+    ///   # Create a feature flag from file
+    ///   pup feature-flags flags create --file=flag.json
+    ///
+    ///   # Update a feature flag
+    ///   pup feature-flags flags update <flag-id> --file=flag.json
+    ///
+    ///   # Archive a feature flag
+    ///   pup feature-flags flags archive <flag-id>
+    ///
+    ///   # List environments
+    ///   pup feature-flags environments list
+    ///
+    ///   # Enable a flag in an environment
+    ///   pup feature-flags enable <flag-id> <env-id>
+    ///
+    ///   # Disable a flag in an environment
+    ///   pup feature-flags disable <flag-id> <env-id>
+    ///
+    /// AUTHENTICATION:
+    ///   Requires either OAuth2 authentication (pup auth login) or API keys
+    ///   (DD_API_KEY and DD_APP_KEY environment variables).
+    #[command(name = "feature-flags", verbatim_doc_comment)]
+    FeatureFlags {
+        #[command(subcommand)]
+        action: FeatureFlagActions,
     },
     /// Manage Fleet Automation
     ///
@@ -1984,6 +2065,30 @@ enum Commands {
         #[command(subcommand)]
         action: TagActions,
     },
+    /// Manage Test Optimization settings and flaky tests
+    ///
+    /// Configure Test Optimization service settings and manage flaky tests
+    /// through the Datadog Test Optimization API.
+    ///
+    /// CAPABILITIES:
+    ///   • Get, update, or delete service-level Test Optimization settings
+    ///   • Search for flaky tests across your test suites
+    ///   • Update flaky test state (e.g. mark as known flaky)
+    ///
+    /// EXAMPLES:
+    ///   # Get service settings
+    ///   pup test-optimization settings get --file=body.json
+    ///
+    ///   # Search for flaky tests
+    ///   pup test-optimization flaky-tests search
+    ///
+    /// AUTHENTICATION:
+    ///   Requires either OAuth2 authentication or API keys.
+    #[command(name = "test-optimization", verbatim_doc_comment)]
+    TestOptimization {
+        #[command(subcommand)]
+        action: TestOptimizationActions,
+    },
     /// Search and aggregate APM traces
     ///
     /// Search and aggregate APM span data for distributed tracing analysis.
@@ -2469,6 +2574,11 @@ enum DashboardActions {
     },
     /// Delete a dashboard
     Delete { id: String },
+    /// Manage saved widgets
+    Widgets {
+        #[command(subcommand)]
+        action: WidgetActions,
+    },
 }
 
 // ---- Metrics ----
@@ -2643,6 +2753,11 @@ enum SyntheticsActions {
         #[command(subcommand)]
         action: SyntheticsSuiteActions,
     },
+    /// Manage multistep API tests
+    Multistep {
+        #[command(subcommand)]
+        action: SyntheticsMultistepActions,
+    },
 }
 
 #[derive(Subcommand)]
@@ -2691,6 +2806,46 @@ enum SyntheticsTestActions {
         #[arg(long, default_value_t = 1800)]
         timeout: u64,
     },
+    /// Get a fast (latest) test result by result ID
+    GetFastResult {
+        /// Result ID
+        result_id: String,
+    },
+    /// Get a specific version of a synthetic test
+    GetVersion {
+        /// Public ID of the test
+        public_id: String,
+        /// Version number to retrieve
+        version: i64,
+        /// Include change metadata in the response
+        #[arg(long)]
+        include_change_metadata: bool,
+    },
+    /// List version history for a synthetic test
+    ListVersions {
+        /// Public ID of the test
+        public_id: String,
+        /// Maximum number of versions to return per page
+        #[arg(long)]
+        limit: Option<i64>,
+        /// Version number of the last item from the previous page
+        #[arg(long)]
+        last_version_number: Option<i64>,
+    },
+}
+
+#[derive(Subcommand)]
+enum SyntheticsMultistepActions {
+    /// Get subtests for a multistep API test
+    GetSubtests {
+        /// Public ID of the multistep test
+        public_id: String,
+    },
+    /// Get parent tests for a multistep API subtest
+    GetSubtestParents {
+        /// Public ID of the subtest
+        public_id: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -2725,6 +2880,55 @@ enum SyntheticsSuiteActions {
         suite_ids: Vec<String>,
         #[arg(long, help = "Comma-separated suite public IDs (required)")]
         ids: Option<String>,
+    },
+}
+
+// ---- Test Optimization ----
+#[derive(Subcommand)]
+enum TestOptimizationActions {
+    /// Manage Test Optimization service settings
+    Settings {
+        #[command(subcommand)]
+        action: TestOptimizationSettingsActions,
+    },
+    /// Manage flaky tests
+    #[command(name = "flaky-tests")]
+    FlakyTests {
+        #[command(subcommand)]
+        action: TestOptimizationFlakyTestsActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum TestOptimizationSettingsActions {
+    /// Get Test Optimization service settings (body from JSON file)
+    Get {
+        #[arg(long, help = "JSON file with request body (required)")]
+        file: String,
+    },
+    /// Update Test Optimization service settings (body from JSON file)
+    Update {
+        #[arg(long, help = "JSON file with request body (required)")]
+        file: String,
+    },
+    /// Delete Test Optimization service settings (body from JSON file)
+    Delete {
+        #[arg(long, help = "JSON file with request body (required)")]
+        file: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum TestOptimizationFlakyTestsActions {
+    /// Search for flaky tests
+    Search {
+        #[arg(long, help = "Optional JSON file with search request body")]
+        file: Option<String>,
+    },
+    /// Update flaky test state (body from JSON file)
+    Update {
+        #[arg(long, help = "JSON file with request body (required)")]
+        file: String,
     },
 }
 
@@ -2861,6 +3065,68 @@ enum UserActions {
 enum UserRoleActions {
     /// List roles
     List,
+}
+
+// ---- Widgets ----
+#[derive(Subcommand)]
+enum WidgetActions {
+    /// Search and list widgets for a given experience type
+    List {
+        /// Experience type (ccm_reports, logs_reports, csv_reports, product_analytics)
+        experience_type: String,
+        #[arg(long, help = "Filter by widget type")]
+        filter_widget_type: Option<String>,
+        #[arg(long, help = "Filter by creator email handle")]
+        filter_creator_handle: Option<String>,
+        #[arg(long, help = "Filter to only favorited widgets")]
+        filter_is_favorited: Option<bool>,
+        #[arg(long, help = "Filter by title (substring match)")]
+        filter_title: Option<String>,
+        #[arg(
+            long,
+            help = "Filter by tags (bracket-delimited CSV, e.g. [tag1,tag2])"
+        )]
+        filter_tags: Option<String>,
+        #[arg(
+            long,
+            help = "Sort field (title, created_at, modified_at; prefix with - for descending)"
+        )]
+        sort: Option<String>,
+        #[arg(long, help = "Page number (0-indexed)")]
+        page_number: Option<i32>,
+        #[arg(long, help = "Number of widgets per page")]
+        page_size: Option<i32>,
+    },
+    /// Get a widget by UUID
+    Get {
+        /// Experience type (ccm_reports, logs_reports, csv_reports, product_analytics)
+        experience_type: String,
+        /// Widget UUID
+        widget_id: String,
+    },
+    /// Create a widget from a JSON file
+    Create {
+        /// Experience type (ccm_reports, logs_reports, csv_reports, product_analytics)
+        experience_type: String,
+        #[arg(long)]
+        file: String,
+    },
+    /// Update a widget from a JSON file
+    Update {
+        /// Experience type (ccm_reports, logs_reports, csv_reports, product_analytics)
+        experience_type: String,
+        /// Widget UUID
+        widget_id: String,
+        #[arg(long)]
+        file: String,
+    },
+    /// Delete a widget by UUID
+    Delete {
+        /// Experience type (ccm_reports, logs_reports, csv_reports, product_analytics)
+        experience_type: String,
+        /// Widget UUID
+        widget_id: String,
+    },
 }
 
 // ---- Workflows ----
@@ -4350,6 +4616,88 @@ enum DataGovScannerRuleActions {
     List,
 }
 
+// ---- Deployment Gates ----
+#[derive(Subcommand)]
+enum DeploymentGatesActions {
+    /// Manage deployment gates (CRUD)
+    Gates {
+        #[command(subcommand)]
+        action: DeploymentGatesGateActions,
+    },
+    /// Manage deployment gate evaluations
+    Evaluations {
+        #[command(subcommand)]
+        action: DeploymentGatesEvaluationActions,
+    },
+    /// Manage deployment gate rules
+    Rules {
+        #[command(subcommand)]
+        action: DeploymentGatesRuleActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum DeploymentGatesGateActions {
+    /// List all deployment gates
+    List {
+        /// Pagination cursor
+        #[arg(long)]
+        page_cursor: Option<String>,
+        /// Page size (1-1000, default 50)
+        #[arg(long)]
+        page_size: Option<i64>,
+    },
+    /// Get a deployment gate by ID
+    Get { gate_id: String },
+    /// Create a deployment gate from a JSON file
+    Create {
+        #[arg(long)]
+        file: String,
+    },
+    /// Update a deployment gate from a JSON file
+    Update {
+        gate_id: String,
+        #[arg(long)]
+        file: String,
+    },
+    /// Delete a deployment gate
+    Delete { gate_id: String },
+}
+
+#[derive(Subcommand)]
+enum DeploymentGatesEvaluationActions {
+    /// Get a deployment gates evaluation result by evaluation ID (UUID)
+    Get { evaluation_id: String },
+    /// Trigger a deployment gates evaluation from a JSON file
+    Trigger {
+        #[arg(long)]
+        file: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum DeploymentGatesRuleActions {
+    /// List rules for a deployment gate
+    List { gate_id: String },
+    /// Get a specific deployment rule
+    Get { gate_id: String, rule_id: String },
+    /// Create a deployment rule from a JSON file
+    Create {
+        gate_id: String,
+        #[arg(long)]
+        file: String,
+    },
+    /// Update a deployment rule from a JSON file
+    Update {
+        gate_id: String,
+        rule_id: String,
+        #[arg(long)]
+        file: String,
+    },
+    /// Delete a deployment rule
+    Delete { gate_id: String, rule_id: String },
+}
+
 // ---- Error Tracking ----
 #[derive(Subcommand)]
 enum ErrorTrackingActions {
@@ -4419,6 +4767,114 @@ enum CodeCoverageActions {
         repo: String,
         #[arg(long, help = "Commit SHA (required)")]
         commit: String,
+    },
+}
+
+// ---- Feature Flags ----
+#[derive(Subcommand)]
+enum FeatureFlagActions {
+    /// Manage feature flag definitions
+    Flags {
+        #[command(subcommand)]
+        action: FeatureFlagFlagActions,
+    },
+    /// Manage feature flag environments
+    Environments {
+        #[command(subcommand)]
+        action: FeatureFlagEnvActions,
+    },
+    /// Enable a feature flag in an environment
+    Enable {
+        #[arg(help = "Feature flag ID (UUID)")]
+        feature_flag_id: String,
+        #[arg(help = "Environment ID (UUID)")]
+        feature_flags_env_id: String,
+    },
+    /// Disable a feature flag in an environment
+    Disable {
+        #[arg(help = "Feature flag ID (UUID)")]
+        feature_flag_id: String,
+        #[arg(help = "Environment ID (UUID)")]
+        feature_flags_env_id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum FeatureFlagFlagActions {
+    /// List feature flags
+    List {
+        #[arg(long, help = "Filter by key (partial match)")]
+        key: Option<String>,
+        #[arg(long, help = "Filter by archived status")]
+        is_archived: Option<bool>,
+        #[arg(long, help = "Maximum number of results to return")]
+        limit: Option<i32>,
+        #[arg(long, help = "Number of results to skip")]
+        offset: Option<i32>,
+    },
+    /// Get a feature flag
+    Get {
+        #[arg(help = "Feature flag ID (UUID)")]
+        feature_flag_id: String,
+    },
+    /// Create a feature flag from a JSON file
+    Create {
+        #[arg(long, help = "JSON file with request body (required)")]
+        file: String,
+    },
+    /// Update a feature flag
+    Update {
+        #[arg(help = "Feature flag ID (UUID)")]
+        feature_flag_id: String,
+        #[arg(long, help = "JSON file with request body (required)")]
+        file: String,
+    },
+    /// Archive a feature flag
+    Archive {
+        #[arg(help = "Feature flag ID (UUID)")]
+        feature_flag_id: String,
+    },
+    /// Unarchive a feature flag
+    Unarchive {
+        #[arg(help = "Feature flag ID (UUID)")]
+        feature_flag_id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum FeatureFlagEnvActions {
+    /// List feature flag environments
+    List {
+        #[arg(long, help = "Filter by name (partial match)")]
+        name: Option<String>,
+        #[arg(long, help = "Filter by key (partial match)")]
+        key: Option<String>,
+        #[arg(long, help = "Maximum number of results to return")]
+        limit: Option<i32>,
+        #[arg(long, help = "Number of results to skip")]
+        offset: Option<i32>,
+    },
+    /// Get a feature flag environment
+    Get {
+        #[arg(help = "Environment ID (UUID)")]
+        feature_flags_env_id: String,
+    },
+    /// Create a feature flag environment from a JSON file
+    Create {
+        #[arg(long, help = "JSON file with request body (required)")]
+        file: String,
+    },
+    /// Update a feature flag environment
+    Update {
+        #[arg(help = "Environment ID (UUID)")]
+        feature_flags_env_id: String,
+        #[arg(long, help = "JSON file with request body (required)")]
+        file: String,
+    },
+    /// Delete a feature flag environment
+    Delete {
+        #[arg(help = "Environment ID (UUID)")]
+        feature_flags_env_id: String,
     },
 }
 
@@ -6925,6 +7381,59 @@ async fn main_inner() -> anyhow::Result<()> {
                     commands::dashboards::update(&cfg, &id, &file).await?;
                 }
                 DashboardActions::Delete { id } => commands::dashboards::delete(&cfg, &id).await?,
+                DashboardActions::Widgets { action } => match action {
+                    WidgetActions::List {
+                        experience_type,
+                        filter_widget_type,
+                        filter_creator_handle,
+                        filter_is_favorited,
+                        filter_title,
+                        filter_tags,
+                        sort,
+                        page_number,
+                        page_size,
+                    } => {
+                        commands::widgets::list(
+                            &cfg,
+                            &experience_type,
+                            filter_widget_type,
+                            filter_creator_handle,
+                            filter_is_favorited,
+                            filter_title,
+                            filter_tags,
+                            sort,
+                            page_number,
+                            page_size,
+                        )
+                        .await?;
+                    }
+                    WidgetActions::Get {
+                        experience_type,
+                        widget_id,
+                    } => {
+                        commands::widgets::get(&cfg, &experience_type, &widget_id).await?;
+                    }
+                    WidgetActions::Create {
+                        experience_type,
+                        file,
+                    } => {
+                        commands::widgets::create(&cfg, &experience_type, &file).await?;
+                    }
+                    WidgetActions::Update {
+                        experience_type,
+                        widget_id,
+                        file,
+                    } => {
+                        commands::widgets::update(&cfg, &experience_type, &widget_id, &file)
+                            .await?;
+                    }
+                    WidgetActions::Delete {
+                        experience_type,
+                        widget_id,
+                    } => {
+                        commands::widgets::delete(&cfg, &experience_type, &widget_id).await?;
+                    }
+                },
             }
         }
         // --- Metrics ---
@@ -7027,6 +7536,35 @@ async fn main_inner() -> anyhow::Result<()> {
                     } => {
                         commands::synthetics::tests_run(&cfg, public_ids, tunnel, timeout).await?;
                     }
+                    SyntheticsTestActions::GetFastResult { result_id } => {
+                        commands::synthetics::tests_get_fast_result(&cfg, &result_id).await?;
+                    }
+                    SyntheticsTestActions::GetVersion {
+                        public_id,
+                        version,
+                        include_change_metadata,
+                    } => {
+                        commands::synthetics::tests_get_version(
+                            &cfg,
+                            &public_id,
+                            version,
+                            include_change_metadata,
+                        )
+                        .await?;
+                    }
+                    SyntheticsTestActions::ListVersions {
+                        public_id,
+                        limit,
+                        last_version_number,
+                    } => {
+                        commands::synthetics::tests_list_versions(
+                            &cfg,
+                            &public_id,
+                            limit,
+                            last_version_number,
+                        )
+                        .await?;
+                    }
                 },
                 SyntheticsActions::Locations { action } => match action {
                     SyntheticsLocationActions::List => {
@@ -7048,6 +7586,40 @@ async fn main_inner() -> anyhow::Result<()> {
                     }
                     SyntheticsSuiteActions::Delete { suite_ids, .. } => {
                         commands::synthetics::suites_delete(&cfg, suite_ids).await?;
+                    }
+                },
+                SyntheticsActions::Multistep { action } => match action {
+                    SyntheticsMultistepActions::GetSubtests { public_id } => {
+                        commands::synthetics::multistep_get_subtests(&cfg, &public_id).await?;
+                    }
+                    SyntheticsMultistepActions::GetSubtestParents { public_id } => {
+                        commands::synthetics::multistep_get_subtest_parents(&cfg, &public_id)
+                            .await?;
+                    }
+                },
+            }
+        }
+        // --- Test Optimization ---
+        Commands::TestOptimization { action } => {
+            cfg.validate_auth()?;
+            match action {
+                TestOptimizationActions::Settings { action } => match action {
+                    TestOptimizationSettingsActions::Get { file } => {
+                        commands::test_optimization::settings_get(&cfg, &file).await?;
+                    }
+                    TestOptimizationSettingsActions::Update { file } => {
+                        commands::test_optimization::settings_update(&cfg, &file).await?;
+                    }
+                    TestOptimizationSettingsActions::Delete { file } => {
+                        commands::test_optimization::settings_delete(&cfg, &file).await?;
+                    }
+                },
+                TestOptimizationActions::FlakyTests { action } => match action {
+                    TestOptimizationFlakyTestsActions::Search { file } => {
+                        commands::test_optimization::flaky_tests_search(&cfg, file).await?;
+                    }
+                    TestOptimizationFlakyTestsActions::Update { file } => {
+                        commands::test_optimization::flaky_tests_update(&cfg, &file).await?;
                     }
                 },
             }
@@ -7901,6 +8473,62 @@ async fn main_inner() -> anyhow::Result<()> {
                 },
             }
         }
+        // --- Deployment Gates ---
+        Commands::DeploymentGates { action } => {
+            cfg.validate_auth()?;
+            match action {
+                DeploymentGatesActions::Gates { action } => match action {
+                    DeploymentGatesGateActions::List {
+                        page_cursor,
+                        page_size,
+                    } => {
+                        commands::deployment_gates::list(&cfg, page_cursor, page_size).await?;
+                    }
+                    DeploymentGatesGateActions::Get { gate_id } => {
+                        commands::deployment_gates::get(&cfg, &gate_id).await?;
+                    }
+                    DeploymentGatesGateActions::Create { file } => {
+                        commands::deployment_gates::create(&cfg, &file).await?;
+                    }
+                    DeploymentGatesGateActions::Update { gate_id, file } => {
+                        commands::deployment_gates::update(&cfg, &gate_id, &file).await?;
+                    }
+                    DeploymentGatesGateActions::Delete { gate_id } => {
+                        commands::deployment_gates::delete(&cfg, &gate_id).await?;
+                    }
+                },
+                DeploymentGatesActions::Evaluations { action } => match action {
+                    DeploymentGatesEvaluationActions::Get { evaluation_id } => {
+                        commands::deployment_gates::evaluation_get(&cfg, &evaluation_id).await?;
+                    }
+                    DeploymentGatesEvaluationActions::Trigger { file } => {
+                        commands::deployment_gates::evaluation_trigger(&cfg, &file).await?;
+                    }
+                },
+                DeploymentGatesActions::Rules { action } => match action {
+                    DeploymentGatesRuleActions::List { gate_id } => {
+                        commands::deployment_gates::rules_list(&cfg, &gate_id).await?;
+                    }
+                    DeploymentGatesRuleActions::Get { gate_id, rule_id } => {
+                        commands::deployment_gates::rule_get(&cfg, &gate_id, &rule_id).await?;
+                    }
+                    DeploymentGatesRuleActions::Create { gate_id, file } => {
+                        commands::deployment_gates::rule_create(&cfg, &gate_id, &file).await?;
+                    }
+                    DeploymentGatesRuleActions::Update {
+                        gate_id,
+                        rule_id,
+                        file,
+                    } => {
+                        commands::deployment_gates::rule_update(&cfg, &gate_id, &rule_id, &file)
+                            .await?;
+                    }
+                    DeploymentGatesRuleActions::Delete { gate_id, rule_id } => {
+                        commands::deployment_gates::rule_delete(&cfg, &gate_id, &rule_id).await?;
+                    }
+                },
+            }
+        }
         // --- Error Tracking ---
         Commands::ErrorTracking { action } => {
             cfg.validate_auth()?;
@@ -7931,6 +8559,86 @@ async fn main_inner() -> anyhow::Result<()> {
                 }
                 CodeCoverageActions::CommitSummary { repo, commit } => {
                     commands::code_coverage::commit_summary(&cfg, repo, commit).await?;
+                }
+            }
+        }
+        // --- Feature Flags ---
+        Commands::FeatureFlags { action } => {
+            cfg.validate_auth()?;
+            match action {
+                FeatureFlagActions::Flags { action } => match action {
+                    FeatureFlagFlagActions::List {
+                        key,
+                        is_archived,
+                        limit,
+                        offset,
+                    } => {
+                        commands::feature_flags::flags_list(&cfg, key, is_archived, limit, offset)
+                            .await?;
+                    }
+                    FeatureFlagFlagActions::Get { feature_flag_id } => {
+                        commands::feature_flags::flags_get(&cfg, &feature_flag_id).await?;
+                    }
+                    FeatureFlagFlagActions::Create { file } => {
+                        commands::feature_flags::flags_create(&cfg, &file).await?;
+                    }
+                    FeatureFlagFlagActions::Update {
+                        feature_flag_id,
+                        file,
+                    } => {
+                        commands::feature_flags::flags_update(&cfg, &feature_flag_id, &file)
+                            .await?;
+                    }
+                    FeatureFlagFlagActions::Archive { feature_flag_id } => {
+                        commands::feature_flags::flags_archive(&cfg, &feature_flag_id).await?;
+                    }
+                    FeatureFlagFlagActions::Unarchive { feature_flag_id } => {
+                        commands::feature_flags::flags_unarchive(&cfg, &feature_flag_id).await?;
+                    }
+                },
+                FeatureFlagActions::Environments { action } => match action {
+                    FeatureFlagEnvActions::List {
+                        name,
+                        key,
+                        limit,
+                        offset,
+                    } => {
+                        commands::feature_flags::envs_list(&cfg, name, key, limit, offset).await?;
+                    }
+                    FeatureFlagEnvActions::Get {
+                        feature_flags_env_id,
+                    } => {
+                        commands::feature_flags::envs_get(&cfg, &feature_flags_env_id).await?;
+                    }
+                    FeatureFlagEnvActions::Create { file } => {
+                        commands::feature_flags::envs_create(&cfg, &file).await?;
+                    }
+                    FeatureFlagEnvActions::Update {
+                        feature_flags_env_id,
+                        file,
+                    } => {
+                        commands::feature_flags::envs_update(&cfg, &feature_flags_env_id, &file)
+                            .await?;
+                    }
+                    FeatureFlagEnvActions::Delete {
+                        feature_flags_env_id,
+                    } => {
+                        commands::feature_flags::envs_delete(&cfg, &feature_flags_env_id).await?;
+                    }
+                },
+                FeatureFlagActions::Enable {
+                    feature_flag_id,
+                    feature_flags_env_id,
+                } => {
+                    commands::feature_flags::enable(&cfg, &feature_flag_id, &feature_flags_env_id)
+                        .await?;
+                }
+                FeatureFlagActions::Disable {
+                    feature_flag_id,
+                    feature_flags_env_id,
+                } => {
+                    commands::feature_flags::disable(&cfg, &feature_flag_id, &feature_flags_env_id)
+                        .await?;
                 }
             }
         }

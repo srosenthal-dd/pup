@@ -3,6 +3,7 @@ use datadog_api_client::datadogV1::api_synthetics::{
     ListTestsOptionalParams, SearchTestsOptionalParams, SyntheticsAPI,
 };
 use datadog_api_client::datadogV2::api_synthetics::{
+    GetSyntheticsTestVersionOptionalParams, ListSyntheticsTestVersionsOptionalParams,
     SearchSuitesOptionalParams, SyntheticsAPI as SyntheticsV2API,
 };
 use datadog_api_client::datadogV2::model::{
@@ -366,5 +367,95 @@ pub async fn suites_delete(cfg: &Config, suite_ids: Vec<String>) -> Result<()> {
         .delete_synthetics_suites(body)
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete synthetic suites: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+// ---- Tests (V2 API) ----
+
+pub async fn tests_get_fast_result(cfg: &Config, result_id: &str) -> Result<()> {
+    let dd_cfg = client::make_dd_config(cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => SyntheticsV2API::with_client_and_config(dd_cfg, c),
+        None => SyntheticsV2API::with_config(dd_cfg),
+    };
+    let resp = api
+        .get_synthetics_fast_test_result(result_id.to_string())
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to get fast test result: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn tests_get_version(
+    cfg: &Config,
+    public_id: &str,
+    version: i64,
+    include_change_metadata: bool,
+) -> Result<()> {
+    let dd_cfg = client::make_dd_config(cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => SyntheticsV2API::with_client_and_config(dd_cfg, c),
+        None => SyntheticsV2API::with_config(dd_cfg),
+    };
+    let mut params = GetSyntheticsTestVersionOptionalParams::default();
+    if include_change_metadata {
+        params = params.include_change_metadata(true);
+    }
+    let resp = api
+        .get_synthetics_test_version(public_id.to_string(), version, params)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to get test version: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn tests_list_versions(
+    cfg: &Config,
+    public_id: &str,
+    limit: Option<i64>,
+    last_version_number: Option<i64>,
+) -> Result<()> {
+    let dd_cfg = client::make_dd_config(cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => SyntheticsV2API::with_client_and_config(dd_cfg, c),
+        None => SyntheticsV2API::with_config(dd_cfg),
+    };
+    let mut params = ListSyntheticsTestVersionsOptionalParams::default();
+    if let Some(l) = limit {
+        params = params.limit(l);
+    }
+    if let Some(v) = last_version_number {
+        params = params.last_version_number(v);
+    }
+    let resp = api
+        .list_synthetics_test_versions(public_id.to_string(), params)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to list test versions: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+// ---- Multistep (V2 API) ----
+
+pub async fn multistep_get_subtests(cfg: &Config, public_id: &str) -> Result<()> {
+    let dd_cfg = client::make_dd_config(cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => SyntheticsV2API::with_client_and_config(dd_cfg, c),
+        None => SyntheticsV2API::with_config(dd_cfg),
+    };
+    let resp = api
+        .get_api_multistep_subtests(public_id.to_string())
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to get multistep subtests: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn multistep_get_subtest_parents(cfg: &Config, public_id: &str) -> Result<()> {
+    let dd_cfg = client::make_dd_config(cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => SyntheticsV2API::with_client_and_config(dd_cfg, c),
+        None => SyntheticsV2API::with_config(dd_cfg),
+    };
+    let resp = api
+        .get_api_multistep_subtest_parents(public_id.to_string())
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to get multistep subtest parents: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
