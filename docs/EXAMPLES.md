@@ -489,6 +489,98 @@ pup workflows instances get <workflow-id> <instance-id>
 pup workflows instances cancel <workflow-id> <instance-id>
 ```
 
+## Runbooks
+
+Runbooks are YAML files stored in `~/.config/pup/runbooks/` that encode multi-step operational procedures. Each step runs a `pup` command, shell command, HTTP request, Datadog Workflow, or an interactive confirmation.
+
+### List Available Runbooks
+```bash
+pup runbooks list
+pup runbooks list --tag=type:deployment
+```
+
+### Inspect a Runbook
+```bash
+pup runbooks describe deploy-service
+```
+
+### Run a Runbook
+```bash
+# Run with required variables via --arg flags
+pup runbooks run deploy-service --arg SERVICE=payments --arg VERSION=1.2.3
+
+# Dry-run (print steps without executing)
+pup runbooks run incident-triage --dry-run
+```
+
+### Import a Runbook
+```bash
+# Copy a runbook YAML into ~/.config/pup/runbooks/
+pup runbooks import ./my-runbook.yaml
+```
+
+### Validate a Runbook
+```bash
+pup runbooks validate ./my-runbook.yaml
+```
+
+### Example Runbook (YAML)
+```yaml
+name: restart-service
+description: Safely restart a service after checking monitors
+vars:
+  SERVICE:
+    description: Service name
+    required: true
+
+steps:
+  - name: Check active monitors
+    kind: pup
+    run: monitors list --tags="service:{{SERVICE}}"
+    capture: MONITORS_JSON
+
+  - name: Confirm restart
+    kind: confirm
+    message: "Restart {{SERVICE}}? Review monitors above."
+
+  - name: Trigger restart workflow
+    kind: datadog-workflow
+    workflow_id: "abc-123"
+    inputs:
+      service: "{{SERVICE}}"
+    on_failure: fail
+
+  - name: Notify via webhook
+    kind: http
+    url: https://hooks.example.com/notify
+    method: POST
+    body: '{"text": "Restarted {{SERVICE}}"}'
+    content_type: application/json
+    on_failure: warn
+```
+
+### Reusable Step Templates
+Store shared step logic in `~/.config/pup/runbooks/_templates/<name>.yaml`:
+```yaml
+# _templates/slack-notify.yaml
+kind: http
+url: "{{SLACK_WEBHOOK}}"
+method: POST
+body: '{"text": "{{MESSAGE}}"}'
+content_type: application/json
+on_failure: warn
+```
+
+Reference a template in any runbook step:
+```yaml
+steps:
+  - name: Notify Slack
+    template: slack-notify
+    # Override any template field as needed
+```
+
+See `docs/examples/runbooks/` for complete examples.
+
 ## IDP (Service Catalog)
 
 ### Get Full Service Context

@@ -10,7 +10,7 @@ Every AI agent needs a loyal companion. Meet Pup — the CLI that gives your age
 
 ## What is Pup?
 
-A comprehensive, AI-agent-ready CLI with 320+ commands across 56 Datadog product domains. We've unleashed the full power of Datadog's APIs so your agents can fetch metrics, sniff out errors, and track down issues without barking up the wrong API tree.
+A comprehensive, AI-agent-ready CLI with 325+ commands across 57 Datadog product domains. We've unleashed the full power of Datadog's APIs so your agents can fetch metrics, sniff out errors, and track down issues without barking up the wrong API tree.
 
 AI agents are the fastest-growing interface for infrastructure management. Companies like Vercel and AWS are racing to make their platforms agent-accessible, but we're leading the pack. Pup makes Datadog the alpha choice for AI-native workflows with 100% documented API coverage while competitors are still learning basic commands.
 
@@ -39,9 +39,9 @@ pup metrics query --query="avg:system.cpu.user{*}"   # Track the metrics tail
 
 ## API Coverage
 
-<!-- Last updated: 2026-03-17 | API Client: datadog-api-client-rust v0.28 -->
+<!-- Last updated: 2026-03-30 | API Client: datadog-api-client-rust v0.28 -->
 
-Pup implements **54 of 85+ available Datadog APIs** (63% coverage) with **320+ subcommands** across **57 command groups**.
+Pup implements **54 of 85+ available Datadog APIs** (63% coverage) with **325+ subcommands** across **58 command groups**.
 
 See [docs/COMMANDS.md](docs/COMMANDS.md) for detailed command reference.
 
@@ -81,6 +81,7 @@ See [docs/COMMANDS.md](docs/COMMANDS.md) for detailed command reference.
 | Dashboard Lists | ❌ | - | Not yet implemented |
 | Powerpacks | ❌ | - | Not yet implemented |
 | Workflow Automation | ✅ | `workflows get`, `workflows create`, `workflows update`, `workflows delete`, `workflows run`, `workflows instances` | Full CRUD plus run and instance management (list, get, cancel) |
+| Local Runbooks | ✅ | `runbooks list`, `runbooks describe`, `runbooks run`, `runbooks import`, `runbooks validate` | **New** — YAML-defined multi-step runbooks with pup/shell/http/workflow step types, variable interpolation, and reusable templates |
 
 </details>
 
@@ -444,6 +445,44 @@ wasmtime run --env DD_ACCESS_TOKEN="your-token" target/wasm32-wasip2/release/pup
 # Or with API keys
 wasmtime run --env DD_API_KEY="key" --env DD_APP_KEY="key" target/wasm32-wasip2/release/pup.wasm -- --help
 ```
+
+## Runbooks
+
+`pup runbooks` is a local execution engine for YAML-defined operational procedures. Runbooks live in `~/.config/pup/runbooks/` and encode multi-step tasks — from deployment gates to incident triage — using `pup`, shell, HTTP, Datadog Workflow, and interactive confirmation steps.
+
+```bash
+# List available runbooks
+pup runbooks list
+
+# Inspect a runbook's steps
+pup runbooks describe incident-triage
+
+# Run a runbook, passing required variables
+pup runbooks run deploy-service --arg SERVICE=payments --arg VERSION=1.2.3
+
+# Dry-run (show steps without executing)
+pup runbooks run deploy-service --dry-run
+
+# Import a runbook from a file
+pup runbooks import ./my-runbook.yaml
+
+# Validate a runbook file without running it
+pup runbooks validate ./my-runbook.yaml
+```
+
+### Runbook Features
+
+- **Step types**: `pup` (Datadog commands), `shell`, `http`, `datadog-workflow`, `confirm`
+- **Variable interpolation**: `{{VAR_NAME}}` in any field, passed via `--arg KEY=VALUE`
+- **Reusable templates**: Store shared step definitions in `_templates/` and reference them with `template: <name>`
+- **HTTP steps**: Full method support (GET/POST/PUT/PATCH/DELETE) with `body`, `headers`, `content_type`, and `body_file`
+- **Failure handling**: `on_failure: fail|warn|ignore` and `optional: true` per step
+- **Conditional execution**: `when: on_success|on_failure|always`
+- **Polling**: `poll.interval`, `poll.timeout`, `poll.until` for long-running operations
+- **Output capture**: `capture: VAR_NAME` stores stdout for use in later steps
+- **Timestamped output**: Every step shows start time, elapsed duration, and labeled stdout/stderr
+
+See `docs/examples/runbooks/` for ready-to-use examples and [docs/EXAMPLES.md](docs/EXAMPLES.md) for full reference.
 
 ## Agent Skills
 
