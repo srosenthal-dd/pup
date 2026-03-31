@@ -95,8 +95,11 @@ pub(crate) fn parse_extension_args(args: &[String]) -> ParsedArgs {
 }
 
 /// Check if a name matches any built-in pup command (including aliases).
+/// Uses .build() to materialize clap's auto-generated subcommands (like "help")
+/// so nothing can slip through.
 pub(crate) fn is_builtin_command(name: &str) -> bool {
-    let cmd = Cli::command();
+    let mut cmd = Cli::command();
+    cmd.build();
     let result = cmd
         .get_subcommands()
         .any(|sub| sub.get_name() == name || sub.get_all_aliases().any(|alias| alias == name));

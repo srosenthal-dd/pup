@@ -74,6 +74,37 @@ pub fn list_extensions() -> Result<Vec<ExtensionInfo>> {
     Ok(extensions)
 }
 
+/// Build an "EXTENSIONS:" help section string for display in `pup --help`.
+/// Returns `None` when no extensions are installed (so the help output stays
+/// clean and unchanged).
+pub fn build_extensions_help_section() -> Option<String> {
+    let exts = list_extensions().ok()?;
+    if exts.is_empty() {
+        return None;
+    }
+
+    // Find the longest extension name so we can align descriptions.
+    let max_name_len = exts.iter().map(|e| e.name.len()).max().unwrap_or(0);
+    // Pad to at least 12 chars to match clap's default subcommand column width.
+    let col_width = max_name_len.max(12);
+
+    let mut section = String::from("EXTENSIONS:");
+    for ext in &exts {
+        let desc = if !ext.description.is_empty() {
+            ext.description.clone()
+        } else {
+            format!("Extension {}", ext.name)
+        };
+        section.push_str(&format!(
+            "\n  {:width$}  {}",
+            ext.name,
+            desc,
+            width = col_width
+        ));
+    }
+    Some(section)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -170,6 +201,85 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].name, "hello");
         assert_eq!(result[0].version, "1.0.0");
+
+        std::env::remove_var("PUP_CONFIG_DIR");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_build_help_section_no_extensions() {
+        let dir = make_test_dir("help-empty");
+        std::fs::create_dir_all(dir.join("extensions")).unwrap();
+
+        let _guard = crate::test_utils::ENV_LOCK.lock().unwrap();
+        std::env::set_var("PUP_CONFIG_DIR", &dir);
+
+        let result = build_extensions_help_section();
+        assert!(result.is_none());
+
+        std::env::remove_var("PUP_CONFIG_DIR");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_build_help_section_with_extensions() {
+        let dir = make_test_dir("help-with-ext");
+
+        // Create two extensions with manifests.
+        for (name, desc) in &[("hello", "Hello world"), ("terraform", "Manage Terraform")] {
+            let ext_dir = dir.join("extensions").join(format!("pup-{name}"));
+            std::fs::create_dir_all(&ext_dir).unwrap();
+            let manifest = Manifest {
+                name: name.to_string(),
+                version: "1.0.0".to_string(),
+                source: format!("local:/tmp/pup-{name}"),
+                installed_at: "2026-03-29T00:00:00Z".to_string(),
+                binary: format!("pup-{name}"),
+                description: desc.to_string(),
+                installed_by_pup: "0.39.0".to_string(),
+            };
+            manifest.save(&ext_dir.join("manifest.json")).unwrap();
+        }
+
+        let _guard = crate::test_utils::ENV_LOCK.lock().unwrap();
+        std::env::set_var("PUP_CONFIG_DIR", &dir);
+
+        let result = build_extensions_help_section();
+        assert!(result.is_some());
+        let section = result.unwrap();
+        assert!(section.starts_with("EXTENSIONS:"));
+        assert!(section.contains("hello"));
+        assert!(section.contains("Hello world"));
+        assert!(section.contains("terraform"));
+        assert!(section.contains("Manage Terraform"));
+
+        std::env::remove_var("PUP_CONFIG_DIR");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_build_help_section_fallback_to_extension_name() {
+        let dir = make_test_dir("help-no-desc");
+        let ext_dir = dir.join("extensions").join("pup-nodesc");
+        std::fs::create_dir_all(&ext_dir).unwrap();
+        let manifest = Manifest {
+            name: "nodesc".to_string(),
+            version: "2.5.0".to_string(),
+            source: "local:/tmp/pup-nodesc".to_string(),
+            installed_at: "2026-03-29T00:00:00Z".to_string(),
+            binary: "pup-nodesc".to_string(),
+            description: String::new(),
+            installed_by_pup: "0.39.0".to_string(),
+        };
+        manifest.save(&ext_dir.join("manifest.json")).unwrap();
+
+        let _guard = crate::test_utils::ENV_LOCK.lock().unwrap();
+        std::env::set_var("PUP_CONFIG_DIR", &dir);
+
+        let result = build_extensions_help_section();
+        assert!(result.is_some());
+        let section = result.unwrap();
+        assert!(section.contains("Extension nodesc"));
 
         std::env::remove_var("PUP_CONFIG_DIR");
         let _ = std::fs::remove_dir_all(&dir);

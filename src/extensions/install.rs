@@ -37,7 +37,13 @@ pub fn validate_extension_name(name: &str) -> Result<()> {
 
 /// Install an extension from a local file path.
 /// If `link` is true, creates a symlink instead of copying.
-pub fn install_from_local(source: &Path, name: &str, link: bool, force: bool) -> Result<()> {
+pub fn install_from_local(
+    source: &Path,
+    name: &str,
+    link: bool,
+    force: bool,
+    description: Option<&str>,
+) -> Result<()> {
     validate_extension_name(name)?;
 
     if !source.exists() {
@@ -113,7 +119,7 @@ pub fn install_from_local(source: &Path, name: &str, link: bool, force: bool) ->
         source: source_str,
         installed_at: chrono_now_iso(),
         binary: exe_name,
-        description: String::new(),
+        description: description.unwrap_or_default().to_string(),
         installed_by_pup: version::VERSION.to_string(),
     };
     manifest.save(&ext_dir.join("manifest.json"))?;
@@ -183,6 +189,8 @@ mod tests {
     fn test_validate_name_builtin_conflict() {
         assert!(validate_extension_name("monitors").is_err());
         assert!(validate_extension_name("extension").is_err());
+        assert!(validate_extension_name("help").is_err());
+        assert!(validate_extension_name("version").is_err());
     }
 
     #[test]

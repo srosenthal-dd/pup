@@ -67,6 +67,7 @@ pub fn install(
     _url: bool,
     name: Option<String>,
     force: bool,
+    description: Option<String>,
 ) -> Result<()> {
     if local {
         let source_path = PathBuf::from(&source);
@@ -91,7 +92,13 @@ pub fn install(
             }
         };
 
-        extensions::install::install_from_local(&source_path, &ext_name, link, force)?;
+        extensions::install::install_from_local(
+            &source_path,
+            &ext_name,
+            link,
+            force,
+            description.as_deref(),
+        )?;
         if link {
             println!("Linked extension '{ext_name}' from {source}");
         } else {

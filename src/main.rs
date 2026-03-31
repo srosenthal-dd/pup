@@ -2092,6 +2092,9 @@ enum ExtensionActions {
         /// Overwrite an existing extension
         #[arg(long)]
         force: bool,
+        /// Short description shown in `pup help`
+        #[arg(long)]
+        description: Option<String>,
     },
     /// Remove an installed extension
     Remove {
@@ -6384,7 +6387,18 @@ async fn main_inner() -> anyhow::Result<()> {
         }
     }
 
-    let matches = Cli::command().get_matches();
+    // Build the clap Command and, when extensions are installed, append an
+    // "EXTENSIONS:" section to the help output so they are visible in
+    // `pup --help` / `pup help`, similar to how `gh` lists extensions.
+    let mut cmd = Cli::command();
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let ext_help = extensions::discovery::build_extensions_help_section();
+        if let Some(section) = ext_help {
+            cmd = cmd.after_help(section);
+        }
+    }
+    let matches = cmd.get_matches();
     let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
 
     // Handle commands that do not require authentication before Config::from_env() so
@@ -8632,8 +8646,19 @@ async fn main_inner() -> anyhow::Result<()> {
                 url,
                 name,
                 force,
+                description,
             } => {
-                commands::extension::install(&cfg, source, tag, local, link, url, name, force)?;
+                commands::extension::install(
+                    &cfg,
+                    source,
+                    tag,
+                    local,
+                    link,
+                    url,
+                    name,
+                    force,
+                    description,
+                )?;
             }
             ExtensionActions::Remove { name } => commands::extension::remove(&cfg, name)?,
             ExtensionActions::Upgrade { name, all } => {
