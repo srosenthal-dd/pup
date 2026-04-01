@@ -238,10 +238,14 @@ pub async fn spans_search(
         body["ml_app"] = serde_json::json!(a);
     }
     if let Some(f) = from {
-        body["from"] = serde_json::json!(f);
+        let from_ms = crate::util::parse_time_to_unix_millis(&f)
+            .map_err(|e| anyhow::anyhow!("invalid --from value: {e}"))?;
+        body["from"] = serde_json::json!(from_ms.to_string());
     }
     if let Some(t) = to {
-        body["to"] = serde_json::json!(t);
+        let to_ms = crate::util::parse_time_to_unix_millis(&t)
+            .map_err(|e| anyhow::anyhow!("invalid --to value: {e}"))?;
+        body["to"] = serde_json::json!(to_ms.to_string());
     }
     if let Some(c) = cursor {
         body["cursor"] = serde_json::json!(c);

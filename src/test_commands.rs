@@ -3099,6 +3099,74 @@ async fn test_llm_obs_spans_search() {
 }
 
 #[tokio::test]
+async fn test_llm_obs_spans_search_from_is_numeric_string() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+
+    let resp = r#"{"status":"success","data":{"spans":[]}}"#;
+    let _mock = server
+        .mock("POST", "/api/unstable/llm-obs-mcp/v1/trace/search-spans")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(resp)
+        // Assert both from and to are 13-digit epoch ms strings, not relative strings
+        .match_body(mockito::Matcher::Regex(
+            r#""from":"\d{13}""#.to_string(),
+        ))
+        .match_body(mockito::Matcher::Regex(
+            r#""to":"\d{13}""#.to_string(),
+        ))
+        .create_async()
+        .await;
+
+    let result = crate::commands::llm_obs::spans_search(
+        &cfg,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        false,
+        Some("4h".into()),
+        Some("now".into()),
+        5,
+        None,
+    )
+    .await;
+    assert!(result.is_ok(), "spans_search failed: {:?}", result.err());
+    _mock.assert();
+    cleanup_env();
+}
+
+#[tokio::test]
+async fn test_llm_obs_spans_search_invalid_from_returns_error() {
+    let _lock = lock_env();
+    let server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+
+    // No mock needed — should error before any network call
+    let result = crate::commands::llm_obs::spans_search(
+        &cfg,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        false,
+        Some("not-a-valid-time".into()),
+        None,
+        5,
+        None,
+    )
+    .await;
+    assert!(result.is_err(), "expected error for invalid --from value");
+    cleanup_env();
+}
+
+#[tokio::test]
 async fn test_llm_obs_spans_search_empty_results() {
     let _lock = lock_env();
     let mut server = mockito::Server::new_async().await;
