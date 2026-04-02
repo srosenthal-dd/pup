@@ -120,9 +120,8 @@ pub async fn run(
 
     eprintln!("Instance {instance_id} started, waiting for completion...");
 
-    let timeout_duration = std::time::Duration::from_millis(
-        crate::util::parse_duration_to_millis(timeout)? as u64,
-    );
+    let timeout_duration =
+        std::time::Duration::from_millis(crate::util::parse_duration_to_millis(timeout)? as u64);
     let start = std::time::Instant::now();
 
     loop {
@@ -210,4 +209,3 @@ pub async fn instance_cancel(cfg: &Config, workflow_id: &str, instance_id: &str)
         .map_err(|e| anyhow::anyhow!("failed to cancel workflow instance: {:?}", e))?;
     formatter::output(cfg, &resp)
 }
-

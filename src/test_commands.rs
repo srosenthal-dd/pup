@@ -3178,7 +3178,18 @@ async fn test_llm_obs_spans_search_empty_results() {
     .await;
 
     let result = crate::commands::llm_obs::spans_search(
-        &cfg, None, None, None, None, None, None, false, "1h".into(), "now".into(), 20, None,
+        &cfg,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        false,
+        "1h".into(),
+        "now".into(),
+        20,
+        None,
     )
     .await;
     assert!(
@@ -3204,7 +3215,18 @@ async fn test_llm_obs_spans_search_500() {
     .await;
 
     let result = crate::commands::llm_obs::spans_search(
-        &cfg, None, None, None, None, None, None, false, "1h".into(), "now".into(), 20, None,
+        &cfg,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        false,
+        "1h".into(),
+        "now".into(),
+        20,
+        None,
     )
     .await;
     assert!(result.is_err(), "should fail on 500");
@@ -3228,7 +3250,18 @@ async fn test_llm_obs_spans_search_no_auth() {
     };
 
     let result = crate::commands::llm_obs::spans_search(
-        &cfg, None, None, None, None, None, None, false, "1h".into(), "now".into(), 20, None,
+        &cfg,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        false,
+        "1h".into(),
+        "now".into(),
+        20,
+        None,
     )
     .await;
     assert!(result.is_err(), "should fail without auth");
