@@ -83,6 +83,7 @@ pub struct ProbeCreateParams<'a> {
     pub budget: u32,
     pub ttl: Option<&'a str>,
     pub depth: u32,
+    pub fields: Option<&'a str>,
 }
 
 struct ResolvedProbe<'a> {
@@ -282,6 +283,7 @@ pub async fn probes_create(cfg: &Config, params: ProbeCreateParams<'_>) -> Resul
         budget,
         ttl,
         depth,
+        fields,
     } = params;
     let expires_ms = if let Some(ttl_str) = ttl {
         Some(crate::util::now_millis() + crate::util::parse_duration_to_millis(ttl_str)?)
@@ -356,7 +358,64 @@ pub async fn probes_create(cfg: &Config, params: ProbeCreateParams<'_>) -> Resul
     });
 
     let resp = post(cfg, PROBES_PATH, payload).await?;
-    formatter::output(cfg, &resp)
+
+    match fields {
+        Some(field_list) => {
+            let output = extract_create_fields(&resp, field_list);
+            formatter::output(cfg, &output)
+        }
+        None => formatter::output(cfg, &resp),
+    }
+}
+
+fn extract_create_fields(resp: &serde_json::Value, field_list: &str) -> serde_json::Value {
+    let mut obj = serde_json::Map::new();
+    for field in field_list.split(',').map(|f| f.trim()) {
+        match field {
+            "id" => {
+                if let Some(v) = resp.pointer("/data/id") {
+                    obj.insert("id".to_string(), v.clone());
+                }
+            }
+            "service" => {
+                if let Some(v) = resp.pointer("/data/attributes/metadata/service_name") {
+                    obj.insert("service".to_string(), v.clone());
+                }
+            }
+            "env" => {
+                if let Some(v) = resp
+                    .pointer("/data/attributes/metadata/enablement/queries/0/tags/0/values/0/value")
+                {
+                    obj.insert("env".to_string(), v.clone());
+                }
+            }
+            "location" => {
+                let probe = &resp["data"]["attributes"]["probe"]["where"];
+                if let (Some(t), Some(m)) =
+                    (probe["type_name"].as_str(), probe["method_name"].as_str())
+                {
+                    obj.insert(
+                        "location".to_string(),
+                        serde_json::json!(format!("{t}:{m}")),
+                    );
+                }
+            }
+            "template" => {
+                if let Some(v) = resp.pointer("/data/attributes/probe/template") {
+                    obj.insert("template".to_string(), v.clone());
+                }
+            }
+            "expires" => {
+                if let Some(v) = resp.pointer("/data/attributes/expires") {
+                    obj.insert("expires".to_string(), v.clone());
+                }
+            }
+            other => {
+                eprintln!("unknown field: {other}");
+            }
+        }
+    }
+    serde_json::Value::Object(obj)
 }
 
 pub async fn probes_delete(cfg: &Config, id: &str) -> Result<()> {
@@ -847,6 +906,67 @@ mod tests {
         });
         let probe = &payload["data"]["attributes"]["probe"];
         assert_eq!(probe["capture"]["max_reference_depth"], 5);
+    }
+
+    fn sample_create_response() -> serde_json::Value {
+        serde_json::json!({
+            "data": {
+                "id": "082b17fd-c75c-4ab0-8426-3456b98d7600",
+                "type": "di_log_probe",
+                "attributes": {
+                    "expires": 1775146304000_i64,
+                    "metadata": {
+                        "service_name": "debugger-demo-java",
+                        "enablement": {
+                            "queries": [{
+                                "tags": [{
+                                    "key": "env",
+                                    "values": [{ "value": "prod", "is_excluded": false }]
+                                }]
+                            }]
+                        }
+                    },
+                    "probe": {
+                        "template": "showVetList called with page={page}",
+                        "where": {
+                            "type_name": "org.springframework.samples.petclinic.vet.VetController",
+                            "method_name": "showVetList"
+                        }
+                    }
+                }
+            }
+        })
+    }
+
+    #[test]
+    fn test_extract_create_fields_id() {
+        let resp = sample_create_response();
+        let out = extract_create_fields(&resp, "id");
+        assert_eq!(out["id"], "082b17fd-c75c-4ab0-8426-3456b98d7600");
+        assert!(out.get("service").is_none());
+    }
+
+    #[test]
+    fn test_extract_create_fields_all() {
+        let resp = sample_create_response();
+        let out = extract_create_fields(&resp, "id,service,env,location,template,expires");
+        assert_eq!(out["id"], "082b17fd-c75c-4ab0-8426-3456b98d7600");
+        assert_eq!(out["service"], "debugger-demo-java");
+        assert_eq!(out["env"], "prod");
+        assert_eq!(
+            out["location"],
+            "org.springframework.samples.petclinic.vet.VetController:showVetList"
+        );
+        assert_eq!(out["template"], "showVetList called with page={page}");
+        assert_eq!(out["expires"], 1775146304000_i64);
+    }
+
+    #[test]
+    fn test_extract_create_fields_ignores_unknown() {
+        let resp = sample_create_response();
+        let out = extract_create_fields(&resp, "id,bogus");
+        assert_eq!(out["id"], "082b17fd-c75c-4ab0-8426-3456b98d7600");
+        assert!(out.get("bogus").is_none());
     }
 
     fn sample_context_response() -> serde_json::Value {

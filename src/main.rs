@@ -2756,6 +2756,11 @@ enum DebuggerProbeActions {
             help = "Max object graph traversal depth for captures (1-5). Start low, increase to drill into nested objects."
         )]
         depth: u32,
+        #[arg(
+            long,
+            help = "Comma-separated fields to include: id, service, env, location, template, expires. Default: full response."
+        )]
+        fields: Option<String>,
     },
     /// Delete a log probe
     Delete {
@@ -7701,6 +7706,7 @@ async fn main_inner() -> anyhow::Result<()> {
                         budget,
                         ttl,
                         depth,
+                        fields,
                     } => {
                         let language = match language {
                             Some(l) => l,
@@ -7727,6 +7733,7 @@ async fn main_inner() -> anyhow::Result<()> {
                                 budget,
                                 ttl: Some(ttl.as_str()),
                                 depth,
+                                fields: fields.as_deref(),
                             },
                         )
                         .await?;

@@ -3342,6 +3342,7 @@ async fn test_debugger_probes_create() {
         budget: 1000,
         ttl: Some("1h"),
         depth: 3,
+        fields: None,
     };
     let _ = crate::commands::debugger::probes_create(&cfg, params).await;
     cleanup_env();
