@@ -42,7 +42,7 @@ fn parse_relative_duration_millis(input: &str) -> Result<i64> {
 ///   - Relative long: "5min", "5mins", "5minute", "5minutes", "2hr", "2hours", "3days", "1week"
 ///   - With spaces: "5 minutes", "2 hours"
 ///   - With leading minus: "-5m", "-2h"
-///   - Unix timestamp (all digits, assumed milliseconds)
+///   - Unix timestamp in seconds (10 digits or fewer) or milliseconds
 ///   - RFC3339: "2024-01-01T00:00:00Z"
 ///
 /// All relative times are interpreted as "ago from now".
@@ -54,9 +54,16 @@ pub fn parse_time_to_unix_millis(input: &str) -> Result<i64> {
         return Ok(now_millis());
     }
 
-    // Unix timestamp (all digits)
+    // Unix timestamp (all digits). Treat 10-digit values as seconds to match
+    // CLI examples and common shell usage like `date +%s`; preserve longer
+    // values as milliseconds.
     if !input.is_empty() && input.chars().all(|c| c.is_ascii_digit()) {
-        return Ok(input.parse()?);
+        let ts: i64 = input.parse()?;
+        return if input.len() <= 10 {
+            Ok(ts * 1000)
+        } else {
+            Ok(ts)
+        };
     }
 
     // RFC3339 timestamp
@@ -173,6 +180,18 @@ mod tests {
     fn test_unix_timestamp() {
         let ms = parse_time_to_unix_millis("1700000000000").unwrap();
         assert_eq!(ms, 1700000000000);
+    }
+
+    #[test]
+    fn test_unix_timestamp_seconds_are_expanded_to_millis() {
+        let ms = parse_time_to_unix_millis("1707048000").unwrap();
+        assert_eq!(ms, 1707048000000);
+    }
+
+    #[test]
+    fn test_unix_timestamp_milliseconds_are_preserved() {
+        let ms = parse_time_to_unix_millis("1707048000000").unwrap();
+        assert_eq!(ms, 1707048000000);
     }
 
     #[test]
