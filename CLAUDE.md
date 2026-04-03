@@ -189,7 +189,7 @@ See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for detailed workflow and examples.
 ## CI/CD Requirements
 
 **All PRs must pass:**
-- `cargo test` (639+ unit tests)
+- `cargo test`
 - `cargo clippy -- -D warnings`
 - `cargo fmt --check`
 - Cross-compilation for 4 targets
@@ -210,7 +210,7 @@ See [TESTING.md](docs/TESTING.md) for details.
 
 - **69 command modules** implemented (including runbooks engine)
 - **325+ subcommands** across all command groups
-- **639+ unit tests** passing
+- **All unit tests** passing
 - **155/155 API output** matches Go version exactly
 - **390/390 command descriptions** match Go version
 - **31% smaller binary**, 16% faster startup, 25% less memory vs Go
