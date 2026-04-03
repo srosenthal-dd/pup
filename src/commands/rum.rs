@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use datadog_api_client::datadogV2::api_rum::{ListRUMEventsOptionalParams, RUMAPI};
 use datadog_api_client::datadogV2::api_rum_metrics::RumMetricsAPI;
 use datadog_api_client::datadogV2::api_rum_replay_heatmaps::{
@@ -372,4 +372,152 @@ pub async fn heatmaps_query(cfg: &Config, view_name: &str) -> Result<()> {
         .await
         .map_err(|e| anyhow::anyhow!("failed to query RUM heatmaps: {e:?}"))?;
     formatter::output(cfg, &resp)
+}
+
+// ---- RUM Aggregate ----
+
+pub struct RumAggregateArgs {
+    pub query: String,
+    pub from: String,
+    pub to: String,
+    pub compute: Vec<String>,
+    pub group_by: Vec<String>,
+    pub limit: i32,
+}
+
+fn parse_rum_compute(input: &str) -> Result<(String, Option<String>)> {
+    let input = input.trim();
+    if input.is_empty() {
+        bail!("--compute is required");
+    }
+    if input == "count" {
+        return Ok(("count".into(), None));
+    }
+    if let Some(paren) = input.find('(') {
+        let func = &input[..paren];
+        let rest = input[paren + 1..].trim_end_matches(')').trim();
+        if func == "percentile" {
+            let parts: Vec<&str> = rest.splitn(2, ',').collect();
+            if parts.len() != 2 {
+                bail!("percentile requires field and value: percentile(@duration, 99)");
+            }
+            let metric = parts[0].trim().to_string();
+            let pct: u32 = parts[1]
+                .trim()
+                .parse()
+                .map_err(|_| anyhow::anyhow!("invalid percentile value: {}", parts[1].trim()))?;
+            let agg_name = match pct {
+                75 => "pc75",
+                90 => "pc90",
+                95 => "pc95",
+                98 => "pc98",
+                99 => "pc99",
+                _ => bail!("unsupported percentile: {pct} (supported: 75, 90, 95, 98, 99)"),
+            };
+            return Ok((agg_name.into(), Some(metric)));
+        }
+        let metric = rest.to_string();
+        let agg_name = match func {
+            "avg" | "sum" | "min" | "max" | "median" | "cardinality" => func.to_string(),
+            "count" => bail!("count does not accept a field argument; use just 'count'"),
+            _ => bail!("unknown aggregation function: {func}"),
+        };
+        return Ok((agg_name, Some(metric)));
+    }
+    bail!(
+        "invalid --compute format: {input:?}\n\
+         Expected: count, avg(@duration), sum(@duration), percentile(@duration, 99), etc."
+    )
+}
+
+pub async fn aggregate(cfg: &Config, args: RumAggregateArgs) -> Result<()> {
+    let RumAggregateArgs {
+        query,
+        from,
+        to,
+        mut compute,
+        group_by,
+        limit,
+    } = args;
+    if compute.is_empty() {
+        compute.push("count".into());
+    }
+    let from_ms = util::parse_time_to_unix_millis(&from)?;
+    let to_ms = util::parse_time_to_unix_millis(&to)?;
+
+    let compute_arr: Vec<serde_json::Value> = compute
+        .iter()
+        .map(|c| {
+            let (aggregation, metric) = parse_rum_compute(c)?;
+            let mut obj = serde_json::json!({ "type": "total", "aggregation": aggregation });
+            if let Some(m) = metric {
+                obj["metric"] = serde_json::Value::String(m);
+            }
+            Ok(obj)
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    let filter = serde_json::json!({
+        "query": query,
+        "from": from_ms.to_string(),
+        "to": to_ms.to_string()
+    });
+
+    let mut body = serde_json::json!({
+        "filter": filter,
+        "compute": compute_arr
+    });
+
+    if !group_by.is_empty() {
+        let group_by_arr: Vec<serde_json::Value> = group_by
+            .iter()
+            .map(|facet| {
+                let mut obj = serde_json::json!({
+                    "facet": facet,
+                    "sort": { "type": "measure", "order": "desc", "metric": "c0" }
+                });
+                if limit > 0 {
+                    obj["limit"] = serde_json::json!(limit);
+                }
+                obj
+            })
+            .collect();
+        body["group_by"] = serde_json::json!(group_by_arr);
+    }
+
+    let data = client::raw_post(cfg, "/api/v2/rum/analytics/aggregate", body).await?;
+    formatter::output(cfg, &data)?;
+    Ok(())
+}
+
+/// Split a comma-separated compute string, respecting parentheses.
+pub fn split_rum_compute_args(input: &str) -> Vec<String> {
+    let mut result = Vec::new();
+    let mut current = String::new();
+    let mut depth = 0u32;
+    for ch in input.chars() {
+        match ch {
+            '(' => {
+                depth += 1;
+                current.push(ch);
+            }
+            ')' => {
+                depth = depth.saturating_sub(1);
+                current.push(ch);
+            }
+            ',' if depth == 0 => {
+                let trimmed = current.trim().to_string();
+                if !trimmed.is_empty() {
+                    result.push(trimmed);
+                }
+                current.clear();
+            }
+            _ => current.push(ch),
+        }
+    }
+    let trimmed = current.trim().to_string();
+    if !trimmed.is_empty() {
+        result.push(trimmed);
+    }
+    result
 }

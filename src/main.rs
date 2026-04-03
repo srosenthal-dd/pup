@@ -4355,6 +4355,28 @@ enum RumActions {
         #[command(subcommand)]
         action: RumAppActions,
     },
+    /// Aggregate RUM events by facets
+    Aggregate {
+        #[arg(long, help = "RUM query filter (e.g. '@type:error @application.name:\"My App\"')")]
+        query: Option<String>,
+        #[arg(long, default_value = "1h", help = "Start time")]
+        from: String,
+        #[arg(long, default_value = "now", help = "End time")]
+        to: String,
+        #[arg(
+            long,
+            default_value = "count",
+            help = "Metrics to compute (comma-separated, e.g. count,avg(@duration))"
+        )]
+        compute: String,
+        #[arg(
+            long,
+            help = "Fields to group by (comma-separated, e.g. @application.version,@view.name)"
+        )]
+        group_by: Option<String>,
+        #[arg(long, default_value_t = 10, help = "Maximum groups per facet")]
+        limit: i32,
+    },
     /// List RUM events
     Events {
         #[arg(long, default_value = "1h")]
@@ -8585,6 +8607,34 @@ async fn main_inner() -> anyhow::Result<()> {
                         commands::rum::apps_delete(&cfg, &app_id).await?;
                     }
                 },
+                RumActions::Aggregate {
+                    query,
+                    from,
+                    to,
+                    compute,
+                    group_by,
+                    limit,
+                } => {
+                    commands::rum::aggregate(
+                        &cfg,
+                        commands::rum::RumAggregateArgs {
+                            query: query.unwrap_or_default(),
+                            from,
+                            to,
+                            compute: commands::rum::split_rum_compute_args(&compute),
+                            group_by: group_by
+                                .map(|g| {
+                                    g.split(',')
+                                        .map(|s| s.trim().to_string())
+                                        .filter(|s| !s.is_empty())
+                                        .collect()
+                                })
+                                .unwrap_or_default(),
+                            limit,
+                        },
+                    )
+                    .await?;
+                }
                 RumActions::Events { from, to, limit } => {
                     commands::rum::events_list(&cfg, from, to, limit).await?;
                 }
