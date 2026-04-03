@@ -111,9 +111,6 @@ jobs:
           for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
             echo "${target}:"
             ls -lh "target/${target}/release/pup"
-            strip "target/${target}/release/pup"
-            echo "  stripped:"
-            ls -lh "target/${target}/release/pup"
           done
 
   cross-compile-macos:
