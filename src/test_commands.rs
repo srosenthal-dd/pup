@@ -1211,7 +1211,7 @@ async fn test_rum_events_list() {
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
-    let _ = crate::commands::rum::events_list(&cfg, "1h".into(), "now".into(), 10).await;
+    let _ = crate::commands::rum::events_list(&cfg, None, "1h".into(), "now".into(), 10).await;
     cleanup_env();
 }
 #[tokio::test]
