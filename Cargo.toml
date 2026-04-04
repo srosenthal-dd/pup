@@ -80,8 +80,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_norway = "0.9"
 
-# HTTP (version-matched to DD client for native; used directly for WASI/browser)
-reqwest = { version = "0.13", features = ["json", "stream", "form"] }
+# HTTP — stream feature omitted on wasm32 (wasm-streams pulls in wasm-bindgen,
+# incompatible with wasm32-wasip1; bytes_stream() calls are all cfg(not(wasm32)))
+reqwest = { version = "0.13", features = ["json", "form"] }
 http = "1"
 
 # Error handling
@@ -145,6 +146,9 @@ serde-wasm-bindgen = { version = "0.6", optional = true }
 
 # RNG support in browser WASM (getrandom 0.4 — wasm_js feature enables JS crypto API)
 getrandom = { version = "0.4", features = ["wasm_js"], optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reqwest = { version = "0.13", features = ["stream"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "3.7"
