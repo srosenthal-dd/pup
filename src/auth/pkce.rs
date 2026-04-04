@@ -3,7 +3,7 @@ use anyhow::Result;
 #[cfg(not(target_arch = "wasm32"))]
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 #[cfg(not(target_arch = "wasm32"))]
-use rand::RngCore;
+use rand::Rng;
 #[cfg(not(target_arch = "wasm32"))]
 use sha2::{Digest, Sha256};
 
