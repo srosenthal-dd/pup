@@ -3717,3 +3717,137 @@ fn test_symdb_view_display() {
         "probe-locations"
     );
 }
+
+// -------------------------------------------------------------------------
+// Incident Teams
+// -------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_incident_teams_list() {
+    let _lock = lock_env();
+    std::env::set_var("DD_TOKEN_STORAGE", "file");
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+    let _mock = mock_any(&mut server, "GET", r#"{"data":[],"meta":{}}"#).await;
+    let result = crate::commands::incidents::teams_list(&cfg).await;
+    assert!(
+        result.is_ok(),
+        "incident teams list failed: {:?}",
+        result.err()
+    );
+    cleanup_env();
+    std::env::remove_var("DD_TOKEN_STORAGE");
+}
+
+#[tokio::test]
+async fn test_incident_teams_list_error() {
+    let _lock = lock_env();
+    std::env::set_var("DD_TOKEN_STORAGE", "file");
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+    let _mock = server
+        .mock("GET", mockito::Matcher::Any)
+        .match_query(mockito::Matcher::Any)
+        .with_status(403)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"errors":["Forbidden"]}"#)
+        .create_async()
+        .await;
+    let result = crate::commands::incidents::teams_list(&cfg).await;
+    assert!(result.is_err(), "incident teams list should fail on 403");
+    cleanup_env();
+    std::env::remove_var("DD_TOKEN_STORAGE");
+}
+
+// -------------------------------------------------------------------------
+// Incident Services
+// -------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_incident_services_list() {
+    let _lock = lock_env();
+    std::env::set_var("DD_TOKEN_STORAGE", "file");
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+    let _mock = mock_any(&mut server, "GET", r#"{"data":[],"meta":{}}"#).await;
+    let result = crate::commands::incidents::services_list(&cfg).await;
+    assert!(
+        result.is_ok(),
+        "incident services list failed: {:?}",
+        result.err()
+    );
+    cleanup_env();
+    std::env::remove_var("DD_TOKEN_STORAGE");
+}
+
+#[tokio::test]
+async fn test_incident_services_list_error() {
+    let _lock = lock_env();
+    std::env::set_var("DD_TOKEN_STORAGE", "file");
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+    let _mock = server
+        .mock("GET", mockito::Matcher::Any)
+        .match_query(mockito::Matcher::Any)
+        .with_status(403)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"errors":["Forbidden"]}"#)
+        .create_async()
+        .await;
+    let result = crate::commands::incidents::services_list(&cfg).await;
+    assert!(result.is_err(), "incident services list should fail on 403");
+    cleanup_env();
+    std::env::remove_var("DD_TOKEN_STORAGE");
+}
+
+// -------------------------------------------------------------------------
+// MS Teams
+// -------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_ms_teams_handles_list() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+    let _mock = mock_any(&mut server, "GET", r#"{"data":[],"meta":{}}"#).await;
+    let result = crate::commands::ms_teams::handles_list(&cfg).await;
+    assert!(
+        result.is_ok(),
+        "ms teams handles list failed: {:?}",
+        result.err()
+    );
+    cleanup_env();
+}
+
+#[tokio::test]
+async fn test_ms_teams_handles_list_error() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+    let _mock = server
+        .mock("GET", mockito::Matcher::Any)
+        .match_query(mockito::Matcher::Any)
+        .with_status(403)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"errors":["Forbidden"]}"#)
+        .create_async()
+        .await;
+    let result = crate::commands::ms_teams::handles_list(&cfg).await;
+    assert!(result.is_err(), "ms teams handles list should fail on 403");
+    cleanup_env();
+}
+
+#[tokio::test]
+async fn test_ms_teams_workflows_list() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+    let _mock = mock_any(&mut server, "GET", r#"{"data":[],"meta":{}}"#).await;
+    let result = crate::commands::ms_teams::workflows_list(&cfg).await;
+    assert!(
+        result.is_ok(),
+        "ms teams workflows list failed: {:?}",
+        result.err()
+    );
+    cleanup_env();
+}

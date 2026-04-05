@@ -1583,6 +1583,30 @@ enum Commands {
         #[command(subcommand)]
         action: MonitorActions,
     },
+    /// Manage Microsoft Teams integration
+    ///
+    /// Configure the Datadog Microsoft Teams integration via the API.
+    ///
+    /// CAPABILITIES:
+    ///   • List, create, get, update, delete tenant-based handles (channels)
+    ///   • Look up a channel by tenant/team/channel name
+    ///   • List, create, get, update, delete workflow webhook handles
+    ///
+    /// EXAMPLES:
+    ///   pup ms-teams handles list
+    ///   pup ms-teams handles create --file handle.json
+    ///   pup ms-teams handles get <handle-id>
+    ///   pup ms-teams channel-get my-tenant my-team my-channel
+    ///   pup ms-teams workflows list
+    ///
+    /// AUTHENTICATION:
+    ///   Requires either OAuth2 authentication (pup auth login) or API keys
+    ///   (DD_API_KEY and DD_APP_KEY environment variables).
+    #[command(name = "ms-teams", verbatim_doc_comment)]
+    MsTeams {
+        #[command(subcommand)]
+        action: MsTeamsActions,
+    },
     /// Manage network monitoring
     ///
     /// Query network monitoring data including flows and devices.
@@ -2426,6 +2450,70 @@ enum MonitorActions {
     Delete { monitor_id: i64 },
 }
 
+// ---- MS Teams ----
+#[derive(Subcommand)]
+enum MsTeamsActions {
+    /// Manage tenant-based handles
+    Handles {
+        #[command(subcommand)]
+        action: MsTeamsHandleActions,
+    },
+    /// Get a channel by tenant, team, and channel name
+    #[command(name = "channel-get")]
+    ChannelGet {
+        tenant_name: String,
+        team_name: String,
+        channel_name: String,
+    },
+    /// Manage Workflows webhook handles
+    Workflows {
+        #[command(subcommand)]
+        action: MsTeamsWorkflowActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum MsTeamsHandleActions {
+    /// List tenant-based handles
+    List,
+    /// Get a tenant-based handle
+    Get { handle_id: String },
+    /// Create a tenant-based handle from JSON
+    Create {
+        #[arg(long, help = "JSON file with handle data (required)")]
+        file: String,
+    },
+    /// Update a tenant-based handle
+    Update {
+        handle_id: String,
+        #[arg(long, help = "JSON file with handle data (required)")]
+        file: String,
+    },
+    /// Delete a tenant-based handle
+    Delete { handle_id: String },
+}
+
+#[derive(Subcommand)]
+enum MsTeamsWorkflowActions {
+    /// List Workflows webhook handles
+    List,
+    /// Get a Workflows webhook handle
+    Get { handle_id: String },
+    /// Create a Workflows webhook handle from JSON
+    Create {
+        #[arg(long, help = "JSON file with handle data (required)")]
+        file: String,
+    },
+    /// Update a Workflows webhook handle
+    Update {
+        handle_id: String,
+        #[arg(long, help = "JSON file with handle data (required)")]
+        file: String,
+    },
+    /// Delete a Workflows webhook handle
+    Delete { handle_id: String },
+}
+
 // ---- Logs ----
 #[derive(Subcommand)]
 enum LogActions {
@@ -2613,11 +2701,63 @@ enum IncidentActions {
         #[command(subcommand)]
         action: IncidentPostmortemActions,
     },
+    /// Manage incident teams
+    Teams {
+        #[command(subcommand)]
+        action: IncidentTeamActions,
+    },
+    /// Manage incident services
+    Services {
+        #[command(subcommand)]
+        action: IncidentServiceActions,
+    },
     /// Import an incident
     Import {
         #[arg(long, help = "JSON file with request body (required)")]
         file: String,
     },
+}
+
+#[derive(Subcommand)]
+enum IncidentTeamActions {
+    /// List incident teams
+    List,
+    /// Get incident team details
+    Get { team_id: String },
+    /// Create an incident team from JSON
+    Create {
+        #[arg(long, help = "JSON file with team data (required)")]
+        file: String,
+    },
+    /// Update an incident team
+    Update {
+        team_id: String,
+        #[arg(long, help = "JSON file with team data (required)")]
+        file: String,
+    },
+    /// Delete an incident team
+    Delete { team_id: String },
+}
+
+#[derive(Subcommand)]
+enum IncidentServiceActions {
+    /// List incident services
+    List,
+    /// Get incident service details
+    Get { service_id: String },
+    /// Create an incident service from JSON
+    Create {
+        #[arg(long, help = "JSON file with service data (required)")]
+        file: String,
+    },
+    /// Update an incident service
+    Update {
+        service_id: String,
+        #[arg(long, help = "JSON file with service data (required)")]
+        file: String,
+    },
+    /// Delete an incident service
+    Delete { service_id: String },
 }
 
 #[derive(Subcommand)]
@@ -7565,6 +7705,59 @@ async fn main_inner() -> anyhow::Result<()> {
                 }
             }
         }
+        // --- MS Teams ---
+        Commands::MsTeams { action } => {
+            cfg.validate_auth()?;
+            match action {
+                MsTeamsActions::Handles { action } => match action {
+                    MsTeamsHandleActions::List => {
+                        commands::ms_teams::handles_list(&cfg).await?;
+                    }
+                    MsTeamsHandleActions::Get { handle_id } => {
+                        commands::ms_teams::handles_get(&cfg, &handle_id).await?;
+                    }
+                    MsTeamsHandleActions::Create { file } => {
+                        commands::ms_teams::handles_create(&cfg, &file).await?;
+                    }
+                    MsTeamsHandleActions::Update { handle_id, file } => {
+                        commands::ms_teams::handles_update(&cfg, &handle_id, &file).await?;
+                    }
+                    MsTeamsHandleActions::Delete { handle_id } => {
+                        commands::ms_teams::handles_delete(&cfg, &handle_id).await?;
+                    }
+                },
+                MsTeamsActions::ChannelGet {
+                    tenant_name,
+                    team_name,
+                    channel_name,
+                } => {
+                    commands::ms_teams::channel_get_by_name(
+                        &cfg,
+                        &tenant_name,
+                        &team_name,
+                        &channel_name,
+                    )
+                    .await?;
+                }
+                MsTeamsActions::Workflows { action } => match action {
+                    MsTeamsWorkflowActions::List => {
+                        commands::ms_teams::workflows_list(&cfg).await?;
+                    }
+                    MsTeamsWorkflowActions::Get { handle_id } => {
+                        commands::ms_teams::workflows_get(&cfg, &handle_id).await?;
+                    }
+                    MsTeamsWorkflowActions::Create { file } => {
+                        commands::ms_teams::workflows_create(&cfg, &file).await?;
+                    }
+                    MsTeamsWorkflowActions::Update { handle_id, file } => {
+                        commands::ms_teams::workflows_update(&cfg, &handle_id, &file).await?;
+                    }
+                    MsTeamsWorkflowActions::Delete { handle_id } => {
+                        commands::ms_teams::workflows_delete(&cfg, &handle_id).await?;
+                    }
+                },
+            }
+        }
         // --- Logs ---
         Commands::Logs { action } => {
             cfg.validate_auth()?;
@@ -7728,6 +7921,40 @@ async fn main_inner() -> anyhow::Result<()> {
                     IncidentPostmortemActions::Delete { template_id } => {
                         commands::incidents::postmortem_templates_delete(&cfg, &template_id)
                             .await?;
+                    }
+                },
+                IncidentActions::Teams { action } => match action {
+                    IncidentTeamActions::List => {
+                        commands::incidents::teams_list(&cfg).await?;
+                    }
+                    IncidentTeamActions::Get { team_id } => {
+                        commands::incidents::teams_get(&cfg, &team_id).await?;
+                    }
+                    IncidentTeamActions::Create { file } => {
+                        commands::incidents::teams_create(&cfg, &file).await?;
+                    }
+                    IncidentTeamActions::Update { team_id, file } => {
+                        commands::incidents::teams_update(&cfg, &team_id, &file).await?;
+                    }
+                    IncidentTeamActions::Delete { team_id } => {
+                        commands::incidents::teams_delete(&cfg, &team_id).await?;
+                    }
+                },
+                IncidentActions::Services { action } => match action {
+                    IncidentServiceActions::List => {
+                        commands::incidents::services_list(&cfg).await?;
+                    }
+                    IncidentServiceActions::Get { service_id } => {
+                        commands::incidents::services_get(&cfg, &service_id).await?;
+                    }
+                    IncidentServiceActions::Create { file } => {
+                        commands::incidents::services_create(&cfg, &file).await?;
+                    }
+                    IncidentServiceActions::Update { service_id, file } => {
+                        commands::incidents::services_update(&cfg, &service_id, &file).await?;
+                    }
+                    IncidentServiceActions::Delete { service_id } => {
+                        commands::incidents::services_delete(&cfg, &service_id).await?;
                     }
                 },
                 IncidentActions::Import { file } => {

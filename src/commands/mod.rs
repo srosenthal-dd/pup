@@ -43,6 +43,7 @@ pub mod logs;
 pub mod metrics;
 pub mod misc;
 pub mod monitors;
+pub mod ms_teams;
 pub mod network;
 pub mod notebooks;
 pub mod obs_pipelines;
