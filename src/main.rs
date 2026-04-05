@@ -6212,13 +6212,54 @@ enum ReferenceTablesActions {
     },
 }
 
-// ---- Scorecards (placeholder) ----
+// ---- Scorecards ----
 #[derive(Subcommand)]
 enum ScorecardsActions {
-    /// List scorecards
+    /// Manage scorecard rules
+    Rules {
+        #[command(subcommand)]
+        action: ScorecardsRulesActions,
+    },
+    /// Manage scorecard outcomes
+    Outcomes {
+        #[command(subcommand)]
+        action: ScorecardsOutcomesActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum ScorecardsRulesActions {
+    /// List scorecard rules
     List,
-    /// Get scorecard details
-    Get { scorecard_id: String },
+    /// Create a scorecard rule from a JSON file
+    Create {
+        #[arg(long, help = "Path to JSON file with rule definition")]
+        file: String,
+    },
+    /// Update a scorecard rule from a JSON file
+    Update {
+        #[arg(help = "Rule ID to update")]
+        rule_id: String,
+        #[arg(long, help = "Path to JSON file with updated rule definition")]
+        file: String,
+    },
+    /// Delete a scorecard rule
+    Delete {
+        #[arg(help = "Rule ID to delete")]
+        rule_id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum ScorecardsOutcomesActions {
+    /// List scorecard outcomes
+    List,
+    /// Create or update outcomes in batch from a JSON file
+    #[command(name = "batch-create")]
+    BatchCreate {
+        #[arg(long, help = "Path to JSON file with outcomes batch")]
+        file: String,
+    },
 }
 
 // ---- Traces ----
@@ -6492,119 +6533,80 @@ enum ProductAnalyticsEventActions {
 // ---- Static Analysis ----
 #[derive(Subcommand)]
 enum StaticAnalysisActions {
-    /// AST analysis
-    Ast {
-        #[command(subcommand)]
-        action: StaticAnalysisAstActions,
-    },
-    /// Custom security rulesets
+    /// Manage custom rulesets
     #[command(name = "custom-rulesets")]
     CustomRulesets {
         #[command(subcommand)]
         action: StaticAnalysisCustomRulesetActions,
     },
-    /// Software Composition Analysis
-    Sca {
+    /// Manage custom rules within a ruleset
+    #[command(name = "custom-rules")]
+    CustomRules {
         #[command(subcommand)]
-        action: StaticAnalysisScaActions,
+        action: StaticAnalysisCustomRuleActions,
     },
-    /// Code coverage analysis
-    Coverage {
-        #[command(subcommand)]
-        action: StaticAnalysisCoverageActions,
-    },
-}
-
-#[derive(Subcommand)]
-enum StaticAnalysisAstActions {
-    /// List AST analyses
-    List {
-        #[arg(long, help = "Filter by branch")]
-        branch: Option<String>,
-        #[arg(long, help = "Start time")]
-        from: Option<String>,
-        #[arg(long, help = "End time")]
-        to: Option<String>,
-        #[arg(long, help = "Filter by repository")]
-        repository: Option<String>,
-        #[arg(long, help = "Filter by language")]
-        language: Option<String>,
-        #[arg(long, help = "Filter by severity")]
-        severity: Option<String>,
-        #[arg(long, help = "Filter by status")]
-        status: Option<String>,
-    },
-    /// Get AST analysis details
-    Get { id: String },
 }
 
 #[derive(Subcommand)]
 enum StaticAnalysisCustomRulesetActions {
-    /// List custom rulesets
-    List {
-        #[arg(long, help = "Filter by branch")]
-        branch: Option<String>,
-        #[arg(long, help = "Start time")]
-        from: Option<String>,
-        #[arg(long, help = "End time")]
-        to: Option<String>,
-        #[arg(long, help = "Filter by repository")]
-        repository: Option<String>,
-        #[arg(long, help = "Filter by language")]
-        language: Option<String>,
-        #[arg(long, help = "Filter by severity")]
-        severity: Option<String>,
-        #[arg(long, help = "Filter by status")]
-        status: Option<String>,
+    /// Get a custom ruleset by name
+    Get {
+        #[arg(help = "Ruleset name")]
+        name: String,
     },
-    /// Get custom ruleset details
-    Get { id: String },
+    /// Update a custom ruleset from a JSON file
+    Update {
+        #[arg(help = "Ruleset name")]
+        name: String,
+        #[arg(long, help = "Path to JSON file with ruleset definition")]
+        file: String,
+    },
+    /// Delete a custom ruleset
+    Delete {
+        #[arg(help = "Ruleset name")]
+        name: String,
+    },
 }
 
 #[derive(Subcommand)]
-enum StaticAnalysisScaActions {
-    /// List SCA results
-    List {
-        #[arg(long, help = "Filter by branch")]
-        branch: Option<String>,
-        #[arg(long, help = "Start time")]
-        from: Option<String>,
-        #[arg(long, help = "End time")]
-        to: Option<String>,
-        #[arg(long, help = "Filter by repository")]
-        repository: Option<String>,
-        #[arg(long, help = "Filter by language")]
-        language: Option<String>,
-        #[arg(long, help = "Filter by severity")]
-        severity: Option<String>,
-        #[arg(long, help = "Filter by status")]
-        status: Option<String>,
+enum StaticAnalysisCustomRuleActions {
+    /// Get a custom rule by name
+    Get {
+        #[arg(help = "Ruleset name")]
+        ruleset: String,
+        #[arg(help = "Rule name")]
+        rule: String,
     },
-    /// Get SCA scan details
-    Get { id: String },
-}
-
-#[derive(Subcommand)]
-enum StaticAnalysisCoverageActions {
-    /// List coverage analyses
-    List {
-        #[arg(long, help = "Filter by branch")]
-        branch: Option<String>,
-        #[arg(long, help = "Start time")]
-        from: Option<String>,
-        #[arg(long, help = "End time")]
-        to: Option<String>,
-        #[arg(long, help = "Filter by repository")]
-        repository: Option<String>,
-        #[arg(long, help = "Filter by language")]
-        language: Option<String>,
-        #[arg(long, help = "Filter by severity")]
-        severity: Option<String>,
-        #[arg(long, help = "Filter by status")]
-        status: Option<String>,
+    /// Create a custom rule from a JSON file
+    Create {
+        #[arg(help = "Ruleset name")]
+        ruleset: String,
+        #[arg(long, help = "Path to JSON file with rule definition")]
+        file: String,
     },
-    /// Get coverage analysis details
-    Get { id: String },
+    /// Delete a custom rule
+    Delete {
+        #[arg(help = "Ruleset name")]
+        ruleset: String,
+        #[arg(help = "Rule name")]
+        rule: String,
+    },
+    /// List revisions for a custom rule
+    Revisions {
+        #[arg(help = "Ruleset name")]
+        ruleset: String,
+        #[arg(help = "Rule name")]
+        rule: String,
+    },
+    /// Get a specific revision of a custom rule
+    Revision {
+        #[arg(help = "Ruleset name")]
+        ruleset: String,
+        #[arg(help = "Rule name")]
+        rule: String,
+        #[arg(help = "Revision ID")]
+        revision_id: String,
+    },
 }
 
 // ---- Auth ----
@@ -9754,13 +9756,34 @@ async fn main_inner() -> anyhow::Result<()> {
                 }
             }
         }
-        // --- Scorecards (placeholder) ---
-        Commands::Scorecards { action } => match action {
-            ScorecardsActions::List => commands::scorecards::list()?,
-            ScorecardsActions::Get { scorecard_id } => {
-                commands::scorecards::get(&scorecard_id)?;
+        // --- Scorecards ---
+        Commands::Scorecards { action } => {
+            cfg.validate_auth()?;
+            match action {
+                ScorecardsActions::Rules { action } => match action {
+                    ScorecardsRulesActions::List => {
+                        commands::scorecards::rules_list(&cfg).await?;
+                    }
+                    ScorecardsRulesActions::Create { file } => {
+                        commands::scorecards::rules_create(&cfg, &file).await?;
+                    }
+                    ScorecardsRulesActions::Update { rule_id, file } => {
+                        commands::scorecards::rules_update(&cfg, &rule_id, &file).await?;
+                    }
+                    ScorecardsRulesActions::Delete { rule_id } => {
+                        commands::scorecards::rules_delete(&cfg, &rule_id).await?;
+                    }
+                },
+                ScorecardsActions::Outcomes { action } => match action {
+                    ScorecardsOutcomesActions::List => {
+                        commands::scorecards::outcomes_list(&cfg).await?;
+                    }
+                    ScorecardsOutcomesActions::BatchCreate { file } => {
+                        commands::scorecards::outcomes_batch_create(&cfg, &file).await?;
+                    }
+                },
             }
-        },
+        }
         // --- Traces ---
         Commands::Traces { action } => {
             cfg.validate_auth()?;
@@ -9850,36 +9873,48 @@ async fn main_inner() -> anyhow::Result<()> {
         Commands::StaticAnalysis { action } => {
             cfg.validate_auth()?;
             match action {
-                StaticAnalysisActions::Ast { action } => match action {
-                    StaticAnalysisAstActions::List { .. } => {
-                        commands::static_analysis::ast_list(&cfg).await?;
-                    }
-                    StaticAnalysisAstActions::Get { id } => {
-                        commands::static_analysis::ast_get(&cfg, &id).await?;
-                    }
-                },
                 StaticAnalysisActions::CustomRulesets { action } => match action {
-                    StaticAnalysisCustomRulesetActions::List { .. } => {
-                        commands::static_analysis::custom_rulesets_list(&cfg).await?;
+                    StaticAnalysisCustomRulesetActions::Get { name } => {
+                        commands::static_analysis::custom_rulesets_get(&cfg, &name).await?;
                     }
-                    StaticAnalysisCustomRulesetActions::Get { id } => {
-                        commands::static_analysis::custom_rulesets_get(&cfg, &id).await?;
+                    StaticAnalysisCustomRulesetActions::Update { name, file } => {
+                        commands::static_analysis::custom_rulesets_update(&cfg, &name, &file)
+                            .await?;
                     }
-                },
-                StaticAnalysisActions::Sca { action } => match action {
-                    StaticAnalysisScaActions::List { .. } => {
-                        commands::static_analysis::sca_list(&cfg).await?;
-                    }
-                    StaticAnalysisScaActions::Get { id } => {
-                        commands::static_analysis::sca_get(&cfg, &id).await?;
+                    StaticAnalysisCustomRulesetActions::Delete { name } => {
+                        commands::static_analysis::custom_rulesets_delete(&cfg, &name).await?;
                     }
                 },
-                StaticAnalysisActions::Coverage { action } => match action {
-                    StaticAnalysisCoverageActions::List { .. } => {
-                        commands::static_analysis::coverage_list(&cfg).await?;
+                StaticAnalysisActions::CustomRules { action } => match action {
+                    StaticAnalysisCustomRuleActions::Get { ruleset, rule } => {
+                        commands::static_analysis::custom_rules_get(&cfg, &ruleset, &rule).await?;
                     }
-                    StaticAnalysisCoverageActions::Get { id } => {
-                        commands::static_analysis::coverage_get(&cfg, &id).await?;
+                    StaticAnalysisCustomRuleActions::Create { ruleset, file } => {
+                        commands::static_analysis::custom_rules_create(&cfg, &ruleset, &file)
+                            .await?;
+                    }
+                    StaticAnalysisCustomRuleActions::Delete { ruleset, rule } => {
+                        commands::static_analysis::custom_rules_delete(&cfg, &ruleset, &rule)
+                            .await?;
+                    }
+                    StaticAnalysisCustomRuleActions::Revisions { ruleset, rule } => {
+                        commands::static_analysis::custom_rule_revisions_list(
+                            &cfg, &ruleset, &rule,
+                        )
+                        .await?;
+                    }
+                    StaticAnalysisCustomRuleActions::Revision {
+                        ruleset,
+                        rule,
+                        revision_id,
+                    } => {
+                        commands::static_analysis::custom_rule_revision_get(
+                            &cfg,
+                            &ruleset,
+                            &rule,
+                            &revision_id,
+                        )
+                        .await?;
                     }
                 },
             }
