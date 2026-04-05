@@ -1,5 +1,6 @@
 pub mod acp;
 pub mod agent;
+pub mod agentless_scanning;
 pub mod alias;
 pub mod api_keys;
 pub mod apm;
@@ -18,6 +19,7 @@ pub mod code_coverage;
 pub mod completions;
 pub mod containers;
 pub mod cost;
+pub mod csm_threats;
 pub mod dashboards;
 pub mod data_governance;
 pub mod dbm;

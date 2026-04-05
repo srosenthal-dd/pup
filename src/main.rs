@@ -115,6 +115,40 @@ enum Commands {
         #[command(subcommand)]
         action: AgentActions,
     },
+    /// Manage Agentless Scanning configurations
+    ///
+    /// Manage cloud provider agentless scanning scan options and on-demand tasks.
+    ///
+    /// COMMANDS:
+    ///   aws list              List AWS scan options
+    ///   aws get               Get AWS scan options for an account
+    ///   aws create            Activate AWS scan options from JSON
+    ///   aws update            Update AWS scan options for an account
+    ///   aws delete            Delete AWS scan options for an account
+    ///   aws on-demand list    List AWS on-demand tasks
+    ///   aws on-demand get     Get an AWS on-demand task
+    ///   aws on-demand create  Create an AWS on-demand task from JSON
+    ///   azure list            List Azure scan options
+    ///   azure get             Get Azure scan options for a subscription
+    ///   azure create          Activate Azure scan options from JSON
+    ///   azure update          Update Azure scan options for a subscription
+    ///   azure delete          Delete Azure scan options for a subscription
+    ///   gcp list              List GCP scan options
+    ///   gcp get               Get GCP scan options for a project
+    ///   gcp create            Activate GCP scan options from JSON
+    ///   gcp update            Update GCP scan options for a project
+    ///   gcp delete            Delete GCP scan options for a project
+    ///
+    /// EXAMPLES:
+    ///   pup agentless-scanning aws list
+    ///   pup agentless-scanning aws on-demand create --file task.json
+    ///   pup agentless-scanning azure list
+    ///   pup agentless-scanning gcp list
+    #[command(verbatim_doc_comment)]
+    AgentlessScanning {
+        #[command(subcommand)]
+        action: AgentlessScanningActions,
+    },
     /// Create shortcuts for pup commands
     ///
     /// Aliases can be used to make shortcuts for pup commands or to compose multiple commands.
@@ -745,6 +779,32 @@ enum Commands {
     Cost {
         #[command(subcommand)]
         action: CostActions,
+    },
+    /// Manage CSM Threats agent policies and rules
+    ///
+    /// Manage Cloud Security Management (Workload Protection) agent policies and rules.
+    ///
+    /// COMMANDS:
+    ///   agent-policies list    List agent policies
+    ///   agent-policies get     Get an agent policy
+    ///   agent-policies create  Create an agent policy from JSON
+    ///   agent-policies update  Update an agent policy
+    ///   agent-policies delete  Delete an agent policy
+    ///   agent-rules list       List agent rules
+    ///   agent-rules get        Get an agent rule
+    ///   agent-rules create     Create an agent rule from JSON
+    ///   agent-rules update     Update an agent rule
+    ///   agent-rules delete     Delete an agent rule
+    ///   policy download        Download the CSM threats policy file
+    ///
+    /// EXAMPLES:
+    ///   pup csm-threats agent-policies list
+    ///   pup csm-threats agent-rules create --file rule.json
+    ///   pup csm-threats policy download
+    #[command(verbatim_doc_comment)]
+    CsmThreats {
+        #[command(subcommand)]
+        action: CsmThreatsActions,
     },
     /// Manage dashboards
     ///
@@ -5057,6 +5117,188 @@ enum OnCallMembershipActions {
     },
     /// Remove member from team
     Remove { team_id: String, user_id: String },
+}
+
+// ---- Agentless Scanning ----
+#[derive(Subcommand)]
+enum AgentlessScanningActions {
+    /// Manage AWS agentless scan options and on-demand tasks
+    Aws {
+        #[command(subcommand)]
+        action: AgentlessScanningAwsActions,
+    },
+    /// Manage Azure agentless scan options
+    Azure {
+        #[command(subcommand)]
+        action: AgentlessScanningAzureActions,
+    },
+    /// Manage GCP agentless scan options
+    Gcp {
+        #[command(subcommand)]
+        action: AgentlessScanningGcpActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum AgentlessScanningAwsActions {
+    /// List AWS scan options
+    List,
+    /// Get AWS scan options for an account
+    Get { account_id: String },
+    /// Activate AWS scan options from JSON
+    Create {
+        #[arg(long)]
+        file: String,
+    },
+    /// Update AWS scan options for an account
+    Update {
+        account_id: String,
+        #[arg(long)]
+        file: String,
+    },
+    /// Delete AWS scan options for an account
+    Delete { account_id: String },
+    /// Manage AWS on-demand scan tasks
+    OnDemand {
+        #[command(subcommand)]
+        action: AgentlessScanningAwsOnDemandActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum AgentlessScanningAwsOnDemandActions {
+    /// List AWS on-demand tasks
+    List,
+    /// Get an AWS on-demand task
+    Get { task_id: String },
+    /// Create an AWS on-demand task from JSON
+    Create {
+        #[arg(long)]
+        file: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum AgentlessScanningAzureActions {
+    /// List Azure scan options
+    List,
+    /// Get Azure scan options for a subscription
+    Get { subscription_id: String },
+    /// Activate Azure scan options from JSON
+    Create {
+        #[arg(long)]
+        file: String,
+    },
+    /// Update Azure scan options for a subscription
+    Update {
+        subscription_id: String,
+        #[arg(long)]
+        file: String,
+    },
+    /// Delete Azure scan options for a subscription
+    Delete { subscription_id: String },
+}
+
+#[derive(Subcommand)]
+enum AgentlessScanningGcpActions {
+    /// List GCP scan options
+    List,
+    /// Get GCP scan options for a project
+    Get { project_id: String },
+    /// Activate GCP scan options from JSON
+    Create {
+        #[arg(long)]
+        file: String,
+    },
+    /// Update GCP scan options for a project
+    Update {
+        project_id: String,
+        #[arg(long)]
+        file: String,
+    },
+    /// Delete GCP scan options for a project
+    Delete { project_id: String },
+}
+
+// ---- CSM Threats ----
+#[derive(Subcommand)]
+enum CsmThreatsActions {
+    /// Manage CSM Threats agent policies
+    AgentPolicies {
+        #[command(subcommand)]
+        action: CsmThreatsAgentPolicyActions,
+    },
+    /// Manage CSM Threats agent rules
+    AgentRules {
+        #[command(subcommand)]
+        action: CsmThreatsAgentRuleActions,
+    },
+    /// Manage CSM Threats policy
+    Policy {
+        #[command(subcommand)]
+        action: CsmThreatsPolicyActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum CsmThreatsAgentPolicyActions {
+    /// List agent policies
+    List,
+    /// Get an agent policy
+    Get { policy_id: String },
+    /// Create an agent policy from JSON
+    Create {
+        #[arg(long)]
+        file: String,
+    },
+    /// Update an agent policy
+    Update {
+        policy_id: String,
+        #[arg(long)]
+        file: String,
+    },
+    /// Delete an agent policy
+    Delete { policy_id: String },
+}
+
+#[derive(Subcommand)]
+enum CsmThreatsAgentRuleActions {
+    /// List agent rules
+    List {
+        #[arg(long, help = "Filter by agent policy ID")]
+        policy_id: Option<String>,
+    },
+    /// Get an agent rule
+    Get {
+        rule_id: String,
+        #[arg(long, help = "Filter by agent policy ID")]
+        policy_id: Option<String>,
+    },
+    /// Create an agent rule from JSON
+    Create {
+        #[arg(long)]
+        file: String,
+    },
+    /// Update an agent rule
+    Update {
+        rule_id: String,
+        #[arg(long)]
+        file: String,
+        #[arg(long, help = "Agent policy ID")]
+        policy_id: Option<String>,
+    },
+    /// Delete an agent rule
+    Delete {
+        rule_id: String,
+        #[arg(long, help = "Agent policy ID")]
+        policy_id: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum CsmThreatsPolicyActions {
+    /// Download the CSM threats policy file
+    Download,
 }
 
 // ---- Fleet ----
@@ -10518,6 +10760,157 @@ async fn main_inner() -> anyhow::Result<()> {
             }
         }
         Commands::Version => println!("{}", version::build_info()),
+        // --- Agentless Scanning ---
+        Commands::AgentlessScanning { action } => {
+            cfg.validate_auth()?;
+            match action {
+                AgentlessScanningActions::Aws { action } => match action {
+                    AgentlessScanningAwsActions::List => {
+                        commands::agentless_scanning::aws_scan_options_list(&cfg).await?;
+                    }
+                    AgentlessScanningAwsActions::Get { account_id } => {
+                        commands::agentless_scanning::aws_scan_options_get(&cfg, &account_id)
+                            .await?;
+                    }
+                    AgentlessScanningAwsActions::Create { file } => {
+                        commands::agentless_scanning::aws_scan_options_create(&cfg, &file).await?;
+                    }
+                    AgentlessScanningAwsActions::Update { account_id, file } => {
+                        commands::agentless_scanning::aws_scan_options_update(
+                            &cfg,
+                            &account_id,
+                            &file,
+                        )
+                        .await?;
+                    }
+                    AgentlessScanningAwsActions::Delete { account_id } => {
+                        commands::agentless_scanning::aws_scan_options_delete(&cfg, &account_id)
+                            .await?;
+                    }
+                    AgentlessScanningAwsActions::OnDemand { action } => match action {
+                        AgentlessScanningAwsOnDemandActions::List => {
+                            commands::agentless_scanning::aws_on_demand_list(&cfg).await?;
+                        }
+                        AgentlessScanningAwsOnDemandActions::Get { task_id } => {
+                            commands::agentless_scanning::aws_on_demand_get(&cfg, &task_id).await?;
+                        }
+                        AgentlessScanningAwsOnDemandActions::Create { file } => {
+                            commands::agentless_scanning::aws_on_demand_create(&cfg, &file).await?;
+                        }
+                    },
+                },
+                AgentlessScanningActions::Azure { action } => match action {
+                    AgentlessScanningAzureActions::List => {
+                        commands::agentless_scanning::azure_scan_options_list(&cfg).await?;
+                    }
+                    AgentlessScanningAzureActions::Get { subscription_id } => {
+                        commands::agentless_scanning::azure_scan_options_get(
+                            &cfg,
+                            &subscription_id,
+                        )
+                        .await?;
+                    }
+                    AgentlessScanningAzureActions::Create { file } => {
+                        commands::agentless_scanning::azure_scan_options_create(&cfg, &file)
+                            .await?;
+                    }
+                    AgentlessScanningAzureActions::Update {
+                        subscription_id,
+                        file,
+                    } => {
+                        commands::agentless_scanning::azure_scan_options_update(
+                            &cfg,
+                            &subscription_id,
+                            &file,
+                        )
+                        .await?;
+                    }
+                    AgentlessScanningAzureActions::Delete { subscription_id } => {
+                        commands::agentless_scanning::azure_scan_options_delete(
+                            &cfg,
+                            &subscription_id,
+                        )
+                        .await?;
+                    }
+                },
+                AgentlessScanningActions::Gcp { action } => match action {
+                    AgentlessScanningGcpActions::List => {
+                        commands::agentless_scanning::gcp_scan_options_list(&cfg).await?;
+                    }
+                    AgentlessScanningGcpActions::Get { project_id } => {
+                        commands::agentless_scanning::gcp_scan_options_get(&cfg, &project_id)
+                            .await?;
+                    }
+                    AgentlessScanningGcpActions::Create { file } => {
+                        commands::agentless_scanning::gcp_scan_options_create(&cfg, &file).await?;
+                    }
+                    AgentlessScanningGcpActions::Update { project_id, file } => {
+                        commands::agentless_scanning::gcp_scan_options_update(
+                            &cfg,
+                            &project_id,
+                            &file,
+                        )
+                        .await?;
+                    }
+                    AgentlessScanningGcpActions::Delete { project_id } => {
+                        commands::agentless_scanning::gcp_scan_options_delete(&cfg, &project_id)
+                            .await?;
+                    }
+                },
+            }
+        }
+        // --- CSM Threats ---
+        Commands::CsmThreats { action } => {
+            cfg.validate_auth()?;
+            match action {
+                CsmThreatsActions::AgentPolicies { action } => match action {
+                    CsmThreatsAgentPolicyActions::List => {
+                        commands::csm_threats::agent_policies_list(&cfg).await?;
+                    }
+                    CsmThreatsAgentPolicyActions::Get { policy_id } => {
+                        commands::csm_threats::agent_policies_get(&cfg, &policy_id).await?;
+                    }
+                    CsmThreatsAgentPolicyActions::Create { file } => {
+                        commands::csm_threats::agent_policies_create(&cfg, &file).await?;
+                    }
+                    CsmThreatsAgentPolicyActions::Update { policy_id, file } => {
+                        commands::csm_threats::agent_policies_update(&cfg, &policy_id, &file)
+                            .await?;
+                    }
+                    CsmThreatsAgentPolicyActions::Delete { policy_id } => {
+                        commands::csm_threats::agent_policies_delete(&cfg, &policy_id).await?;
+                    }
+                },
+                CsmThreatsActions::AgentRules { action } => match action {
+                    CsmThreatsAgentRuleActions::List { policy_id } => {
+                        commands::csm_threats::agent_rules_list(&cfg, policy_id).await?;
+                    }
+                    CsmThreatsAgentRuleActions::Get { rule_id, policy_id } => {
+                        commands::csm_threats::agent_rules_get(&cfg, &rule_id, policy_id).await?;
+                    }
+                    CsmThreatsAgentRuleActions::Create { file } => {
+                        commands::csm_threats::agent_rules_create(&cfg, &file).await?;
+                    }
+                    CsmThreatsAgentRuleActions::Update {
+                        rule_id,
+                        file,
+                        policy_id,
+                    } => {
+                        commands::csm_threats::agent_rules_update(&cfg, &rule_id, &file, policy_id)
+                            .await?;
+                    }
+                    CsmThreatsAgentRuleActions::Delete { rule_id, policy_id } => {
+                        commands::csm_threats::agent_rules_delete(&cfg, &rule_id, policy_id)
+                            .await?;
+                    }
+                },
+                CsmThreatsActions::Policy { action } => match action {
+                    CsmThreatsPolicyActions::Download => {
+                        commands::csm_threats::policy_download(&cfg).await?;
+                    }
+                },
+            }
+        }
     }
 
     Ok(())
