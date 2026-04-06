@@ -10,10 +10,7 @@ use crate::util;
 
 fn make_api(cfg: &Config) -> DataDeletionAPI {
     let dd_cfg = client::make_dd_config(cfg);
-    match client::make_bearer_client(cfg) {
-        Some(c) => DataDeletionAPI::with_client_and_config(dd_cfg, c),
-        None => DataDeletionAPI::with_config(dd_cfg),
-    }
+    DataDeletionAPI::with_config(dd_cfg)
 }
 
 pub async fn requests_list(

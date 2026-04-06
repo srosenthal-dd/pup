@@ -8,10 +8,7 @@ use crate::util;
 
 fn make_api(cfg: &Config) -> DatasetsAPI {
     let dd_cfg = client::make_dd_config(cfg);
-    match client::make_bearer_client(cfg) {
-        Some(c) => DatasetsAPI::with_client_and_config(dd_cfg, c),
-        None => DatasetsAPI::with_config(dd_cfg),
-    }
+    DatasetsAPI::with_config(dd_cfg)
 }
 
 pub async fn list(cfg: &Config) -> Result<()> {
