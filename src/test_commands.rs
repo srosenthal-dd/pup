@@ -3778,6 +3778,51 @@ async fn test_spans_metrics_delete() {
     std::env::remove_var("DD_TOKEN_STORAGE");
 }
 
+#[tokio::test]
+async fn test_spans_metrics_get_path() {
+    // Verify the GET request hits the correct API path for a named metric.
+    let _lock = lock_env();
+    std::env::set_var("DD_TOKEN_STORAGE", "file");
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+    let mock = server
+        .mock("GET", "/api/v2/apm/config/metrics/my.metric")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"data":{"id":"my.metric","type":"spans_metrics","attributes":{}}}"#)
+        .create_async()
+        .await;
+    let result = crate::commands::traces::metrics_get(&cfg, "my.metric").await;
+    assert!(
+        result.is_ok(),
+        "spans metrics get (path check) failed: {:?}",
+        result.err()
+    );
+    mock.assert_async().await;
+    cleanup_env();
+    std::env::remove_var("DD_TOKEN_STORAGE");
+}
+
+#[tokio::test]
+async fn test_spans_metrics_list_error() {
+    // Verify that a 403 response causes metrics_list to return an error.
+    let _lock = lock_env();
+    std::env::set_var("DD_TOKEN_STORAGE", "file");
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+    let _mock = server
+        .mock("GET", mockito::Matcher::Any)
+        .with_status(403)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"errors":["Forbidden"]}"#)
+        .create_async()
+        .await;
+    let result = crate::commands::traces::metrics_list(&cfg).await;
+    assert!(result.is_err(), "spans metrics list should fail on 403");
+    cleanup_env();
+    std::env::remove_var("DD_TOKEN_STORAGE");
+}
+
 // -------------------------------------------------------------------------
 // Datasets
 // -------------------------------------------------------------------------
@@ -3848,7 +3893,18 @@ async fn test_data_deletion_requests_list_with_filters() {
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
-    let _mock = mock_any(&mut server, "GET", r#"{"data":[]}"#).await;
+    // Verify that product and status filter params are actually sent as query parameters.
+    let mock = server
+        .mock("GET", mockito::Matcher::Any)
+        .match_query(mockito::Matcher::AllOf(vec![
+            mockito::Matcher::UrlEncoded("product".into(), "logs".into()),
+            mockito::Matcher::UrlEncoded("status".into(), "pending".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"data":[]}"#)
+        .create_async()
+        .await;
     let result = crate::commands::data_deletion::requests_list(
         &cfg,
         Some("logs".into()),
@@ -3861,6 +3917,7 @@ async fn test_data_deletion_requests_list_with_filters() {
         "data deletion requests list with filters failed: {:?}",
         result.err()
     );
+    mock.assert_async().await;
     cleanup_env();
     std::env::remove_var("DD_TOKEN_STORAGE");
 }

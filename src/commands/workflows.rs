@@ -217,10 +217,7 @@ pub async fn instance_cancel(cfg: &Config, workflow_id: &str, instance_id: &str)
 
 fn make_connection_api(cfg: &Config) -> ActionConnectionAPI {
     let dd_cfg = client::make_dd_config(cfg);
-    match client::make_bearer_client(cfg) {
-        Some(c) => ActionConnectionAPI::with_client_and_config(dd_cfg, c),
-        None => ActionConnectionAPI::with_config(dd_cfg),
-    }
+    ActionConnectionAPI::with_config(dd_cfg)
 }
 
 pub async fn connections_get(cfg: &Config, connection_id: &str) -> Result<()> {
