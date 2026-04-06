@@ -4646,8 +4646,7 @@ async fn test_service_account_app_keys_get() {
         r#"{"data":{"type":"api_keys","id":"key-1","attributes":{}}}"#,
     )
     .await;
-    let result =
-        crate::commands::users::service_account_app_keys_get(&cfg, "sa-id", "key-1").await;
+    let result = crate::commands::users::service_account_app_keys_get(&cfg, "sa-id", "key-1").await;
     assert!(
         result.is_ok(),
         "service account app key get failed: {:?}",
