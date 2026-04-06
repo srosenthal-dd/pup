@@ -99,3 +99,28 @@ pub async fn troubleshooting_list(
     let data = client::raw_get(cfg, path, &query).await?;
     formatter::output(cfg, &data)
 }
+
+pub async fn service_library_config_get(
+    cfg: &Config,
+    service_name: String,
+    env: Option<String>,
+    language: Option<String>,
+    mixed: bool,
+) -> Result<()> {
+    let mut query = vec![("service_name", service_name.as_str())];
+    let env_owned;
+    if let Some(e) = &env {
+        env_owned = e.clone();
+        query.push(("env", env_owned.as_str()));
+    }
+    let lang_owned;
+    if let Some(l) = &language {
+        lang_owned = l.clone();
+        query.push(("language_name", lang_owned.as_str()));
+    }
+    if mixed {
+        query.push(("is_mixed", "true"));
+    }
+    let data = client::raw_get(cfg, "/api/unstable/apm/service-library-config", &query).await?;
+    formatter::output(cfg, &data)
+}

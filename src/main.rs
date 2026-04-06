@@ -6581,6 +6581,12 @@ enum ApmActions {
         #[command(subcommand)]
         action: ApmTroubleshootingActions,
     },
+    /// View APM service library configuration
+    #[command(name = "service-library-config")]
+    ServiceLibraryConfig {
+        #[command(subcommand)]
+        action: ApmServiceLibraryConfigActions,
+    },
 }
 
 #[derive(Subcommand)]
@@ -6687,6 +6693,25 @@ enum ApmTroubleshootingActions {
         hostname: String,
         #[arg(long, help = "Time window (e.g. 4h, 24h, 1h30m)")]
         timeframe: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum ApmServiceLibraryConfigActions {
+    /// Get library configuration for a service
+    Get {
+        #[arg(long, help = "Service name (required)")]
+        service_name: String,
+        #[arg(long, help = "Environment filter")]
+        env: Option<String>,
+        #[arg(long, help = "Language filter (python, java, go, ruby, dotnet, etc.)")]
+        language: Option<String>,
+        #[arg(
+            long,
+            default_value_t = false,
+            help = "Only show configs with mixed values across instances"
+        )]
+        mixed: bool,
     },
 }
 
@@ -10804,6 +10829,23 @@ async fn main_inner() -> anyhow::Result<()> {
                         timeframe,
                     } => {
                         commands::apm::troubleshooting_list(&cfg, hostname, timeframe).await?;
+                    }
+                },
+                ApmActions::ServiceLibraryConfig { action } => match action {
+                    ApmServiceLibraryConfigActions::Get {
+                        service_name,
+                        env,
+                        language,
+                        mixed,
+                    } => {
+                        commands::apm::service_library_config_get(
+                            &cfg,
+                            service_name,
+                            env,
+                            language,
+                            mixed,
+                        )
+                        .await?;
                     }
                 },
             }
