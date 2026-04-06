@@ -72,7 +72,7 @@ fn extract_query_status(resp: &Value) -> Result<Option<String>> {
     let query_meta = resp
         .pointer("/meta/responses/0/queries/0")
         .or_else(|| resp.pointer("/meta/queries/0"))
-        .ok_or_else(|| anyhow!("unexpected response: missing meta.queries[0]"))?;
+        .ok_or_else(|| anyhow!("unexpected response: missing query status in meta"))?;
 
     let status = query_meta
         .get("status")
