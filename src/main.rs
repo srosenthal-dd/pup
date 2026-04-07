@@ -5997,6 +5997,12 @@ enum FleetActions {
         #[command(subcommand)]
         action: FleetTracerActions,
     },
+    /// List instrumented pods in a Kubernetes cluster
+    #[command(name = "instrumented-pods")]
+    InstrumentedPods {
+        #[command(subcommand)]
+        action: FleetInstrumentedPodsActions,
+    },
 }
 
 #[derive(Subcommand)]
@@ -6096,6 +6102,18 @@ enum FleetTracerActions {
         sort_attribute: Option<String>,
         #[arg(long, default_value_t = false, help = "Sort descending")]
         sort_descending: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum FleetInstrumentedPodsActions {
+    /// List instrumented pods in a Kubernetes cluster.
+    ///
+    /// Returns pod groups with namespace, owner, injection annotations, and pod names.
+    /// Use this to verify the Admission Controller targeted pods for SSI injection.
+    List {
+        #[arg(help = "Kubernetes cluster name (required)")]
+        cluster_name: String,
     },
 }
 
@@ -10865,6 +10883,12 @@ async fn main_inner() -> anyhow::Result<()> {
                             sort_descending,
                         )
                         .await?;
+                    }
+                },
+                FleetActions::InstrumentedPods { action } => match action {
+                    FleetInstrumentedPodsActions::List { cluster_name } => {
+                        commands::fleet::instrumented_pods_list(&cfg, cluster_name)
+                            .await?;
                     }
                 },
             }

@@ -377,6 +377,12 @@ pup fleet agents tracers <agent-key>
 pup fleet agents tracers <agent-key> --page-size 20
 ```
 
+### List Instrumented Pods (K8s)
+```bash
+# List pods instrumented by SSI in a cluster
+pup fleet instrumented-pods list <cluster-name>
+```
+
 ## Live Debugger
 
 ### Service Context

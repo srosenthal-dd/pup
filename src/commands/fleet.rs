@@ -284,3 +284,14 @@ pub async fn agents_tracers_list(
     let data = client::raw_get(cfg, &path, &query).await?;
     formatter::output(cfg, &data)
 }
+
+pub async fn instrumented_pods_list(
+    cfg: &Config,
+    cluster_name: String,
+) -> Result<()> {
+    let path = format!(
+        "/api/unstable/fleet/cluster_agents/details/{cluster_name}/instrumented_pods"
+    );
+    let data = client::raw_get(cfg, &path, &[]).await?;
+    formatter::output(cfg, &data)
+}
