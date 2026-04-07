@@ -811,21 +811,29 @@ enum Commands {
     /// Manage Cloud Security Management (Workload Protection) agent policies and rules.
     ///
     /// COMMANDS:
-    ///   agent-policies list    List agent policies
-    ///   agent-policies get     Get an agent policy
-    ///   agent-policies create  Create an agent policy from JSON
-    ///   agent-policies update  Update an agent policy
-    ///   agent-policies delete  Delete an agent policy
-    ///   agent-rules list       List agent rules
-    ///   agent-rules get        Get an agent rule
-    ///   agent-rules create     Create an agent rule from JSON
-    ///   agent-rules update     Update an agent rule
-    ///   agent-rules delete     Delete an agent rule
-    ///   policy download        Download the CSM threats policy file
+    ///   agent-policies list       List agent policies
+    ///   agent-policies get        Get an agent policy
+    ///   agent-policies create     Create an agent policy from JSON
+    ///   agent-policies update     Update an agent policy
+    ///   agent-policies delete     Delete an agent policy
+    ///   agent-rules list          List agent rules
+    ///   agent-rules get           Get an agent rule
+    ///   agent-rules create        Create an agent rule from JSON
+    ///   agent-rules update        Update an agent rule
+    ///   agent-rules delete        Delete an agent rule
+    ///   backend-rules list        List workload security backend rules
+    ///   backend-rules get         Get a backend rule
+    ///   backend-rules create      Create a backend rule from JSON
+    ///   backend-rules update      Update a backend rule
+    ///   backend-rules delete      Delete a backend rule
+    ///   backend-rules validate    Validate a backend rule from JSON
+    ///   policy download           Download the CSM threats policy file
     ///
     /// EXAMPLES:
     ///   pup csm-threats agent-policies list
     ///   pup csm-threats agent-rules create --file rule.json
+    ///   pup csm-threats backend-rules list
+    ///   pup csm-threats backend-rules create --file rule.json
     ///   pup csm-threats policy download
     #[command(verbatim_doc_comment)]
     CsmThreats {
@@ -5679,6 +5687,11 @@ enum CsmThreatsActions {
         #[command(subcommand)]
         action: CsmThreatsAgentRuleActions,
     },
+    /// Manage workload security backend detection rules
+    BackendRules {
+        #[command(subcommand)]
+        action: CsmThreatsBackendRuleActions,
+    },
     /// Manage CSM Threats policy
     Policy {
         #[command(subcommand)]
@@ -5738,6 +5751,35 @@ enum CsmThreatsAgentRuleActions {
         rule_id: String,
         #[arg(long, help = "Agent policy ID")]
         policy_id: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum CsmThreatsBackendRuleActions {
+    /// List workload security backend rules
+    List {
+        #[arg(long, help = "Additional query filter")]
+        query: Option<String>,
+    },
+    /// Get a backend rule
+    Get { rule_id: String },
+    /// Create a backend rule from JSON
+    Create {
+        #[arg(long)]
+        file: String,
+    },
+    /// Update a backend rule
+    Update {
+        rule_id: String,
+        #[arg(long)]
+        file: String,
+    },
+    /// Delete a backend rule
+    Delete { rule_id: String },
+    /// Validate a backend rule from JSON
+    Validate {
+        #[arg(long)]
+        file: String,
     },
 }
 
@@ -11865,6 +11907,27 @@ async fn main_inner() -> anyhow::Result<()> {
                     CsmThreatsAgentRuleActions::Delete { rule_id, policy_id } => {
                         commands::csm_threats::agent_rules_delete(&cfg, &rule_id, policy_id)
                             .await?;
+                    }
+                },
+                CsmThreatsActions::BackendRules { action } => match action {
+                    CsmThreatsBackendRuleActions::List { query } => {
+                        commands::csm_threats::backend_rules_list(&cfg, query).await?;
+                    }
+                    CsmThreatsBackendRuleActions::Get { rule_id } => {
+                        commands::csm_threats::backend_rules_get(&cfg, &rule_id).await?;
+                    }
+                    CsmThreatsBackendRuleActions::Create { file } => {
+                        commands::csm_threats::backend_rules_create(&cfg, &file).await?;
+                    }
+                    CsmThreatsBackendRuleActions::Update { rule_id, file } => {
+                        commands::csm_threats::backend_rules_update(&cfg, &rule_id, &file)
+                            .await?;
+                    }
+                    CsmThreatsBackendRuleActions::Delete { rule_id } => {
+                        commands::csm_threats::backend_rules_delete(&cfg, &rule_id).await?;
+                    }
+                    CsmThreatsBackendRuleActions::Validate { file } => {
+                        commands::csm_threats::backend_rules_validate(&cfg, &file).await?;
                     }
                 },
                 CsmThreatsActions::Policy { action } => match action {
