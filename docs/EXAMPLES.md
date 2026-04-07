@@ -351,6 +351,32 @@ pup apm troubleshooting list --hostname my-host
 pup apm troubleshooting list --hostname my-host --timeframe 4h
 ```
 
+## Fleet Tracers
+
+### List Tracers Across the Fleet
+```bash
+# List all tracers (telemetry-derived service names, language, runtime IDs)
+pup fleet tracers list
+
+# Filter tracers by environment
+pup fleet tracers list --filter "env:prod"
+
+# Filter tracers by hostname
+pup fleet tracers list --filter "hostname:my-host"
+
+# Paginate results
+pup fleet tracers list --filter "env:prod" --page-size 50 --page-number 0
+```
+
+### List Tracers for a Specific Agent
+```bash
+# Get tracers running on a specific agent
+pup fleet agents tracers <agent-key>
+
+# With pagination
+pup fleet agents tracers <agent-key> --page-size 20
+```
+
 ## Live Debugger
 
 ### Service Context

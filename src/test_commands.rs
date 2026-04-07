@@ -1620,6 +1620,96 @@ async fn test_fleet_agents_versions() {
     cleanup_env();
 }
 #[tokio::test]
+async fn test_fleet_tracers_list() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+
+    let mock = server
+        .mock("GET", "/api/unstable/fleet/tracers")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"data":{"type":"status","attributes":{"tracers":[]}}}"#)
+        .create_async()
+        .await;
+
+    let result =
+        crate::commands::fleet::tracers_list(&cfg, None, None, None, None, false).await;
+    assert!(
+        result.is_ok(),
+        "tracers_list failed: {:?}",
+        result.err()
+    );
+    mock.assert_async().await;
+    cleanup_env();
+}
+#[tokio::test]
+async fn test_fleet_tracers_list_with_filter() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+
+    let mock = server
+        .mock("GET", "/api/unstable/fleet/tracers")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "filter".into(),
+            "hostname:my-host".into(),
+        ))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"data":{"type":"status","attributes":{"tracers":[]}}}"#)
+        .create_async()
+        .await;
+
+    let result = crate::commands::fleet::tracers_list(
+        &cfg,
+        Some("hostname:my-host".into()),
+        None,
+        None,
+        None,
+        false,
+    )
+    .await;
+    assert!(
+        result.is_ok(),
+        "tracers_list with filter failed: {:?}",
+        result.err()
+    );
+    mock.assert_async().await;
+    cleanup_env();
+}
+#[tokio::test]
+async fn test_fleet_agents_tracers_list() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+
+    let mock = server
+        .mock("GET", "/api/unstable/fleet/agents/details/agent-123/tracers")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"data":{"type":"status","attributes":{"tracers":[]}}}"#)
+        .create_async()
+        .await;
+
+    let result = crate::commands::fleet::agents_tracers_list(
+        &cfg,
+        "agent-123".into(),
+        None,
+        None,
+        None,
+        false,
+    )
+    .await;
+    assert!(
+        result.is_ok(),
+        "agents_tracers_list failed: {:?}",
+        result.err()
+    );
+    mock.assert_async().await;
+    cleanup_env();
+}
+#[tokio::test]
 async fn test_fleet_deployments_list() {
     let _lock = lock_env();
     let mut s = mockito::Server::new_async().await;

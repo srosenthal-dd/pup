@@ -5992,6 +5992,11 @@ enum FleetActions {
         #[command(subcommand)]
         action: FleetScheduleActions,
     },
+    /// Query fleet tracers (telemetry-derived service names, language, runtime IDs)
+    Tracers {
+        #[command(subcommand)]
+        action: FleetTracerActions,
+    },
 }
 
 #[derive(Subcommand)]
@@ -6010,6 +6015,18 @@ enum FleetAgentActions {
     Get { agent_key: String },
     /// List available agent versions
     Versions,
+    /// List tracers for a specific agent
+    Tracers {
+        agent_key: String,
+        #[arg(long, default_value_t = 10, help = "Results per page (max 100)")]
+        page_size: i64,
+        #[arg(long, help = "Page number (0-indexed)")]
+        page_number: Option<i64>,
+        #[arg(long, help = "Sort by attribute (e.g. service, language, hostname)")]
+        sort_attribute: Option<String>,
+        #[arg(long, default_value_t = false, help = "Sort descending")]
+        sort_descending: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -6056,6 +6073,30 @@ enum FleetScheduleActions {
     Delete { schedule_id: String },
     /// Trigger a fleet schedule
     Trigger { schedule_id: String },
+}
+
+#[derive(Subcommand)]
+enum FleetTracerActions {
+    /// List tracers across the fleet.
+    ///
+    /// Returns telemetry-derived service names, language, tracer version, and runtime IDs.
+    /// Note: service names here come from the SDK telemetry pipeline and may differ from
+    /// span-derived names in APM (e.g. pup apm services list).
+    List {
+        #[arg(
+            long,
+            help = "Filter query (e.g. env:prod, hostname:my-host, service:web-api)"
+        )]
+        filter: Option<String>,
+        #[arg(long, default_value_t = 10, help = "Results per page (max 100)")]
+        page_size: i64,
+        #[arg(long, help = "Page number (0-indexed)")]
+        page_number: Option<i64>,
+        #[arg(long, help = "Sort by attribute (e.g. service, language, hostname)")]
+        sort_attribute: Option<String>,
+        #[arg(long, default_value_t = false, help = "Sort descending")]
+        sort_descending: bool,
+    },
 }
 
 // ---- Data Deletion ----
@@ -10754,6 +10795,23 @@ async fn main_inner() -> anyhow::Result<()> {
                         commands::fleet::agents_get(&cfg, &agent_key).await?;
                     }
                     FleetAgentActions::Versions => commands::fleet::agents_versions(&cfg).await?,
+                    FleetAgentActions::Tracers {
+                        agent_key,
+                        page_size,
+                        page_number,
+                        sort_attribute,
+                        sort_descending,
+                    } => {
+                        commands::fleet::agents_tracers_list(
+                            &cfg,
+                            agent_key,
+                            Some(page_size),
+                            page_number,
+                            sort_attribute,
+                            sort_descending,
+                        )
+                        .await?;
+                    }
                 },
                 FleetActions::Deployments { action } => match action {
                     FleetDeploymentActions::List { page_size } => {
@@ -10788,6 +10846,25 @@ async fn main_inner() -> anyhow::Result<()> {
                     }
                     FleetScheduleActions::Trigger { schedule_id } => {
                         commands::fleet::schedules_trigger(&cfg, &schedule_id).await?;
+                    }
+                },
+                FleetActions::Tracers { action } => match action {
+                    FleetTracerActions::List {
+                        filter,
+                        page_size,
+                        page_number,
+                        sort_attribute,
+                        sort_descending,
+                    } => {
+                        commands::fleet::tracers_list(
+                            &cfg,
+                            filter,
+                            Some(page_size),
+                            page_number,
+                            sort_attribute,
+                            sort_descending,
+                        )
+                        .await?;
                     }
                 },
             }
