@@ -5127,10 +5127,10 @@ async fn test_scorecard_rules_create_api_error() {
         .with_body(r#"{"errors":["unprocessable entity"]}"#)
         .create_async()
         .await;
-    let tmp = "/tmp/test_scorecard_rule.json";
-    std::fs::write(tmp, r#"{"data":{}}"#).unwrap();
-    let result = crate::commands::scorecards::rules_create(&cfg, tmp).await;
-    let _ = std::fs::remove_file(tmp);
+    let tmp = std::env::temp_dir().join("test_scorecard_rule.json");
+    std::fs::write(&tmp, r#"{"data":{}}"#).unwrap();
+    let result = crate::commands::scorecards::rules_create(&cfg, tmp.to_str().unwrap()).await;
+    let _ = std::fs::remove_file(&tmp);
     assert!(result.is_err(), "rules_create should fail on 422 response");
     cleanup_env();
     std::env::remove_var("DD_TOKEN_STORAGE");
