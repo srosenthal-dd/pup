@@ -437,6 +437,13 @@ pup debugger probes create \
   --probe-location com.example.MyClass:myMethod \
   --capture "request.id" --capture "user.name"
 
+# Use a method signature from --view probe-locations output
+pup debugger probes create \
+  --service my-service \
+  --env staging \
+  --probe-location "com.example.MyClass:myMethod(String, int)" \
+  --capture "request.id"
+
 # Increase capture depth for nested objects (default: 1)
 pup debugger probes create \
   --service my-service \
@@ -507,6 +514,7 @@ pup debugger probes watch "probe-id" --wait 30
 ### Pipeline: Create and Watch
 ```bash
 # Search for a method, create a probe, and watch events
+# Note: --view probe-locations may output signatures like TYPE:METHOD(args)
 pup symdb search --service my-service --query MyController --view probe-locations \
   | head -1 \
   | xargs -I{} pup debugger probes create --service my-service --env staging --probe-location {} --capture --ttl 1h \
@@ -536,7 +544,7 @@ pup symdb search --service my-service --query MyController --view full
 # Scope names only
 pup symdb search --service my-service --query MyController --view names
 
-# Probe locations (type:method format)
+# Probe locations (type:method or type:method(args) format)
 pup symdb search --service my-service --query MyController --view probe-locations
 ```
 

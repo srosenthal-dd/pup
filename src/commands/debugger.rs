@@ -91,6 +91,7 @@ struct ResolvedProbe<'a> {
     env: &'a str,
     type_name: &'a str,
     method_name: &'a str,
+    signature: Option<&'a str>,
     language: &'a str,
     template_str: String,
     segments: serde_json::Value,
@@ -207,12 +208,16 @@ fn build_probe_payload(p: &ResolvedProbe<'_>) -> serde_json::Value {
         "language": p.language,
         "where": {
             "type_name": p.type_name,
-            "method_name": p.method_name
+            "method_name": p.method_name,
         },
         "evaluate_at": "EXIT",
         "tags": [],
         "version": 0
     });
+
+    if let Some(sig) = p.signature {
+        probe["where"]["signature"] = serde_json::json!(sig);
+    }
 
     if let Some(w) = &p.when {
         probe["when"] = w.clone();
@@ -286,9 +291,15 @@ pub async fn probes_create(cfg: &Config, params: ProbeCreateParams<'_>) -> Resul
         None
     };
 
-    let (type_name, method_name) = probe_location
+    let (type_name, method_part) = probe_location
         .rsplit_once(':')
         .ok_or_else(|| anyhow::anyhow!("probe_location must be in format TYPE:METHOD"))?;
+
+    // Split optional signature: "myMethod(int,int)" → method="myMethod", sig="(int,int)"
+    let (method_name, signature) = match method_part.find('(') {
+        Some(i) => (&method_part[..i], Some(&method_part[i..])),
+        None => (method_part, None),
+    };
 
     // Parse condition if provided
     let when = if let Some(cond) = condition {
@@ -340,6 +351,7 @@ pub async fn probes_create(cfg: &Config, params: ProbeCreateParams<'_>) -> Resul
         env,
         type_name,
         method_name,
+        signature,
         language,
         template_str,
         segments,
@@ -730,6 +742,7 @@ mod tests {
             env: "staging",
             type_name: "com.example.MyClass",
             method_name: "myMethod",
+            signature: None,
             language: "java",
             template_str,
             segments,
@@ -994,6 +1007,61 @@ mod tests {
         let out = extract_create_fields(&resp, "id,bogus");
         assert_eq!(out["id"], "082b17fd-c75c-4ab0-8426-3456b98d7600");
         assert!(out.get("bogus").is_none());
+    }
+
+    #[test]
+    fn test_probe_location_parsing_plain() {
+        let loc = "com.example.MyClass:myMethod";
+        let (_, method_part) = loc.rsplit_once(':').unwrap();
+        let (method_name, signature) = match method_part.find('(') {
+            Some(i) => (&method_part[..i], Some(&method_part[i..])),
+            None => (method_part, None),
+        };
+        assert_eq!(method_name, "myMethod");
+        assert_eq!(signature, None);
+    }
+
+    #[test]
+    fn test_probe_location_parsing_with_signature() {
+        let loc = "com.example.MyClass:myMethod(int,java.lang.String)";
+        let (type_name, method_part) = loc.rsplit_once(':').unwrap();
+        let (method_name, signature) = match method_part.find('(') {
+            Some(i) => (&method_part[..i], Some(&method_part[i..])),
+            None => (method_part, None),
+        };
+        assert_eq!(type_name, "com.example.MyClass");
+        assert_eq!(method_name, "myMethod");
+        assert_eq!(signature, Some("(int,java.lang.String)"));
+    }
+
+    #[test]
+    fn test_probe_location_parsing_empty_args() {
+        let loc = "com.example.MyClass:myMethod()";
+        let (_, method_part) = loc.rsplit_once(':').unwrap();
+        let (method_name, signature) = match method_part.find('(') {
+            Some(i) => (&method_part[..i], Some(&method_part[i..])),
+            None => (method_part, None),
+        };
+        assert_eq!(method_name, "myMethod");
+        assert_eq!(signature, Some("()"));
+    }
+
+    #[test]
+    fn test_build_probe_payload_no_signature() {
+        let payload = test_resolved_probe(|_| {});
+        let where_block = &payload["data"]["attributes"]["probe"]["where"];
+        assert!(where_block.get("signature").is_none());
+    }
+
+    #[test]
+    fn test_build_probe_payload_with_signature() {
+        let payload = test_resolved_probe(|rp| {
+            rp.signature = Some("(int,java.lang.String)");
+        });
+        let where_block = &payload["data"]["attributes"]["probe"]["where"];
+        assert_eq!(where_block["type_name"], "com.example.MyClass");
+        assert_eq!(where_block["method_name"], "myMethod");
+        assert_eq!(where_block["signature"], "(int,java.lang.String)");
     }
 
     fn sample_context_response() -> serde_json::Value {

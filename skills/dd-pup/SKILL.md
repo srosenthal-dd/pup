@@ -27,7 +27,7 @@ Pup CLI for Datadog API operations. Supports OAuth2 and API key auth.
 | Check SLOs | `pup slos list` |
 | On-call teams | `pup on-call teams list` |
 | Security signals | `pup security signals list --query "*" --from 24h` |
-| Inspect runtime values | `pup debugger probes create --service my-svc --env prod --probe-location com.example.MyClass:myMethod` |
+| Inspect runtime values | `pup debugger probes create --service my-svc --env prod --probe-location "com.example.MyClass:myMethod"` or `"com.example.MyClass:myMethod(String, int)"` |
 | Find probe-able methods | `pup symdb search --service my-svc --query MyController --view probe-locations` |
 | Check auth | `pup auth status` |
 | Refresh token | `pup auth refresh` |
@@ -192,10 +192,16 @@ pup debugger context my-svc --env prod
 pup symdb search --service my-svc --query MyController --view probe-locations
 
 # Place a log probe with capture expressions
+# --probe-location accepts TYPE:METHOD or TYPE:METHOD(arg1, arg2, ...) with optional signature
 pup debugger probes create --service my-svc --env prod \
   --probe-location "com.example.MyController:handleRequest" \
   --capture "request.id" --capture "request.headers" \
   --ttl 1h
+
+# With method signature (useful when the method is overloaded)
+pup debugger probes create --service my-svc --env prod \
+  --probe-location "com.example.MyController:handleRequest(String, HttpHeaders)" \
+  --capture "request.id" --ttl 1h
 
 # Watch probe events — compact output
 pup debugger probes watch <PROBE_ID> --fields "message,captures,timestamp" --timeout 60 --limit 10 --wait 5

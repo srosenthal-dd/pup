@@ -9,6 +9,26 @@ use reqwest_middleware::{Middleware, Next};
 
 use crate::config::Config;
 
+/// HTTP error with the status code preserved for programmatic matching.
+#[derive(Debug)]
+pub struct HttpError {
+    pub status: u16,
+    pub method: String,
+    pub url: String,
+    pub body: String,
+}
+
+impl std::fmt::Display for HttpError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} {} failed (HTTP {}): {}",
+            self.method, self.url, self.status, self.body
+        )
+    }
+}
+
+impl std::error::Error for HttpError {}
 #[cfg(not(target_arch = "wasm32"))]
 struct BearerAuthMiddleware {
     token: String,
@@ -727,7 +747,7 @@ pub async fn raw_request(
     let client = reqwest::Client::new();
     let method_name = method.to_uppercase();
     let method = reqwest::Method::from_bytes(method_name.as_bytes())
-        .map_err(|_| anyhow::anyhow!("unsupported HTTP method: {method}"))?;
+        .map_err(|_| anyhow::anyhow!("unsupported HTTP method: {method_name}"))?;
     let mut req = client.request(method, &url);
     if !query.is_empty() {
         req = req.query(query);
@@ -754,7 +774,13 @@ pub async fn raw_request(
     if !resp.status().is_success() {
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
-        anyhow::bail!("API error (HTTP {status}): {text}");
+        return Err(HttpError {
+            status: status.as_u16(),
+            method: method_name,
+            url,
+            body: text,
+        }
+        .into());
     }
 
     let resp_ct = resp
@@ -804,7 +830,13 @@ pub async fn raw_get(
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("GET {url} failed (HTTP {status}): {body}");
+        return Err(HttpError {
+            status: status.as_u16(),
+            method: "GET".into(),
+            url,
+            body,
+        }
+        .into());
     }
     Ok(resp.json().await?)
 }
@@ -833,7 +865,13 @@ pub async fn raw_patch(
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("PATCH {url} failed (HTTP {status}): {body}");
+        return Err(HttpError {
+            status: status.as_u16(),
+            method: "PATCH".into(),
+            url,
+            body,
+        }
+        .into());
     }
     Ok(resp.json().await?)
 }
@@ -882,7 +920,13 @@ async fn raw_post_impl(
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("POST {url} failed (HTTP {status}): {body}");
+        return Err(HttpError {
+            status: status.as_u16(),
+            method: "POST".into(),
+            url: url.to_string(),
+            body,
+        }
+        .into());
     }
     Ok(resp.json().await?)
 }
@@ -1008,7 +1052,13 @@ pub async fn raw_delete(cfg: &Config, path: &str) -> anyhow::Result<()> {
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("DELETE {url} failed (HTTP {status}): {body}");
+        return Err(HttpError {
+            status: status.as_u16(),
+            method: "DELETE".into(),
+            url,
+            body,
+        }
+        .into());
     }
     Ok(())
 }

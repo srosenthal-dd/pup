@@ -46,7 +46,7 @@ pup symdb search --service my-service --query "Controller" --view names
 
 ### Probe Locations View
 
-`TYPE:METHOD` pairs suitable for `--probe-location` in `pup debugger probes create`.
+`TYPE:METHOD(arg1, arg2, ...)` signatures suitable for `--probe-location` in `pup debugger probes create`. Falls back to `TYPE:METHOD` when no argument info is available.
 
 ```bash
 pup symdb search --service my-service --query "VetController" --view probe-locations
@@ -79,6 +79,13 @@ pup debugger probes create \
   --service my-service \
   --env production \
   --probe-location "com.example.MyController:handleRequest" \
+  --template "handleRequest called with id={id}"
+
+# Or use the full signature when multiple overloads exist
+pup debugger probes create \
+  --service my-service \
+  --env production \
+  --probe-location "com.example.MyController:handleRequest(int, java.lang.String)" \
   --template "handleRequest called with id={id}"
 
 # 3. Stream events
