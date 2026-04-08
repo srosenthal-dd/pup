@@ -5992,6 +5992,11 @@ enum FleetActions {
         #[command(subcommand)]
         action: FleetScheduleActions,
     },
+    /// List Kubernetes clusters in the fleet
+    Clusters {
+        #[command(subcommand)]
+        action: FleetClusterActions,
+    },
     /// Query fleet tracers (telemetry-derived service names, language, runtime IDs)
     Tracers {
         #[command(subcommand)]
@@ -6099,6 +6104,29 @@ enum FleetTracerActions {
         #[arg(long, help = "Page number (0-indexed)")]
         page_number: Option<i64>,
         #[arg(long, help = "Sort by attribute (e.g. service, language, hostname)")]
+        sort_attribute: Option<String>,
+        #[arg(long, default_value_t = false, help = "Sort descending")]
+        sort_descending: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum FleetClusterActions {
+    /// List Kubernetes clusters in the fleet.
+    ///
+    /// Returns clusters with node counts, agent versions, enabled products, and services.
+    /// Use this to discover cluster names for use with instrumented-pods.
+    List {
+        #[arg(
+            long,
+            help = "Filter query (e.g. cluster_name:production, env:prod)"
+        )]
+        filter: Option<String>,
+        #[arg(long, default_value_t = 10, help = "Results per page (max 100)")]
+        page_size: i64,
+        #[arg(long, help = "Page number (0-indexed)")]
+        page_number: Option<i64>,
+        #[arg(long, help = "Sort by attribute (e.g. cluster_name, node_count)")]
         sort_attribute: Option<String>,
         #[arg(long, default_value_t = false, help = "Sort descending")]
         sort_descending: bool,
@@ -10864,6 +10892,25 @@ async fn main_inner() -> anyhow::Result<()> {
                     }
                     FleetScheduleActions::Trigger { schedule_id } => {
                         commands::fleet::schedules_trigger(&cfg, &schedule_id).await?;
+                    }
+                },
+                FleetActions::Clusters { action } => match action {
+                    FleetClusterActions::List {
+                        filter,
+                        page_size,
+                        page_number,
+                        sort_attribute,
+                        sort_descending,
+                    } => {
+                        commands::fleet::clusters_list(
+                            &cfg,
+                            filter,
+                            Some(page_size),
+                            page_number,
+                            sort_attribute,
+                            sort_descending,
+                        )
+                        .await?;
                     }
                 },
                 FleetActions::Tracers { action } => match action {

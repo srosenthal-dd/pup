@@ -285,6 +285,44 @@ pub async fn agents_tracers_list(
     formatter::output(cfg, &data)
 }
 
+pub async fn clusters_list(
+    cfg: &Config,
+    filter: Option<String>,
+    page_size: Option<i64>,
+    page_number: Option<i64>,
+    sort_attribute: Option<String>,
+    sort_descending: bool,
+) -> Result<()> {
+    let mut query: Vec<(&str, &str)> = Vec::new();
+    let filter_owned;
+    if let Some(f) = &filter {
+        filter_owned = f.clone();
+        query.push(("filter", filter_owned.as_str()));
+    }
+    let ps_owned;
+    if let Some(ps) = &page_size {
+        ps_owned = ps.to_string();
+        query.push(("page_size", ps_owned.as_str()));
+    }
+    let pn_owned;
+    if let Some(pn) = &page_number {
+        pn_owned = pn.to_string();
+        query.push(("page_number", pn_owned.as_str()));
+    }
+    let sa_owned;
+    if let Some(sa) = &sort_attribute {
+        sa_owned = sa.clone();
+        query.push(("sort_attribute", sa_owned.as_str()));
+    }
+    let sd_owned;
+    if sort_descending {
+        sd_owned = "true".to_string();
+        query.push(("sort_descending", sd_owned.as_str()));
+    }
+    let data = client::raw_get(cfg, "/api/unstable/fleet/clusters", &query).await?;
+    formatter::output(cfg, &data)
+}
+
 pub async fn instrumented_pods_list(
     cfg: &Config,
     cluster_name: String,
