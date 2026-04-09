@@ -37,9 +37,13 @@ const SCHEMA_SECTION_MARKER: &str = "## Schema Reference";
 /// "## Schema Reference", and strips template directives ({% ... %})
 /// so the output is clean, readable plaintext/markdown.
 async fn fetch_schema_markdown() -> Result<String> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| anyhow::anyhow!("failed to create HTTP client: {e}"))?;
     let resp = client
         .get(SCHEMA_URL)
+        .header("User-Agent", "pup-cli")
         .send()
         .await
         .map_err(|e| anyhow::anyhow!("failed to fetch schema from {SCHEMA_URL}: {e}"))?;
@@ -64,8 +68,17 @@ async fn fetch_schema_markdown() -> Result<String> {
             )
         })?;
 
+    // Trim trailing sections that aren't part of the schema reference
+    let schema_section = schema_section
+        .find("## Further reading")
+        .map(|pos| schema_section[..pos].trim_end())
+        .unwrap_or(schema_section);
+
     // Strip template directives: {% ... %}
-    let cleaned = strip_template_directives(schema_section);
+    let mut cleaned = strip_template_directives(schema_section);
+
+    // Add source attribution
+    cleaned.push_str("\n\n---\n*This schema was fetched from Datadog public documentation.*\n");
 
     Ok(cleaned)
 }

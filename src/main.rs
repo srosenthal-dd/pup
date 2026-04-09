@@ -4277,8 +4277,8 @@ enum SecurityFindingActions {
         #[arg(long, short)]
         query: String,
 
-        /// Start time (default: now-24h). ISO 8601 or relative (e.g., now-7d)
-        #[arg(long, default_value = "now-24h")]
+        /// Start time (default: 24h ago). Relative (e.g., 24h, 7d) or ISO 8601.
+        #[arg(long, default_value = "24h")]
         from: String,
 
         /// End time (default: now). ISO 8601 or relative
