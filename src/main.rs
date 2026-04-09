@@ -4261,6 +4261,34 @@ enum SecurityFindingActions {
         #[arg(long, default_value_t = 100)]
         limit: i64,
     },
+    /// Get the schema (available fields and types) for security findings.
+    /// Fetches the latest schema reference from Datadog documentation.
+    /// Call this before using `findings analyze` to discover queryable fields.
+    #[command(name = "schema")]
+    Schema,
+    /// Analyze security findings using SQL with dd.security_findings().
+    /// Run `pup security findings schema` first to see available fields.
+    #[command(name = "analyze")]
+    Analyze {
+        /// SQL query using dd.security_findings() function.
+        /// Example: SELECT severity, count(*) as cnt FROM dd.security_findings(
+        ///   columns => ARRAY['@severity'], filter => '@status:open'
+        /// ) AS (severity VARCHAR) GROUP BY severity
+        #[arg(long, short)]
+        query: String,
+
+        /// Start time (default: now-24h). ISO 8601 or relative (e.g., now-7d)
+        #[arg(long, default_value = "now-24h")]
+        from: String,
+
+        /// End time (default: now). ISO 8601 or relative
+        #[arg(long, default_value = "now")]
+        to: String,
+
+        /// Max rows to return
+        #[arg(long, default_value_t = 100)]
+        limit: i64,
+    },
 }
 
 #[derive(Subcommand)]
@@ -9400,6 +9428,18 @@ async fn main_inner() -> anyhow::Result<()> {
                 SecurityActions::Findings { action } => match action {
                     SecurityFindingActions::Search { query, limit } => {
                         commands::security::findings_search(&cfg, query, limit).await?;
+                    }
+                    SecurityFindingActions::Schema => {
+                        commands::security::findings_schema(&cfg).await?;
+                    }
+                    SecurityFindingActions::Analyze {
+                        query,
+                        from,
+                        to,
+                        limit,
+                    } => {
+                        commands::security::findings_analyze(&cfg, &query, &from, &to, limit)
+                            .await?;
                     }
                 },
                 SecurityActions::ContentPacks { action } => match action {
