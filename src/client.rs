@@ -681,6 +681,7 @@ pub async fn raw_get(
 
 /// Makes an authenticated PATCH request directly via reqwest.
 /// Used for endpoints not covered by the typed DD API client.
+#[allow(dead_code)]
 pub async fn raw_patch(
     cfg: &Config,
     path: &str,
