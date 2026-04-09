@@ -328,7 +328,7 @@ pub async fn instrumented_pods_list(
     cluster_name: String,
 ) -> Result<()> {
     let path = format!(
-        "/api/unstable/fleet/cluster_agents/details/{cluster_name}/instrumented_pods"
+        "/api/unstable/fleet/clusters/{cluster_name}/instrumented_pods"
     );
     let data = client::raw_get(cfg, &path, &[]).await?;
     formatter::output(cfg, &data)
