@@ -322,6 +322,7 @@ pub async fn suppressions_validate(cfg: &Config, file: &str) -> Result<()> {
 // ---- ASM WAF Custom Rules ----
 
 pub async fn asm_custom_rules_list(cfg: &Config) -> Result<()> {
+    cfg.validate_api_and_app_keys()?;
     let dd_cfg = client::make_dd_config(cfg);
     let api = ApplicationSecurityAPI::with_config(dd_cfg);
     let resp = api
@@ -332,6 +333,7 @@ pub async fn asm_custom_rules_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn asm_custom_rules_get(cfg: &Config, custom_rule_id: &str) -> Result<()> {
+    cfg.validate_api_and_app_keys()?;
     let dd_cfg = client::make_dd_config(cfg);
     let api = ApplicationSecurityAPI::with_config(dd_cfg);
     let resp = api
@@ -342,6 +344,7 @@ pub async fn asm_custom_rules_get(cfg: &Config, custom_rule_id: &str) -> Result<
 }
 
 pub async fn asm_custom_rules_create(cfg: &Config, file: &str) -> Result<()> {
+    cfg.validate_api_and_app_keys()?;
     let body: ApplicationSecurityWafCustomRuleCreateRequest = util::read_json_file(file)?;
     let dd_cfg = client::make_dd_config(cfg);
     let api = ApplicationSecurityAPI::with_config(dd_cfg);
@@ -353,6 +356,7 @@ pub async fn asm_custom_rules_create(cfg: &Config, file: &str) -> Result<()> {
 }
 
 pub async fn asm_custom_rules_update(cfg: &Config, custom_rule_id: &str, file: &str) -> Result<()> {
+    cfg.validate_api_and_app_keys()?;
     let body: ApplicationSecurityWafCustomRuleUpdateRequest = util::read_json_file(file)?;
     let dd_cfg = client::make_dd_config(cfg);
     let api = ApplicationSecurityAPI::with_config(dd_cfg);
@@ -364,6 +368,7 @@ pub async fn asm_custom_rules_update(cfg: &Config, custom_rule_id: &str, file: &
 }
 
 pub async fn asm_custom_rules_delete(cfg: &Config, custom_rule_id: &str) -> Result<()> {
+    cfg.validate_api_and_app_keys()?;
     let dd_cfg = client::make_dd_config(cfg);
     let api = ApplicationSecurityAPI::with_config(dd_cfg);
     api.delete_application_security_waf_custom_rule(custom_rule_id.to_string())
@@ -376,6 +381,7 @@ pub async fn asm_custom_rules_delete(cfg: &Config, custom_rule_id: &str) -> Resu
 // ---- ASM WAF Exclusion Filters ----
 
 pub async fn asm_exclusions_list(cfg: &Config) -> Result<()> {
+    cfg.validate_api_and_app_keys()?;
     let dd_cfg = client::make_dd_config(cfg);
     let api = ApplicationSecurityAPI::with_config(dd_cfg);
     let resp = api
@@ -386,6 +392,7 @@ pub async fn asm_exclusions_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn asm_exclusions_get(cfg: &Config, exclusion_filter_id: &str) -> Result<()> {
+    cfg.validate_api_and_app_keys()?;
     let dd_cfg = client::make_dd_config(cfg);
     let api = ApplicationSecurityAPI::with_config(dd_cfg);
     let resp = api
@@ -396,6 +403,7 @@ pub async fn asm_exclusions_get(cfg: &Config, exclusion_filter_id: &str) -> Resu
 }
 
 pub async fn asm_exclusions_create(cfg: &Config, file: &str) -> Result<()> {
+    cfg.validate_api_and_app_keys()?;
     let body: ApplicationSecurityWafExclusionFilterCreateRequest = util::read_json_file(file)?;
     let dd_cfg = client::make_dd_config(cfg);
     let api = ApplicationSecurityAPI::with_config(dd_cfg);
@@ -411,6 +419,7 @@ pub async fn asm_exclusions_update(
     exclusion_filter_id: &str,
     file: &str,
 ) -> Result<()> {
+    cfg.validate_api_and_app_keys()?;
     let body: ApplicationSecurityWafExclusionFilterUpdateRequest = util::read_json_file(file)?;
     let dd_cfg = client::make_dd_config(cfg);
     let api = ApplicationSecurityAPI::with_config(dd_cfg);
@@ -422,6 +431,7 @@ pub async fn asm_exclusions_update(
 }
 
 pub async fn asm_exclusions_delete(cfg: &Config, exclusion_filter_id: &str) -> Result<()> {
+    cfg.validate_api_and_app_keys()?;
     let dd_cfg = client::make_dd_config(cfg);
     let api = ApplicationSecurityAPI::with_config(dd_cfg);
     api.delete_application_security_waf_exclusion_filter(exclusion_filter_id.to_string())
@@ -434,6 +444,7 @@ pub async fn asm_exclusions_delete(cfg: &Config, exclusion_filter_id: &str) -> R
 // ---- Restriction Policies ----
 
 pub async fn restriction_policy_get(cfg: &Config, resource_id: &str) -> Result<()> {
+    cfg.validate_api_and_app_keys()?;
     let dd_cfg = client::make_dd_config(cfg);
     let api = RestrictionPoliciesAPI::with_config(dd_cfg);
     let resp = api
@@ -444,6 +455,7 @@ pub async fn restriction_policy_get(cfg: &Config, resource_id: &str) -> Result<(
 }
 
 pub async fn restriction_policy_update(cfg: &Config, resource_id: &str, file: &str) -> Result<()> {
+    cfg.validate_api_and_app_keys()?;
     let body: RestrictionPolicyUpdateRequest = util::read_json_file(file)?;
     let dd_cfg = client::make_dd_config(cfg);
     let api = RestrictionPoliciesAPI::with_config(dd_cfg);
@@ -459,6 +471,7 @@ pub async fn restriction_policy_update(cfg: &Config, resource_id: &str, file: &s
 }
 
 pub async fn restriction_policy_delete(cfg: &Config, resource_id: &str) -> Result<()> {
+    cfg.validate_api_and_app_keys()?;
     let dd_cfg = client::make_dd_config(cfg);
     let api = RestrictionPoliciesAPI::with_config(dd_cfg);
     api.delete_restriction_policy(resource_id.to_string())

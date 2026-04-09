@@ -91,20 +91,13 @@ impl Config {
         let site = normalize_site(&raw_site);
         let org = env_or("DD_ORG", file_cfg.org); // flag override applied in main_inner
 
-        // If no token from env/file, try loading from keychain/storage (where `pup auth login` saves).
-        // Skip storage lookup when API keys are already set to avoid unnecessary keychain prompts.
-        let api_key = env_or("DD_API_KEY", file_cfg.api_key);
-        let app_key = env_or("DD_APP_KEY", file_cfg.app_key);
+        // If no token from env/file, try loading from keychain/storage (where `pup auth login` saves)
         #[cfg(not(target_arch = "wasm32"))]
-        let access_token = if api_key.is_some() && app_key.is_some() {
-            access_token
-        } else {
-            access_token.or_else(|| load_token_from_storage(&site, org.as_deref()))
-        };
+        let access_token = access_token.or_else(|| load_token_from_storage(&site, org.as_deref()));
 
         let cfg = Config {
-            api_key,
-            app_key,
+            api_key: env_or("DD_API_KEY", file_cfg.api_key),
+            app_key: env_or("DD_APP_KEY", file_cfg.app_key),
             access_token,
             site,
             org,
