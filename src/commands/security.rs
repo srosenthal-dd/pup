@@ -37,11 +37,7 @@ const SCHEMA_SECTION_MARKER: &str = "## Schema Reference";
 /// "## Schema Reference", and strips template directives ({% ... %})
 /// so the output is clean, readable plaintext/markdown.
 async fn fetch_schema_markdown() -> Result<String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|e| anyhow::anyhow!("failed to create HTTP client: {e}"))?;
-    let resp = client
+    let resp = reqwest::Client::new()
         .get(SCHEMA_URL)
         .header("User-Agent", "pup-cli")
         .send()
