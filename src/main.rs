@@ -8520,9 +8520,13 @@ mod test_agent_schema {
     #[test]
     fn global_flags_include_no_agent() {
         let schema = get_schema();
-        let flags = schema["global_flags"].as_array().expect("global_flags missing");
+        let flags = schema["global_flags"]
+            .as_array()
+            .expect("global_flags missing");
         assert!(
-            flags.iter().any(|f| f["name"].as_str() == Some("--no-agent")),
+            flags
+                .iter()
+                .any(|f| f["name"].as_str() == Some("--no-agent")),
             "global_flags must include --no-agent"
         );
     }
@@ -8535,9 +8539,13 @@ mod test_agent_schema {
             .find(|s| s.get_name() == "monitors")
             .expect("monitors subcommand not found");
         let schema = build_agent_schema_scoped(&cmd, monitors_cmd, &["monitors"]);
-        let flags = schema["global_flags"].as_array().expect("global_flags missing");
+        let flags = schema["global_flags"]
+            .as_array()
+            .expect("global_flags missing");
         assert!(
-            flags.iter().any(|f| f["name"].as_str() == Some("--no-agent")),
+            flags
+                .iter()
+                .any(|f| f["name"].as_str() == Some("--no-agent")),
             "scoped schema global_flags must include --no-agent"
         );
     }
