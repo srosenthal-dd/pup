@@ -93,6 +93,12 @@ pub fn is_agent_mode() -> bool {
 
 #[allow(dead_code)]
 pub fn get() -> String {
+    get_with_command(None)
+}
+
+/// Build the User-Agent string, optionally including a command identifier
+/// so that audit logs can differentiate which pup command made the request.
+pub fn get_with_command(command: Option<&str>) -> String {
     let agent = detect_agent_info();
     let base = format!(
         "pup/{} (rust; os {}; arch {}",
@@ -100,10 +106,15 @@ pub fn get() -> String {
         std::env::consts::OS,
         std::env::consts::ARCH,
     );
-    if agent.detected {
-        format!("{}; ai-agent {})", base, agent.name)
+    let with_agent = if agent.detected {
+        format!("{}; ai-agent {}", base, agent.name)
     } else {
-        format!("{})", base)
+        base
+    };
+    if let Some(cmd) = command {
+        format!("{}; cmd {})", with_agent, cmd)
+    } else {
+        format!("{})", with_agent)
     }
 }
 
@@ -138,6 +149,21 @@ mod tests {
         assert!(ua.contains("rust"));
         assert!(ua.contains("os "));
         assert!(ua.contains("arch "));
+        assert!(!ua.contains("cmd "));
+    }
+
+    #[test]
+    fn test_user_agent_with_command() {
+        let ua = get_with_command(Some("security-findings-analyze"));
+        assert!(ua.starts_with("pup/"));
+        assert!(ua.contains("; cmd security-findings-analyze)"));
+    }
+
+    #[test]
+    fn test_user_agent_with_no_command() {
+        let ua = get_with_command(None);
+        assert!(!ua.contains("cmd "));
+        assert_eq!(ua, get());
     }
 
     #[test]
