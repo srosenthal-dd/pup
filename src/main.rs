@@ -42,6 +42,9 @@ pub(crate) struct Cli {
     /// Enable agent mode
     #[arg(long, global = true)]
     agent: bool,
+    /// Disable agent mode (overrides auto-detection and --agent)
+    #[arg(long, global = true)]
+    no_agent: bool,
     /// Block all write operations (create, update, delete)
     #[arg(long, global = true)]
     read_only: bool,
@@ -7877,6 +7880,12 @@ fn build_agent_schema_scoped(
                 "description": "Enable agent mode (auto-detected for AI coding assistants)"
             },
             {
+                "name": "--no-agent",
+                "type": "bool",
+                "default": "false",
+                "description": "Disable agent mode (overrides auto-detection and --agent)"
+            },
+            {
                 "name": "--org",
                 "type": "string",
                 "default": null,
@@ -7995,6 +8004,12 @@ fn build_agent_schema(cmd: &clap::Command) -> serde_json::Value {
                 "type": "bool",
                 "default": "false",
                 "description": "Enable agent mode (auto-detected for AI coding assistants)"
+            },
+            {
+                "name": "--no-agent",
+                "type": "bool",
+                "default": "false",
+                "description": "Disable agent mode (overrides auto-detection and --agent)"
             },
             {
                 "name": "--org",
@@ -8501,6 +8516,39 @@ mod test_agent_schema {
             "group command should have subcommands"
         );
     }
+
+    #[test]
+    fn global_flags_include_no_agent() {
+        let schema = get_schema();
+        let flags = schema["global_flags"]
+            .as_array()
+            .expect("global_flags missing");
+        assert!(
+            flags
+                .iter()
+                .any(|f| f["name"].as_str() == Some("--no-agent")),
+            "global_flags must include --no-agent"
+        );
+    }
+
+    #[test]
+    fn no_agent_flag_in_scoped_schema() {
+        let cmd = Cli::command();
+        let monitors_cmd = cmd
+            .get_subcommands()
+            .find(|s| s.get_name() == "monitors")
+            .expect("monitors subcommand not found");
+        let schema = build_agent_schema_scoped(&cmd, monitors_cmd, &["monitors"]);
+        let flags = schema["global_flags"]
+            .as_array()
+            .expect("global_flags missing");
+        assert!(
+            flags
+                .iter()
+                .any(|f| f["name"].as_str() == Some("--no-agent")),
+            "scoped schema global_flags must include --no-agent"
+        );
+    }
 }
 
 // ---- Main ----
@@ -8599,7 +8647,8 @@ async fn main_inner() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let has_help = args.iter().any(|a| a == "--help" || a == "-h");
     let has_agent_flag = args.iter().any(|a| a == "--agent");
-    if has_help && (useragent::is_agent_mode() || has_agent_flag) {
+    let has_no_agent_flag = args.iter().any(|a| a == "--no-agent");
+    if has_help && !has_no_agent_flag && (useragent::is_agent_mode() || has_agent_flag) {
         let cmd = Cli::command();
         // Collect subcommand path from args (skip binary name, flags, and --help/-h)
         let sub_path: Vec<&str> = args
@@ -8679,7 +8728,7 @@ async fn main_inner() -> anyhow::Result<()> {
     if cli.yes {
         cfg.auto_approve = true;
     }
-    cfg.agent_mode = cli.agent || useragent::is_agent_mode();
+    cfg.agent_mode = !cli.no_agent && (cli.agent || useragent::is_agent_mode());
     if cfg.agent_mode {
         cfg.auto_approve = true;
     }
