@@ -12,12 +12,15 @@ use crate::formatter::{self, Metadata};
 use crate::util;
 
 // ---------------------------------------------------------------------------
-// Helper: build a WorkflowAutomationAPI (API key auth only)
+// Helper: build a WorkflowAutomationAPI
 // ---------------------------------------------------------------------------
 
 fn make_api(cfg: &Config) -> WorkflowAutomationAPI {
     let dd_cfg = client::make_dd_config(cfg);
-    WorkflowAutomationAPI::with_config(dd_cfg)
+    match client::make_bearer_client(cfg) {
+        Some(c) => WorkflowAutomationAPI::with_client_and_config(dd_cfg, c),
+        None => WorkflowAutomationAPI::with_config(dd_cfg),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -65,7 +68,7 @@ pub async fn delete(cfg: &Config, workflow_id: &str) -> Result<()> {
 }
 
 // ---------------------------------------------------------------------------
-// Workflow execution (API trigger only — requires DD_API_KEY + DD_APP_KEY)
+// Workflow execution
 // ---------------------------------------------------------------------------
 
 pub async fn run(
@@ -77,7 +80,10 @@ pub async fn run(
     timeout: &str,
 ) -> Result<()> {
     let dd_cfg = client::make_dd_config(cfg);
-    let api = WorkflowAutomationAPI::with_config(dd_cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => WorkflowAutomationAPI::with_client_and_config(dd_cfg, c),
+        None => WorkflowAutomationAPI::with_config(dd_cfg),
+    };
 
     let input_payload: Option<BTreeMap<String, serde_json::Value>> = match (&payload, &payload_file)
     {
@@ -136,7 +142,10 @@ pub async fn run(
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
         let dd_cfg = client::make_dd_config(cfg);
-        let api = WorkflowAutomationAPI::with_config(dd_cfg);
+        let api = match client::make_bearer_client(cfg) {
+            Some(c) => WorkflowAutomationAPI::with_client_and_config(dd_cfg, c),
+            None => WorkflowAutomationAPI::with_config(dd_cfg),
+        };
         let status = api
             .get_workflow_instance(workflow_id.to_string(), instance_id.clone())
             .await
@@ -217,7 +226,10 @@ pub async fn instance_cancel(cfg: &Config, workflow_id: &str, instance_id: &str)
 
 fn make_connection_api(cfg: &Config) -> ActionConnectionAPI {
     let dd_cfg = client::make_dd_config(cfg);
-    ActionConnectionAPI::with_config(dd_cfg)
+    match client::make_bearer_client(cfg) {
+        Some(c) => ActionConnectionAPI::with_client_and_config(dd_cfg, c),
+        None => ActionConnectionAPI::with_config(dd_cfg),
+    }
 }
 
 pub async fn connections_get(cfg: &Config, connection_id: &str) -> Result<()> {

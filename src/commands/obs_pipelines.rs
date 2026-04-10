@@ -10,8 +10,11 @@ use crate::formatter;
 use crate::util;
 
 fn make_api(cfg: &Config) -> ObservabilityPipelinesAPI {
-    // Observability Pipelines does not support OAuth — API key auth only.
-    ObservabilityPipelinesAPI::with_config(client::make_dd_config(cfg))
+    let dd_cfg = client::make_dd_config(cfg);
+    match client::make_bearer_client(cfg) {
+        Some(c) => ObservabilityPipelinesAPI::with_client_and_config(dd_cfg, c),
+        None => ObservabilityPipelinesAPI::with_config(dd_cfg),
+    }
 }
 
 pub async fn list(cfg: &Config, limit: i64) -> Result<()> {

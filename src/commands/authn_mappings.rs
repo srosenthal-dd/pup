@@ -11,7 +11,10 @@ use crate::util;
 
 pub async fn list(cfg: &Config) -> Result<()> {
     let dd_cfg = client::make_dd_config(cfg);
-    let api = AuthNMappingsAPI::with_config(dd_cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => AuthNMappingsAPI::with_client_and_config(dd_cfg, c),
+        None => AuthNMappingsAPI::with_config(dd_cfg),
+    };
     let resp = api
         .list_authn_mappings(ListAuthNMappingsOptionalParams::default())
         .await
@@ -21,7 +24,10 @@ pub async fn list(cfg: &Config) -> Result<()> {
 
 pub async fn get(cfg: &Config, mapping_id: &str) -> Result<()> {
     let dd_cfg = client::make_dd_config(cfg);
-    let api = AuthNMappingsAPI::with_config(dd_cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => AuthNMappingsAPI::with_client_and_config(dd_cfg, c),
+        None => AuthNMappingsAPI::with_config(dd_cfg),
+    };
     let resp = api
         .get_authn_mapping(mapping_id.to_string())
         .await
@@ -32,7 +38,10 @@ pub async fn get(cfg: &Config, mapping_id: &str) -> Result<()> {
 pub async fn create(cfg: &Config, file: &str) -> Result<()> {
     let body: AuthNMappingCreateRequest = util::read_json_file(file)?;
     let dd_cfg = client::make_dd_config(cfg);
-    let api = AuthNMappingsAPI::with_config(dd_cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => AuthNMappingsAPI::with_client_and_config(dd_cfg, c),
+        None => AuthNMappingsAPI::with_config(dd_cfg),
+    };
     let resp = api
         .create_authn_mapping(body)
         .await
@@ -43,7 +52,10 @@ pub async fn create(cfg: &Config, file: &str) -> Result<()> {
 pub async fn update(cfg: &Config, mapping_id: &str, file: &str) -> Result<()> {
     let body: AuthNMappingUpdateRequest = util::read_json_file(file)?;
     let dd_cfg = client::make_dd_config(cfg);
-    let api = AuthNMappingsAPI::with_config(dd_cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => AuthNMappingsAPI::with_client_and_config(dd_cfg, c),
+        None => AuthNMappingsAPI::with_config(dd_cfg),
+    };
     let resp = api
         .update_authn_mapping(mapping_id.to_string(), body)
         .await
@@ -53,7 +65,10 @@ pub async fn update(cfg: &Config, mapping_id: &str, file: &str) -> Result<()> {
 
 pub async fn delete(cfg: &Config, mapping_id: &str) -> Result<()> {
     let dd_cfg = client::make_dd_config(cfg);
-    let api = AuthNMappingsAPI::with_config(dd_cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => AuthNMappingsAPI::with_client_and_config(dd_cfg, c),
+        None => AuthNMappingsAPI::with_config(dd_cfg),
+    };
     api.delete_authn_mapping(mapping_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete AuthN mapping: {e:?}"))?;
