@@ -3229,7 +3229,7 @@ async fn test_llm_obs_datasets_list() {
     // Raw HTTP path: verify the correct project-scoped path is called.
     let body = r#"{"data":[{"id":"ds-1","type":"datasets","attributes":{"name":"my-dataset","description":null,"metadata":null,"created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z","current_version":1}}]}"#;
     let _mock = server
-        .mock("GET", "/api/v2/llm-obs/v1/projects/proj-1/datasets")
+        .mock("GET", "/api/v2/llm-obs/v1/proj-1/datasets")
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(body)

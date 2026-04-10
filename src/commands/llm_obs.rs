@@ -101,7 +101,7 @@ pub async fn datasets_create(cfg: &Config, project_id: &str, file: &str) -> Resu
 }
 
 pub async fn datasets_list(cfg: &Config, project_id: &str) -> Result<()> {
-    let path = format!("/api/v2/llm-obs/v1/projects/{project_id}/datasets");
+    let path = format!("/api/v2/llm-obs/v1/{project_id}/datasets");
     let resp = client::raw_get(cfg, &path, &[])
         .await
         .map_err(|e| anyhow::anyhow!("failed to list LLM obs datasets: {e:?}"))?;
