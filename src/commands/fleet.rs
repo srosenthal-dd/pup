@@ -259,7 +259,7 @@ pub async fn agents_tracers_list(
     sort_attribute: Option<String>,
     sort_descending: bool,
 ) -> Result<()> {
-    let path = format!("/api/unstable/fleet/agents/details/{agent_key}/tracers");
+    let path = format!("/api/unstable/fleet/agents/{agent_key}/tracers");
     let mut query: Vec<(&str, &str)> = Vec::new();
     let ps_owned;
     if let Some(ps) = &page_size {
