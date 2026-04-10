@@ -129,7 +129,16 @@ pub async fn findings_analyze(
         eprintln!("Warning: query doesn't use dd.security_findings(). Did you mean to use `pup ddsql table`?");
     }
 
-    match ddsql::execute_ddsql_query(cfg, query, from, to, Some(limit as i32)).await {
+    match ddsql::execute_ddsql_query_with_command(
+        cfg,
+        query,
+        from,
+        to,
+        Some(limit as i32),
+        Some("security-findings-analyze"),
+    )
+    .await
+    {
         Ok(rows) => formatter::output(cfg, &rows),
         Err(e) => {
             let msg = e.to_string();

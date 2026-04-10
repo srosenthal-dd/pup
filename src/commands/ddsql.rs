@@ -96,19 +96,30 @@ fn extract_query_status(resp: &Value) -> Result<Option<String>> {
 /// Build a polling request for an in-progress async query.
 ///
 /// Endpoint: POST /api/unstable/advanced/query/tabular/fetch
-/// Same shape as the originating request, but with an additional `query_id` in attributes.
+/// Same shape as the originating request, but with `query_id` added and the type
+/// changed to `advanced_query_fetch_request` (the fetch endpoint rejects the
+/// original `analysis_workspace_query_request` type).
 fn build_fetch_request(base_body: &Value, query_id: &str) -> Value {
     let mut fetch_body = base_body.clone();
     fetch_body["data"]["attributes"]["query_id"] = json!(query_id);
+    fetch_body["data"]["type"] = json!("advanced_query_fetch_request");
     fetch_body
 }
 
 /// Submit an async query and poll until completion.
 ///
 /// Sends the initial request and, if the query is still running, polls the fetch
-/// endpoint until the query completes.
-async fn execute_async_query(cfg: &Config, body: Value) -> Result<Value> {
-    let resp = client::raw_post(cfg, "/api/unstable/advanced/query/tabular", body.clone()).await?;
+/// endpoint until the query completes. When `command` is provided, it is appended
+/// to the User-Agent header for audit log differentiation.
+async fn execute_async_query(cfg: &Config, body: Value, command: Option<&str>) -> Result<Value> {
+    let ua = useragent::get_with_command(command);
+    let resp = client::raw_post_with_ua(
+        cfg,
+        "/api/unstable/advanced/query/tabular",
+        body.clone(),
+        ua.clone(),
+    )
+    .await?;
 
     let mut query_id = match extract_query_status(&resp)? {
         None => return Ok(resp),
@@ -119,10 +130,11 @@ async fn execute_async_query(cfg: &Config, body: Value) -> Result<Value> {
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         let fetch_body = build_fetch_request(&body, &query_id);
-        let poll_resp = client::raw_post(
+        let poll_resp = client::raw_post_with_ua(
             cfg,
             "/api/unstable/advanced/query/tabular/fetch",
             fetch_body,
+            ua.clone(),
         )
         .await?;
 
@@ -136,6 +148,7 @@ async fn execute_async_query(cfg: &Config, body: Value) -> Result<Value> {
 /// Execute a DDSQL query and return the result as a row-based JSON array.
 ///
 /// Shared function used by both `ddsql table` and `security findings-analyze`.
+/// Pass `command` to tag the User-Agent for audit log differentiation.
 pub async fn execute_ddsql_query(
     cfg: &Config,
     query: &str,
@@ -143,8 +156,20 @@ pub async fn execute_ddsql_query(
     to: &str,
     limit: Option<i32>,
 ) -> Result<Value> {
+    execute_ddsql_query_with_command(cfg, query, from, to, limit, None).await
+}
+
+/// Like `execute_ddsql_query`, but with a command identifier appended to the User-Agent.
+pub async fn execute_ddsql_query_with_command(
+    cfg: &Config,
+    query: &str,
+    from: &str,
+    to: &str,
+    limit: Option<i32>,
+    command: Option<&str>,
+) -> Result<Value> {
     let body = build_advanced_table_request(query, from, to, limit)?;
-    let data = execute_async_query(cfg, body).await?;
+    let data = execute_async_query(cfg, body, command).await?;
     columnar_to_rows(&data)
 }
 
@@ -170,7 +195,7 @@ pub async fn time_series(
     limit: i32,
 ) -> Result<()> {
     let body = build_advanced_table_request(query, from, to, Some(limit))?;
-    let data = execute_async_query(cfg, body).await?;
+    let data = execute_async_query(cfg, body, None).await?;
     let rows = columnar_to_rows(&data)?;
     formatter::output(cfg, &rows)
 }
@@ -388,6 +413,8 @@ mod tests {
         let base = build_advanced_table_request("SELECT 1", "1h", "now", None).unwrap();
         let fetch = build_fetch_request(&base, "qid-456");
         assert_eq!(fetch["data"]["attributes"]["query_id"], "qid-456");
+        // Type must change to advanced_query_fetch_request for the fetch endpoint.
+        assert_eq!(fetch["data"]["type"], "advanced_query_fetch_request");
         // Original fields are preserved.
         assert_eq!(
             fetch["data"]["attributes"]["datasets"][0]["query"]["sql_query"],

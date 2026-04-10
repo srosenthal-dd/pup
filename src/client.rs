@@ -724,13 +724,25 @@ pub async fn raw_post(
     body: serde_json::Value,
 ) -> anyhow::Result<serde_json::Value> {
     let url = format!("{}{}", cfg.api_base_url(), path);
-    raw_post_with_url(cfg, &url, body).await
+    raw_post_impl(cfg, &url, body, useragent::get()).await
 }
 
-async fn raw_post_with_url(
+/// Like `raw_post`, but with a custom User-Agent string for audit log differentiation.
+pub async fn raw_post_with_ua(
+    cfg: &Config,
+    path: &str,
+    body: serde_json::Value,
+    ua: String,
+) -> anyhow::Result<serde_json::Value> {
+    let url = format!("{}{}", cfg.api_base_url(), path);
+    raw_post_impl(cfg, &url, body, ua).await
+}
+
+async fn raw_post_impl(
     cfg: &Config,
     url: &str,
     body: serde_json::Value,
+    ua: String,
 ) -> anyhow::Result<serde_json::Value> {
     let client = reqwest::Client::new();
     let mut req = client.post(url);
@@ -748,7 +760,7 @@ async fn raw_post_with_url(
     let resp = req
         .header("Content-Type", "application/json")
         .header("Accept", "application/json")
-        .header("User-Agent", useragent::get())
+        .header("User-Agent", ua)
         .json(&body)
         .send()
         .await?;
