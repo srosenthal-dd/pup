@@ -316,8 +316,9 @@ impl KeychainStorage {
     fn save_state(&self, site: &str, data: &SiteData) -> Result<()> {
         let base = Self::state_key(site);
         let json = serde_json::to_string(data)?;
-        // JSON only contains ASCII characters (base64url tokens, alphanumeric scope
-        // words, JSON punctuation), so byte-chunking never splits a multibyte sequence.
+        // Tokens, scope words, and JSON punctuation are all ASCII in practice.
+        // If a future field introduces non-ASCII UTF-8, from_utf8 below will
+        // return an error rather than silently producing garbled data.
         let chunks = json
             .as_bytes()
             .chunks(WIN_CHUNK_BYTES)
@@ -333,11 +334,14 @@ impl KeychainStorage {
             .and_then(|s| s.trim().parse().ok())
             .unwrap_or(0);
 
-        count_entry.set_password(&n.to_string())?;
+        // Write chunks before committing the count. A crash between chunk writes
+        // leaves no count entry (or the prior count), so load_state reads the old
+        // data or returns default rather than assembling partial chunks.
         for (i, chunk) in chunks.iter().enumerate() {
             keyring::Entry::new(SERVICE_NAME, &format!("{base}_{i}"))?
                 .set_password(chunk)?;
         }
+        count_entry.set_password(&n.to_string())?;
         // Remove stale chunks left over from a prior write that had more entries.
         for i in n..old_n {
             // Best-effort: ignore errors on stale-chunk cleanup.
@@ -428,7 +432,7 @@ impl Storage for KeychainStorage {
     fn delete_client_credentials(&self, site: &str) -> Result<()> {
         let mut data = self.load_state(site)?;
         data.client = None;
-        if data.tokens.is_empty() && data.client.is_none() {
+        if data.tokens.is_empty() {
             self.delete_state(site)
         } else {
             self.save_state(site, &data)
@@ -578,7 +582,7 @@ impl Storage for TouchIdStorage {
     fn delete_client_credentials(&self, site: &str) -> Result<()> {
         let mut data = self.load_state(site)?;
         data.client = None;
-        if data.tokens.is_empty() && data.client.is_none() {
+        if data.tokens.is_empty() {
             self.delete_state(site)
         } else {
             self.save_state(site, &data)
@@ -753,12 +757,23 @@ pub fn get_storage() -> Result<&'static Mutex<Option<Box<dyn Storage>>>> {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn detect_backend() -> Box<dyn Storage> {
+    detect_backend_with(KeychainStorage::new)
+}
+
+// Separated from detect_backend so tests can inject a failing keychain probe
+// and exercise all failure paths without OS-level credential-store mocking.
+#[cfg(not(target_arch = "wasm32"))]
+fn detect_backend_with(try_keychain: impl Fn() -> Result<KeychainStorage>) -> Box<dyn Storage> {
     // Check DD_TOKEN_STORAGE env var
     if let Ok(val) = std::env::var("DD_TOKEN_STORAGE") {
         match val.as_str() {
             "file" => return Box::new(FileStorage::new().expect("failed to create file storage")),
-            "keychain" => return Box::new(KeychainStorage::new().expect("keychain not available")),
-            _ => eprintln!("Warning: unknown DD_TOKEN_STORAGE={val:?}, auto-detecting"),
+            // Explicit opt-in: panic with a clear message if the backend is
+            // unavailable rather than silently falling back to a different store.
+            "keychain" => return Box::new(try_keychain().expect("keychain not available")),
+            _ => eprintln!(
+                "Warning: unknown DD_TOKEN_STORAGE={val:?} (valid: \"file\", \"keychain\"), auto-detecting"
+            ),
         }
     }
 
@@ -766,20 +781,17 @@ fn detect_backend() -> Box<dyn Storage> {
     #[cfg(target_os = "macos")]
     return Box::new(TouchIdStorage::new());
 
-    // On Windows, WinCred has a hard blob-size limit (2560 bytes) that the
-    // serialised SiteData (access token + refresh token + 79 scopes + client
-    // credentials) easily exceeds.  Default to file storage so tokens always
-    // persist; users can opt into keychain via DD_TOKEN_STORAGE=keychain.
-    #[cfg(target_os = "windows")]
-    return Box::new(FileStorage::new().expect("failed to create file storage"));
-
-    // On other platforms (Linux, etc.), probe the keyring backend and fall
-    // back to file storage if the keychain daemon is not available.
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    match KeychainStorage::new() {
+    // On other platforms (Windows, Linux, etc.), probe the keyring backend and
+    // fall back to file storage if the keychain daemon is not available.
+    // On Windows the chunked WinCred scheme keeps each blob under the 2560-byte
+    // platform limit, so keychain is safe to use as the default here too.
+    #[cfg(not(target_os = "macos"))]
+    match try_keychain() {
         Ok(ks) => Box::new(ks),
-        Err(_) => {
-            eprintln!("Warning: OS keychain not available, using file storage (~/.config/pup/)");
+        Err(e) => {
+            eprintln!(
+                "Warning: OS keychain not available ({e}), using file storage (~/.config/pup/)"
+            );
             Box::new(FileStorage::new().expect("failed to create file storage"))
         }
     }
@@ -1276,6 +1288,44 @@ mod tests {
 
     // --- detect_backend ---------------------------------------------------------
 
+    // Exercises the FileStorage fallback when the auto-detect keychain probe fails,
+    // without requiring OS-level credential-store mocking.
+    // Not compiled on macOS: detect_backend_with ignores the probe there (TouchId
+    // is always the macOS default), so injecting a failing probe would assert nothing.
+    #[test]
+    #[cfg(not(any(target_arch = "wasm32", target_os = "macos")))]
+    fn test_detect_backend_with_probe_failure_falls_back_to_file() {
+        let _lock = crate::test_utils::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        let tmp = TempDir::new("detect_fallback");
+        std::env::set_var("PUP_CONFIG_DIR", tmp.path());
+        std::env::remove_var("DD_TOKEN_STORAGE");
+        let backend = detect_backend_with(|| Err(anyhow::anyhow!("probe failed")));
+        std::env::remove_var("PUP_CONFIG_DIR");
+        assert_eq!(backend.backend_type(), BackendType::File);
+    }
+
+    // When DD_TOKEN_STORAGE=keychain is explicitly set but the backend is
+    // unavailable, the process panics with a clear message rather than silently
+    // falling back (explicit opt-in should fail loudly).
+    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn test_detect_backend_with_dd_keychain_panics_when_unavailable() {
+        let _lock = crate::test_utils::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        let tmp = TempDir::new("detect_kc_panic");
+        std::env::set_var("PUP_CONFIG_DIR", tmp.path());
+        std::env::set_var("DD_TOKEN_STORAGE", "keychain");
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            detect_backend_with(|| Err(anyhow::anyhow!("probe failed")))
+        }));
+        std::env::remove_var("DD_TOKEN_STORAGE");
+        std::env::remove_var("PUP_CONFIG_DIR");
+        assert!(result.is_err(), "expected panic when DD_TOKEN_STORAGE=keychain but keychain unavailable");
+    }
+
     #[test]
     fn test_detect_backend_dd_token_storage_file() {
         let _lock = crate::test_utils::ENV_LOCK
@@ -1292,7 +1342,9 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "windows")]
-    fn test_detect_backend_windows_default_is_file() {
+    fn test_detect_backend_windows_default_is_keychain() {
+        // Windows defaults to KeychainStorage (chunked WinCred) now that the
+        // chunked scheme keeps blobs within the 2560-byte platform limit.
         let _lock = crate::test_utils::ENV_LOCK
             .lock()
             .unwrap_or_else(|p| p.into_inner());
@@ -1301,7 +1353,7 @@ mod tests {
         std::env::remove_var("DD_TOKEN_STORAGE");
         let backend = detect_backend();
         std::env::remove_var("PUP_CONFIG_DIR");
-        assert_eq!(backend.backend_type(), BackendType::File);
+        assert_eq!(backend.backend_type(), BackendType::Keychain);
     }
 
     // DD_TOKEN_STORAGE=keychain on Windows should return a Keychain backend
