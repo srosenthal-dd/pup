@@ -338,8 +338,7 @@ impl KeychainStorage {
         // leaves no count entry (or the prior count), so load_state reads the old
         // data or returns default rather than assembling partial chunks.
         for (i, chunk) in chunks.iter().enumerate() {
-            keyring::Entry::new(SERVICE_NAME, &format!("{base}_{i}"))?
-                .set_password(chunk)?;
+            keyring::Entry::new(SERVICE_NAME, &format!("{base}_{i}"))?.set_password(chunk)?;
         }
         count_entry.set_password(&n.to_string())?;
         // Remove stale chunks left over from a prior write that had more entries.
@@ -1323,7 +1322,10 @@ mod tests {
         }));
         std::env::remove_var("DD_TOKEN_STORAGE");
         std::env::remove_var("PUP_CONFIG_DIR");
-        assert!(result.is_err(), "expected panic when DD_TOKEN_STORAGE=keychain but keychain unavailable");
+        assert!(
+            result.is_err(),
+            "expected panic when DD_TOKEN_STORAGE=keychain but keychain unavailable"
+        );
     }
 
     #[test]
@@ -1416,9 +1418,7 @@ mod tests {
         store.save_tokens(site, None, &big_token).unwrap();
 
         // Second write: tiny token → single chunk.
-        store
-            .save_tokens(site, None, &make_token("small"))
-            .unwrap();
+        store.save_tokens(site, None, &make_token("small")).unwrap();
         let loaded = store.load_tokens(site, None).unwrap().unwrap();
         assert_eq!(loaded.access_token, "small");
 
