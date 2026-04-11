@@ -228,11 +228,16 @@ struct SiteData {
     client: Option<ClientCredentials>,
 }
 
-// Maximum bytes per WinCred blob — well under CRED_MAX_CREDENTIAL_BLOB_SIZE (2560).
+// Maximum characters per WinCred blob entry.
+//
+// WinCred stores passwords as UTF-16LE, so each ASCII character occupies 2 bytes.
+// CRED_MAX_CREDENTIAL_BLOB_SIZE = 2560 bytes → 1280 ASCII characters maximum.
+// We use 1000 to stay well clear of that limit.
+//
 // SiteData (access token + refresh token + 79 scopes + client credentials) easily
-// exceeds 2560 bytes, so on Windows we split the JSON across numbered entries.
+// exceeds 1000 characters, so on Windows we split the JSON across numbered entries.
 #[cfg(all(not(target_arch = "wasm32"), target_os = "windows"))]
-const WIN_CHUNK_BYTES: usize = 2048;
+const WIN_CHUNK_BYTES: usize = 1000;
 
 #[cfg(not(target_arch = "wasm32"))]
 impl KeychainStorage {
@@ -1377,9 +1382,9 @@ mod tests {
         assert_eq!(backend.backend_type(), BackendType::Keychain);
     }
 
-    // Returns a token whose serialised SiteData exceeds WIN_CHUNK_BYTES (2048),
-    // guaranteeing that KeychainStorage will write at least two WinCred chunks.
-    // A 3000-char access token + JSON overhead ≈ 3200 bytes → 2 chunks minimum.
+    // Returns a token whose serialised SiteData exceeds WIN_CHUNK_BYTES (1000),
+    // guaranteeing that KeychainStorage will write at least four WinCred chunks.
+    // A 3000-char access token + JSON overhead ≈ 3200 bytes → 4 chunks minimum.
     #[cfg(target_os = "windows")]
     fn make_multi_chunk_token() -> TokenSet {
         make_token(&"a".repeat(3000))
@@ -1459,8 +1464,9 @@ mod tests {
             .save_tokens(site, None, &make_multi_chunk_token())
             .unwrap();
 
-        // Verify the payload produced exactly 2 chunks before we corrupt one,
-        // so this test stays correct if WIN_CHUNK_BYTES ever changes.
+        // Verify the payload produced at least 4 chunks before we corrupt one,
+        // so this test fails explicitly if WIN_CHUNK_BYTES ever grows large enough
+        // to collapse the payload back to a single chunk.
         let base = format!("state_{}", sanitize(site));
         let count: usize = keyring::Entry::new(SERVICE_NAME, &format!("{base}_c"))
             .unwrap()
