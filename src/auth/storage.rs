@@ -1377,25 +1377,37 @@ mod tests {
         assert_eq!(backend.backend_type(), BackendType::Keychain);
     }
 
-    // Verify that a large SiteData (well above WinCred's 2560-byte blob limit)
-    // round-trips correctly through the chunked storage scheme.
+    // Returns a token whose serialised SiteData exceeds WIN_CHUNK_BYTES (2048),
+    // guaranteeing that KeychainStorage will write at least two WinCred chunks.
+    // A 3000-char access token + JSON overhead ≈ 3200 bytes → 2 chunks minimum.
+    #[cfg(target_os = "windows")]
+    fn make_multi_chunk_token() -> TokenSet {
+        make_token(&"a".repeat(3000))
+    }
+
+    // Verify that a large SiteData (above WIN_CHUNK_BYTES) round-trips correctly
+    // through the chunked storage scheme.
     #[test]
     #[cfg(target_os = "windows")]
     fn test_keychain_storage_chunked_roundtrip() {
         let store = KeychainStorage;
         let site = "chunked_test.datadoghq.com";
 
-        let mut token = make_token("access_tok");
-        // Build a scope string long enough to push SiteData past 2560 bytes.
-        token.scope = (0..100)
-            .map(|i| format!("scope_{i:03}"))
-            .collect::<Vec<_>>()
-            .join(" ");
-
+        let token = make_multi_chunk_token();
         store.save_tokens(site, None, &token).unwrap();
+
+        // Verify that the multi-chunk path was actually exercised (chunk _1 exists).
+        let base = format!("state_{}", sanitize(site));
+        assert!(
+            keyring::Entry::new(SERVICE_NAME, &format!("{base}_1"))
+                .unwrap()
+                .get_password()
+                .is_ok(),
+            "chunk _1 must exist — payload must exceed WIN_CHUNK_BYTES"
+        );
+
         let loaded = store.load_tokens(site, None).unwrap().unwrap();
-        assert_eq!(loaded.access_token, "access_tok");
-        assert_eq!(loaded.scope, token.scope);
+        assert_eq!(loaded.access_token, token.access_token);
 
         store.delete_tokens(site, None).unwrap();
         assert!(store.load_tokens(site, None).unwrap().is_none());
@@ -1410,17 +1422,26 @@ mod tests {
         let site = "chunked_shrink.datadoghq.com";
 
         // First write: large token → multiple chunks.
-        let mut big_token = make_token("big");
-        big_token.scope = (0..100)
-            .map(|i| format!("scope_{i:03}"))
-            .collect::<Vec<_>>()
-            .join(" ");
-        store.save_tokens(site, None, &big_token).unwrap();
+        store
+            .save_tokens(site, None, &make_multi_chunk_token())
+            .unwrap();
 
         // Second write: tiny token → single chunk.
         store.save_tokens(site, None, &make_token("small")).unwrap();
         let loaded = store.load_tokens(site, None).unwrap().unwrap();
         assert_eq!(loaded.access_token, "small");
+
+        // Assert that the stale chunk _1 from the first write was deleted.
+        let base = format!("state_{}", sanitize(site));
+        assert!(
+            matches!(
+                keyring::Entry::new(SERVICE_NAME, &format!("{base}_1"))
+                    .unwrap()
+                    .get_password(),
+                Err(keyring::Error::NoEntry)
+            ),
+            "stale chunk _1 must be removed after shrinking to a single chunk"
+        );
 
         store.delete_tokens(site, None).unwrap();
     }
@@ -1433,16 +1454,24 @@ mod tests {
         let store = KeychainStorage;
         let site = "chunked_missing.datadoghq.com";
 
-        // Write a large multi-chunk token.
-        let mut token = make_token("tok");
-        token.scope = (0..100)
-            .map(|i| format!("scope_{i:03}"))
-            .collect::<Vec<_>>()
-            .join(" ");
-        store.save_tokens(site, None, &token).unwrap();
+        // Write a token large enough to produce at least 2 WinCred chunks.
+        store
+            .save_tokens(site, None, &make_multi_chunk_token())
+            .unwrap();
 
-        // Directly delete chunk _1 to simulate partial WinCred corruption.
+        // Verify the payload produced exactly 2 chunks before we corrupt one,
+        // so this test stays correct if WIN_CHUNK_BYTES ever changes.
         let base = format!("state_{}", sanitize(site));
+        let count: usize = keyring::Entry::new(SERVICE_NAME, &format!("{base}_c"))
+            .unwrap()
+            .get_password()
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        assert!(count >= 2, "expected at least 2 chunks, got {count}");
+
+        // Delete chunk _1 to simulate partial WinCred corruption.
         keyring::Entry::new(SERVICE_NAME, &format!("{base}_1"))
             .unwrap()
             .delete_credential()
