@@ -302,6 +302,10 @@ static UNSTABLE_OPS: &[&str] = &[
     "v2.list_custom_rule_revisions",
     "v2.revert_custom_rule_revision",
     "v2.update_custom_ruleset",
+    // Bits AI Investigations (3)
+    "v2.get_investigation",
+    "v2.list_investigations",
+    "v2.trigger_investigation",
 ];
 
 // ---------------------------------------------------------------------------
@@ -950,7 +954,7 @@ mod tests {
 
     #[test]
     fn test_unstable_ops_count() {
-        assert_eq!(UNSTABLE_OPS.len(), 140);
+        assert_eq!(UNSTABLE_OPS.len(), 143);
     }
 
     #[test]
