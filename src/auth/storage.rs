@@ -189,9 +189,27 @@ const SERVICE_NAME: &str = "pup";
 #[cfg(not(target_arch = "wasm32"))]
 impl KeychainStorage {
     pub fn new() -> Result<Self> {
-        // Verify the keyring crate can create entries without accessing the keychain.
-        // Actual availability is confirmed on first read/write to avoid spurious macOS
-        // authorization dialogs for a throwaway probe entry.
+        // On Windows, WinCred silently uses an in-memory mock unless windows-native
+        // is enabled, and even then has a 2560-byte blob limit that SiteData exceeds.
+        // Do a real write/read/delete cycle so an unusable backend fails fast here
+        // rather than silently losing tokens at runtime.
+        #[cfg(target_os = "windows")]
+        {
+            let entry = keyring::Entry::new(SERVICE_NAME, "__pup_probe__")
+                .map_err(|e| anyhow::anyhow!("keychain not available: {e}"))?;
+            entry
+                .set_password("probe")
+                .map_err(|e| anyhow::anyhow!("keychain write failed: {e}"))?;
+            entry
+                .get_password()
+                .map_err(|e| anyhow::anyhow!("keychain read failed: {e}"))?;
+            entry
+                .delete_credential()
+                .map_err(|e| anyhow::anyhow!("keychain probe cleanup failed: {e}"))?;
+        }
+        // On macOS and Linux, constructing an Entry is sufficient to confirm the
+        // backend is present; avoid a spurious macOS authorization dialog.
+        #[cfg(not(target_os = "windows"))]
         keyring::Entry::new(SERVICE_NAME, "__pup_probe__")
             .map_err(|e| anyhow::anyhow!("keychain not available: {e}"))?;
         Ok(Self)
@@ -210,12 +228,21 @@ struct SiteData {
     client: Option<ClientCredentials>,
 }
 
+// Maximum bytes per WinCred blob — well under CRED_MAX_CREDENTIAL_BLOB_SIZE (2560).
+// SiteData (access token + refresh token + 79 scopes + client credentials) easily
+// exceeds 2560 bytes, so on Windows we split the JSON across numbered entries.
+#[cfg(all(not(target_arch = "wasm32"), target_os = "windows"))]
+const WIN_CHUNK_BYTES: usize = 2048;
+
 #[cfg(not(target_arch = "wasm32"))]
 impl KeychainStorage {
     fn state_key(site: &str) -> String {
         format!("state_{}", sanitize(site))
     }
 
+    // --- non-Windows: single keychain entry per site ----------------------------
+
+    #[cfg(not(target_os = "windows"))]
     fn load_state(&self, site: &str) -> Result<SiteData> {
         let entry = keyring::Entry::new(SERVICE_NAME, &Self::state_key(site))?;
         match entry.get_password() {
@@ -225,18 +252,135 @@ impl KeychainStorage {
         }
     }
 
+    #[cfg(not(target_os = "windows"))]
     fn save_state(&self, site: &str, data: &SiteData) -> Result<()> {
         let entry = keyring::Entry::new(SERVICE_NAME, &Self::state_key(site))?;
         let json = serde_json::to_string(data)?;
         entry.set_password(&json).map_err(Into::into)
     }
 
+    #[cfg(not(target_os = "windows"))]
     fn delete_state(&self, site: &str) -> Result<()> {
         let entry = keyring::Entry::new(SERVICE_NAME, &Self::state_key(site))?;
         match entry.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
             Err(e) => Err(e.into()),
         }
+    }
+
+    // --- Windows: chunked entries to stay within WinCred's 2560-byte blob limit --
+    //
+    // Chunk count is stored under "<key>_c"; chunks under "<key>_0", "<key>_1", …
+    // On load the legacy single-entry format is tried as a fallback so that any
+    // data stored before this scheme was introduced is still readable.
+
+    #[cfg(target_os = "windows")]
+    fn load_state(&self, site: &str) -> Result<SiteData> {
+        let base = Self::state_key(site);
+        let count_entry = keyring::Entry::new(SERVICE_NAME, &format!("{base}_c"))?;
+        let n: usize = match count_entry.get_password() {
+            Ok(s) => s
+                .trim()
+                .parse()
+                .map_err(|_| anyhow::anyhow!("corrupt keychain chunk count"))?,
+            Err(keyring::Error::NoEntry) => {
+                // No chunk count — try the legacy single-entry format.
+                let entry = keyring::Entry::new(SERVICE_NAME, &base)?;
+                return match entry.get_password() {
+                    Ok(json) => Ok(serde_json::from_str(&json).unwrap_or_default()),
+                    Err(keyring::Error::NoEntry) => Ok(SiteData::default()),
+                    Err(e) => Err(e.into()),
+                };
+            }
+            Err(e) => return Err(e.into()),
+        };
+        if n == 0 {
+            return Ok(SiteData::default());
+        }
+        let mut json = String::new();
+        for i in 0..n {
+            let entry = keyring::Entry::new(SERVICE_NAME, &format!("{base}_{i}"))?;
+            match entry.get_password() {
+                Ok(chunk) => json.push_str(&chunk),
+                // A missing chunk means partial WinCred corruption (e.g. manual
+                // deletion). Return empty state so the caller sees "not logged in"
+                // rather than partial or garbled data.
+                Err(keyring::Error::NoEntry) => return Ok(SiteData::default()),
+                Err(e) => return Err(e.into()),
+            }
+        }
+        Ok(serde_json::from_str(&json).unwrap_or_default())
+    }
+
+    #[cfg(target_os = "windows")]
+    fn save_state(&self, site: &str, data: &SiteData) -> Result<()> {
+        let base = Self::state_key(site);
+        let json = serde_json::to_string(data)?;
+        // JSON only contains ASCII characters (base64url tokens, alphanumeric scope
+        // words, JSON punctuation), so byte-chunking never splits a multibyte sequence.
+        let chunks = json
+            .as_bytes()
+            .chunks(WIN_CHUNK_BYTES)
+            .map(|b| std::str::from_utf8(b).map_err(|e| anyhow::anyhow!("chunk encoding: {e}")))
+            .collect::<Result<Vec<_>>>()?;
+        let n = chunks.len();
+
+        // Read the old count so we can delete any stale extra entries after writing.
+        let count_entry = keyring::Entry::new(SERVICE_NAME, &format!("{base}_c"))?;
+        let old_n: usize = count_entry
+            .get_password()
+            .ok()
+            .and_then(|s| s.trim().parse().ok())
+            .unwrap_or(0);
+
+        count_entry.set_password(&n.to_string())?;
+        for (i, chunk) in chunks.iter().enumerate() {
+            keyring::Entry::new(SERVICE_NAME, &format!("{base}_{i}"))?
+                .set_password(chunk)?;
+        }
+        // Remove stale chunks left over from a prior write that had more entries.
+        for i in n..old_n {
+            // Best-effort: ignore errors on stale-chunk cleanup.
+            let _ = keyring::Entry::new(SERVICE_NAME, &format!("{base}_{i}"))
+                .and_then(|e| e.delete_credential());
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "windows")]
+    fn delete_state(&self, site: &str) -> Result<()> {
+        let base = Self::state_key(site);
+        let count_entry = keyring::Entry::new(SERVICE_NAME, &format!("{base}_c"))?;
+        let n: usize = match count_entry.get_password() {
+            Ok(s) => {
+                let n = s
+                    .trim()
+                    .parse()
+                    .map_err(|_| anyhow::anyhow!("corrupt keychain chunk count"))?;
+                match count_entry.delete_credential() {
+                    Ok(()) | Err(keyring::Error::NoEntry) => {}
+                    Err(e) => return Err(e.into()),
+                }
+                n
+            }
+            Err(keyring::Error::NoEntry) => {
+                // Legacy single-entry format — delete and return.
+                let entry = keyring::Entry::new(SERVICE_NAME, &base)?;
+                match entry.delete_credential() {
+                    Ok(()) | Err(keyring::Error::NoEntry) => return Ok(()),
+                    Err(e) => return Err(e.into()),
+                }
+            }
+            Err(e) => return Err(e.into()),
+        };
+        for i in 0..n {
+            let entry = keyring::Entry::new(SERVICE_NAME, &format!("{base}_{i}"))?;
+            match entry.delete_credential() {
+                Ok(()) | Err(keyring::Error::NoEntry) => {}
+                Err(e) => return Err(e.into()),
+            }
+        }
+        Ok(())
     }
 }
 
@@ -596,7 +740,9 @@ use std::sync::Mutex;
 static STORAGE: Mutex<Option<Box<dyn Storage>>> = Mutex::new(None);
 
 pub fn get_storage() -> Result<&'static Mutex<Option<Box<dyn Storage>>>> {
-    let mut guard = STORAGE.lock().unwrap();
+    let mut guard = STORAGE
+        .lock()
+        .map_err(|_| anyhow::anyhow!("storage lock poisoned"))?;
     if guard.is_none() {
         let backend = detect_backend();
         *guard = Some(backend);
@@ -617,11 +763,19 @@ fn detect_backend() -> Box<dyn Storage> {
     }
 
     // On macOS, use Touch ID-capable storage by default.
-    // On other platforms, fall back to the keyring-based backend.
     #[cfg(target_os = "macos")]
     return Box::new(TouchIdStorage::new());
 
-    #[cfg(not(target_os = "macos"))]
+    // On Windows, WinCred has a hard blob-size limit (2560 bytes) that the
+    // serialised SiteData (access token + refresh token + 79 scopes + client
+    // credentials) easily exceeds.  Default to file storage so tokens always
+    // persist; users can opt into keychain via DD_TOKEN_STORAGE=keychain.
+    #[cfg(target_os = "windows")]
+    return Box::new(FileStorage::new().expect("failed to create file storage"));
+
+    // On other platforms (Linux, etc.), probe the keyring backend and fall
+    // back to file storage if the keychain daemon is not available.
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     match KeychainStorage::new() {
         Ok(ks) => Box::new(ks),
         Err(_) => {
@@ -1118,5 +1272,133 @@ mod tests {
         let result = remove_session("datadoghq.com", Some("nonexistent"));
         std::env::remove_var("PUP_CONFIG_DIR");
         assert!(result.is_ok());
+    }
+
+    // --- detect_backend ---------------------------------------------------------
+
+    #[test]
+    fn test_detect_backend_dd_token_storage_file() {
+        let _lock = crate::test_utils::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        let tmp = TempDir::new("detect_file");
+        std::env::set_var("PUP_CONFIG_DIR", tmp.path());
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let backend = detect_backend();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+        std::env::remove_var("PUP_CONFIG_DIR");
+        assert_eq!(backend.backend_type(), BackendType::File);
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_detect_backend_windows_default_is_file() {
+        let _lock = crate::test_utils::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        let tmp = TempDir::new("detect_win");
+        std::env::set_var("PUP_CONFIG_DIR", tmp.path());
+        std::env::remove_var("DD_TOKEN_STORAGE");
+        let backend = detect_backend();
+        std::env::remove_var("PUP_CONFIG_DIR");
+        assert_eq!(backend.backend_type(), BackendType::File);
+    }
+
+    // DD_TOKEN_STORAGE=keychain on Windows should return a Keychain backend
+    // (exercises the chunked WinCred scheme). Requires a functional WinCred — only
+    // compiled and run on Windows CI. A negative test (broken WinCred → Err) would
+    // need OS-level mocking that is not supported by this test framework.
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_detect_backend_dd_token_storage_keychain_windows() {
+        let _lock = crate::test_utils::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        let tmp = TempDir::new("detect_kc_win");
+        std::env::set_var("PUP_CONFIG_DIR", tmp.path());
+        std::env::set_var("DD_TOKEN_STORAGE", "keychain");
+        let backend = detect_backend();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+        std::env::remove_var("PUP_CONFIG_DIR");
+        assert_eq!(backend.backend_type(), BackendType::Keychain);
+    }
+
+    // Verify that a large SiteData (well above WinCred's 2560-byte blob limit)
+    // round-trips correctly through the chunked storage scheme.
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_keychain_storage_chunked_roundtrip() {
+        let store = KeychainStorage;
+        let site = "chunked_test.datadoghq.com";
+
+        let mut token = make_token("access_tok");
+        // Build a scope string long enough to push SiteData past 2560 bytes.
+        token.scope = (0..100)
+            .map(|i| format!("scope_{i:03}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        store.save_tokens(site, None, &token).unwrap();
+        let loaded = store.load_tokens(site, None).unwrap().unwrap();
+        assert_eq!(loaded.access_token, "access_tok");
+        assert_eq!(loaded.scope, token.scope);
+
+        store.delete_tokens(site, None).unwrap();
+        assert!(store.load_tokens(site, None).unwrap().is_none());
+    }
+
+    // Confirm that shrinking a save (fewer chunks than the previous write) cleans
+    // up the stale extra entries rather than leaving orphaned WinCred blobs.
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_keychain_storage_chunked_shrink_cleans_stale_entries() {
+        let store = KeychainStorage;
+        let site = "chunked_shrink.datadoghq.com";
+
+        // First write: large token → multiple chunks.
+        let mut big_token = make_token("big");
+        big_token.scope = (0..100)
+            .map(|i| format!("scope_{i:03}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        store.save_tokens(site, None, &big_token).unwrap();
+
+        // Second write: tiny token → single chunk.
+        store
+            .save_tokens(site, None, &make_token("small"))
+            .unwrap();
+        let loaded = store.load_tokens(site, None).unwrap().unwrap();
+        assert_eq!(loaded.access_token, "small");
+
+        store.delete_tokens(site, None).unwrap();
+    }
+
+    // When a chunk entry is absent (e.g. manual WinCred deletion), load_state
+    // should return empty state rather than partial data.
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_keychain_storage_chunked_missing_chunk_returns_default() {
+        let store = KeychainStorage;
+        let site = "chunked_missing.datadoghq.com";
+
+        // Write a large multi-chunk token.
+        let mut token = make_token("tok");
+        token.scope = (0..100)
+            .map(|i| format!("scope_{i:03}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        store.save_tokens(site, None, &token).unwrap();
+
+        // Directly delete chunk _1 to simulate partial WinCred corruption.
+        let base = format!("state_{}", sanitize(site));
+        keyring::Entry::new(SERVICE_NAME, &format!("{base}_1"))
+            .unwrap()
+            .delete_credential()
+            .unwrap();
+
+        // Load should return None (empty state) not partial data.
+        assert!(store.load_tokens(site, None).unwrap().is_none());
+
+        let _ = store.delete_tokens(site, None);
     }
 }
