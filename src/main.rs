@@ -7185,6 +7185,12 @@ enum LlmObsActions {
         #[command(subcommand)]
         action: LlmObsSpansActions,
     },
+    /// Manage LLM Observability annotation queues
+    #[command(name = "annotation-queues")]
+    AnnotationQueues {
+        #[command(subcommand)]
+        action: LlmObsAnnotationQueuesActions,
+    },
 }
 
 #[derive(Subcommand)]
@@ -7333,6 +7339,66 @@ enum LlmObsDatasetsActions {
     List {
         #[arg(long, help = "Project ID (required)")]
         project_id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum LlmObsAnnotationQueuesActions {
+    /// Create an annotation queue
+    Create {
+        #[arg(long, help = "JSON file with annotation queue body (required)")]
+        file: String,
+    },
+    /// List annotation queues
+    List {
+        #[arg(long, help = "Filter by project ID")]
+        project_id: Option<String>,
+        #[arg(
+            long,
+            value_delimiter = ',',
+            help = "Filter by queue IDs (comma-separated)"
+        )]
+        queue_ids: Option<Vec<String>>,
+    },
+    /// Update an annotation queue
+    Update {
+        #[arg(help = "Annotation queue ID")]
+        queue_id: String,
+        #[arg(long, help = "JSON file with annotation queue update body (required)")]
+        file: String,
+    },
+    /// Delete an annotation queue
+    Delete {
+        #[arg(help = "Annotation queue ID")]
+        queue_id: String,
+    },
+    /// Manage interactions within an annotation queue
+    Interactions {
+        #[command(subcommand)]
+        action: LlmObsAnnotationQueueInteractionsActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum LlmObsAnnotationQueueInteractionsActions {
+    /// Add interactions to an annotation queue
+    Add {
+        #[arg(help = "Annotation queue ID")]
+        queue_id: String,
+        #[arg(long, help = "JSON file with interactions body (required)")]
+        file: String,
+    },
+    /// Remove interactions from an annotation queue
+    Delete {
+        #[arg(help = "Annotation queue ID")]
+        queue_id: String,
+        #[arg(long, help = "JSON file with interactions to delete (required)")]
+        file: String,
+    },
+    /// List annotated interactions for an annotation queue
+    List {
+        #[arg(help = "Annotation queue ID")]
+        queue_id: String,
     },
 }
 
@@ -11950,6 +12016,42 @@ async fn main_inner() -> anyhow::Result<()> {
                         )
                         .await?;
                     }
+                },
+                LlmObsActions::AnnotationQueues { action } => match action {
+                    LlmObsAnnotationQueuesActions::Create { file } => {
+                        commands::llm_obs::annotation_queues_create(&cfg, &file).await?;
+                    }
+                    LlmObsAnnotationQueuesActions::List {
+                        project_id,
+                        queue_ids,
+                    } => {
+                        commands::llm_obs::annotation_queues_list(&cfg, project_id, queue_ids)
+                            .await?;
+                    }
+                    LlmObsAnnotationQueuesActions::Update { queue_id, file } => {
+                        commands::llm_obs::annotation_queues_update(&cfg, &queue_id, &file).await?;
+                    }
+                    LlmObsAnnotationQueuesActions::Delete { queue_id } => {
+                        commands::llm_obs::annotation_queues_delete(&cfg, &queue_id).await?;
+                    }
+                    LlmObsAnnotationQueuesActions::Interactions { action } => match action {
+                        LlmObsAnnotationQueueInteractionsActions::Add { queue_id, file } => {
+                            commands::llm_obs::annotation_queue_interactions_add(
+                                &cfg, &queue_id, &file,
+                            )
+                            .await?;
+                        }
+                        LlmObsAnnotationQueueInteractionsActions::Delete { queue_id, file } => {
+                            commands::llm_obs::annotation_queue_interactions_delete(
+                                &cfg, &queue_id, &file,
+                            )
+                            .await?;
+                        }
+                        LlmObsAnnotationQueueInteractionsActions::List { queue_id } => {
+                            commands::llm_obs::annotation_queue_interactions_list(&cfg, &queue_id)
+                                .await?;
+                        }
+                    },
                 },
             }
         }
