@@ -255,6 +255,32 @@ pub async fn signals_search(
     formatter::output(cfg, &resp)
 }
 
+pub async fn signals_investigation_queries(cfg: &Config, signal_id: &str) -> Result<()> {
+    let dd_cfg = client::make_dd_config(cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => SecurityMonitoringAPI::with_client_and_config(dd_cfg, c),
+        None => SecurityMonitoringAPI::with_config(dd_cfg),
+    };
+    let resp = api
+        .get_investigation_log_queries_matching_signal(signal_id.to_string())
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to get investigation log queries for signal '{signal_id}': {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn signals_suggested_actions(cfg: &Config, signal_id: &str) -> Result<()> {
+    let dd_cfg = client::make_dd_config(cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => SecurityMonitoringAPI::with_client_and_config(dd_cfg, c),
+        None => SecurityMonitoringAPI::with_config(dd_cfg),
+    };
+    let resp = api
+        .get_suggested_actions_matching_signal(signal_id.to_string())
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to get suggested actions for signal '{signal_id}': {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
 pub async fn findings_search(cfg: &Config, query: Option<String>, limit: i64) -> Result<()> {
     let dd_cfg = client::make_dd_config(cfg);
     let api = match client::make_bearer_client(cfg) {

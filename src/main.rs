@@ -4344,6 +4344,18 @@ enum SecuritySignalActions {
         #[arg(long, help = "Sort field: severity, status, timestamp")]
         sort: Option<String>,
     },
+    /// Get log queries for investigating a signal
+    #[command(name = "investigation-queries")]
+    InvestigationQueries {
+        /// Security signal ID
+        signal_id: String,
+    },
+    /// Get suggested remediation actions for a signal
+    #[command(name = "suggested-actions")]
+    SuggestedActions {
+        /// Security signal ID
+        signal_id: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -9634,6 +9646,12 @@ async fn main_inner() -> anyhow::Result<()> {
                         ..
                     } => {
                         commands::security::signals_search(&cfg, query, from, to, limit).await?;
+                    }
+                    SecuritySignalActions::InvestigationQueries { signal_id } => {
+                        commands::security::signals_investigation_queries(&cfg, &signal_id).await?;
+                    }
+                    SecuritySignalActions::SuggestedActions { signal_id } => {
+                        commands::security::signals_suggested_actions(&cfg, &signal_id).await?;
                     }
                 },
                 SecurityActions::Findings { action } => match action {
