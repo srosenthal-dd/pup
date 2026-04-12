@@ -214,7 +214,6 @@ pub async fn experiments_dimension_values(
 
 // ---- Spans (no typed equivalent — unstable MCP endpoint) ----
 
-#[allow(clippy::too_many_arguments)]
 // ---- Annotation Queues ----
 
 pub async fn annotation_queues_create(cfg: &Config, file: &str) -> Result<()> {
