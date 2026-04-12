@@ -1,8 +1,12 @@
 use anyhow::Result;
-use datadog_api_client::datadogV2::api_llm_observability::LLMObservabilityAPI;
+use datadog_api_client::datadogV2::api_llm_observability::{
+    LLMObservabilityAPI, ListLLMObsAnnotationQueuesOptionalParams,
+};
 use datadog_api_client::datadogV2::model::{
-    LLMObsDatasetRequest, LLMObsDeleteExperimentsRequest, LLMObsExperimentRequest,
-    LLMObsExperimentUpdateRequest, LLMObsProjectRequest,
+    LLMObsAnnotationQueueInteractionsRequest, LLMObsAnnotationQueueRequest,
+    LLMObsAnnotationQueueUpdateRequest, LLMObsDatasetRequest,
+    LLMObsDeleteAnnotationQueueInteractionsRequest, LLMObsDeleteExperimentsRequest,
+    LLMObsExperimentRequest, LLMObsExperimentUpdateRequest, LLMObsProjectRequest,
 };
 
 use crate::client;
@@ -205,6 +209,96 @@ pub async fn experiments_dimension_values(
     )
     .await
     .map_err(|e| anyhow::anyhow!("failed to get experiment dimension values: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+// ---- Spans (no typed equivalent — unstable MCP endpoint) ----
+
+// ---- Annotation Queues ----
+
+pub async fn annotation_queues_create(cfg: &Config, file: &str) -> Result<()> {
+    let body: LLMObsAnnotationQueueRequest = util::read_json_file(file)?;
+    let api = make_api(cfg);
+    let resp = api
+        .create_llm_obs_annotation_queue(body)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to create annotation queue: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn annotation_queues_list(
+    cfg: &Config,
+    project_id: Option<String>,
+    queue_ids: Option<Vec<String>>,
+) -> Result<()> {
+    let api = make_api(cfg);
+    let mut params = ListLLMObsAnnotationQueuesOptionalParams::default();
+    if let Some(pid) = project_id {
+        params = params.project_id(pid);
+    }
+    if let Some(ids) = queue_ids {
+        params = params.queue_ids(ids);
+    }
+    let resp = api
+        .list_llm_obs_annotation_queues(params)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to list annotation queues: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn annotation_queues_update(cfg: &Config, queue_id: &str, file: &str) -> Result<()> {
+    let body: LLMObsAnnotationQueueUpdateRequest = util::read_json_file(file)?;
+    let api = make_api(cfg);
+    let resp = api
+        .update_llm_obs_annotation_queue(queue_id.to_string(), body)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to update annotation queue: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn annotation_queues_delete(cfg: &Config, queue_id: &str) -> Result<()> {
+    let api = make_api(cfg);
+    api.delete_llm_obs_annotation_queue(queue_id.to_string())
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to delete annotation queue: {e:?}"))?;
+    eprintln!("Annotation queue deleted.");
+    Ok(())
+}
+
+pub async fn annotation_queue_interactions_add(
+    cfg: &Config,
+    queue_id: &str,
+    file: &str,
+) -> Result<()> {
+    let body: LLMObsAnnotationQueueInteractionsRequest = util::read_json_file(file)?;
+    let api = make_api(cfg);
+    let resp = api
+        .create_llm_obs_annotation_queue_interactions(queue_id.to_string(), body)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to add interactions: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn annotation_queue_interactions_delete(
+    cfg: &Config,
+    queue_id: &str,
+    file: &str,
+) -> Result<()> {
+    let body: LLMObsDeleteAnnotationQueueInteractionsRequest = util::read_json_file(file)?;
+    let api = make_api(cfg);
+    api.delete_llm_obs_annotation_queue_interactions(queue_id.to_string(), body)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to delete interactions: {e:?}"))?;
+    eprintln!("Annotation queue interactions deleted.");
+    Ok(())
+}
+
+pub async fn annotation_queue_interactions_list(cfg: &Config, queue_id: &str) -> Result<()> {
+    let api = make_api(cfg);
+    let resp = api
+        .get_llm_obs_annotated_interactions(queue_id.to_string())
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to list annotated interactions: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
 
