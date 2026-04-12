@@ -264,7 +264,11 @@ pub async fn signals_investigation_queries(cfg: &Config, signal_id: &str) -> Res
     let resp = api
         .get_investigation_log_queries_matching_signal(signal_id.to_string())
         .await
-        .map_err(|e| anyhow::anyhow!("failed to get investigation log queries for signal '{signal_id}': {e:?}"))?;
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "failed to get investigation log queries for signal '{signal_id}': {e:?}"
+            )
+        })?;
     formatter::output(cfg, &resp)
 }
 
@@ -277,7 +281,9 @@ pub async fn signals_suggested_actions(cfg: &Config, signal_id: &str) -> Result<
     let resp = api
         .get_suggested_actions_matching_signal(signal_id.to_string())
         .await
-        .map_err(|e| anyhow::anyhow!("failed to get suggested actions for signal '{signal_id}': {e:?}"))?;
+        .map_err(|e| {
+            anyhow::anyhow!("failed to get suggested actions for signal '{signal_id}': {e:?}")
+        })?;
     formatter::output(cfg, &resp)
 }
 
