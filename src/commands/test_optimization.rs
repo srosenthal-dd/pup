@@ -100,3 +100,33 @@ pub async fn flaky_tests_update(cfg: &Config, file: &str) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("failed to update flaky tests: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
+
+// ---- Flaky Tests Management Policies ----
+
+pub async fn flaky_tests_management_policies_get(cfg: &Config, file: &str) -> Result<()> {
+    let dd_cfg = client::make_dd_config(cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => TestOptimizationAPI::with_client_and_config(dd_cfg, c),
+        None => TestOptimizationAPI::with_config(dd_cfg),
+    };
+    let body = crate::util::read_json_file(file)?;
+    let resp = api
+        .get_flaky_tests_management_policies(body)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to get flaky tests management policies: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn flaky_tests_management_policies_update(cfg: &Config, file: &str) -> Result<()> {
+    let dd_cfg = client::make_dd_config(cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => TestOptimizationAPI::with_client_and_config(dd_cfg, c),
+        None => TestOptimizationAPI::with_config(dd_cfg),
+    };
+    let body = crate::util::read_json_file(file)?;
+    let resp = api
+        .update_flaky_tests_management_policies(body)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to update flaky tests management policies: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
