@@ -3614,6 +3614,29 @@ enum TestOptimizationFlakyTestsActions {
         #[arg(long, help = "JSON file with request body (required)")]
         file: String,
     },
+    /// Manage flaky test management policies
+    Policies {
+        #[command(subcommand)]
+        action: TestOptimizationFlakyTestsPoliciesActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum TestOptimizationFlakyTestsPoliciesActions {
+    /// Get flaky tests management policies.
+    /// The API uses a POST body to specify which service/repo policies to retrieve.
+    Get {
+        #[arg(
+            long,
+            help = "JSON file with request body specifying which policies to retrieve (e.g. {\"data\":{\"type\":\"get_request\"}})"
+        )]
+        file: String,
+    },
+    /// Update flaky tests management policies (body from JSON file)
+    Update {
+        #[arg(long, help = "JSON file with request body (required)")]
+        file: String,
+    },
 }
 
 // ---- Events ----
@@ -9541,6 +9564,20 @@ async fn main_inner() -> anyhow::Result<()> {
                     TestOptimizationFlakyTestsActions::Update { file } => {
                         commands::test_optimization::flaky_tests_update(&cfg, &file).await?;
                     }
+                    TestOptimizationFlakyTestsActions::Policies { action } => match action {
+                        TestOptimizationFlakyTestsPoliciesActions::Get { file } => {
+                            commands::test_optimization::flaky_tests_management_policies_get(
+                                &cfg, &file,
+                            )
+                            .await?;
+                        }
+                        TestOptimizationFlakyTestsPoliciesActions::Update { file } => {
+                            commands::test_optimization::flaky_tests_management_policies_update(
+                                &cfg, &file,
+                            )
+                            .await?;
+                        }
+                    },
                 },
             }
         }

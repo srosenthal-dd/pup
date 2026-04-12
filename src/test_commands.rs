@@ -5719,3 +5719,93 @@ async fn test_api_bad_field_format() {
     assert!(result.is_err(), "expected error for malformed field");
     cleanup_env();
 }
+
+#[tokio::test]
+async fn test_flaky_tests_management_policies_get() {
+    let _lock = lock_env();
+    std::env::set_var("DD_TOKEN_STORAGE", "file");
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+    let tmp = write_temp_json(
+        "pup_test_ftmp_get.json",
+        r#"{"data":{"type":"test_optimization_get_flaky_tests_management_policies_request","attributes":{"repository_id":"test-repo"}}}"#,
+    );
+    let _mock = mock_any(&mut server, "POST", r#"{"data":{}}"#).await;
+    let result = crate::commands::test_optimization::flaky_tests_management_policies_get(
+        &cfg,
+        tmp.to_str().unwrap(),
+    )
+    .await;
+    assert!(
+        result.is_ok(),
+        "flaky_tests_management_policies_get failed: {:?}",
+        result.err()
+    );
+    let _ = std::fs::remove_file(tmp);
+    cleanup_env();
+    std::env::remove_var("DD_TOKEN_STORAGE");
+}
+
+#[tokio::test]
+async fn test_flaky_tests_management_policies_update() {
+    let _lock = lock_env();
+    std::env::set_var("DD_TOKEN_STORAGE", "file");
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+    let tmp = write_temp_json(
+        "pup_test_ftmp_update.json",
+        r#"{"data":{"type":"test_optimization_update_flaky_tests_management_policies_request","attributes":{"repository_id":"test-repo"}}}"#,
+    );
+    let _mock = mock_any(&mut server, "PATCH", r#"{"data":{}}"#).await;
+    let result = crate::commands::test_optimization::flaky_tests_management_policies_update(
+        &cfg,
+        tmp.to_str().unwrap(),
+    )
+    .await;
+    assert!(
+        result.is_ok(),
+        "flaky_tests_management_policies_update failed: {:?}",
+        result.err()
+    );
+    let _ = std::fs::remove_file(tmp);
+    cleanup_env();
+    std::env::remove_var("DD_TOKEN_STORAGE");
+}
+
+#[tokio::test]
+async fn test_flaky_tests_management_policies_get_missing_file() {
+    let _lock = lock_env();
+    std::env::set_var("DD_TOKEN_STORAGE", "file");
+    let server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+    let result = crate::commands::test_optimization::flaky_tests_management_policies_get(
+        &cfg,
+        "/nonexistent/file.json",
+    )
+    .await;
+    assert!(
+        result.is_err(),
+        "flaky_tests_management_policies_get should fail for missing file"
+    );
+    cleanup_env();
+    std::env::remove_var("DD_TOKEN_STORAGE");
+}
+
+#[tokio::test]
+async fn test_flaky_tests_management_policies_update_missing_file() {
+    let _lock = lock_env();
+    std::env::set_var("DD_TOKEN_STORAGE", "file");
+    let server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+    let result = crate::commands::test_optimization::flaky_tests_management_policies_update(
+        &cfg,
+        "/nonexistent/file.json",
+    )
+    .await;
+    assert!(
+        result.is_err(),
+        "flaky_tests_management_policies_update should fail for missing file"
+    );
+    cleanup_env();
+    std::env::remove_var("DD_TOKEN_STORAGE");
+}
