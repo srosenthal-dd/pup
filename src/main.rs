@@ -1241,11 +1241,14 @@ enum Commands {
     ///
     /// Feature flags let you control the rollout of features to your users.
     /// This command group covers flag lifecycle management as well as
-    /// environment configuration and per-environment enable/disable controls.
+    /// environment configuration, per-environment enable/disable controls,
+    /// traffic allocations, and exposure schedule management.
     ///
     /// COMMAND GROUPS:
     ///   flags           Manage feature flag definitions (list, get, create, update, archive, unarchive)
     ///   environments    Manage feature flag environments (list, get, create, update, delete)
+    ///   allocations     Manage traffic allocations for a flag in an environment (create, update)
+    ///   exposure        Manage exposure schedules (start, stop, pause, resume)
     ///
     /// DIRECT COMMANDS:
     ///   enable          Enable a feature flag in an environment
@@ -1275,6 +1278,18 @@ enum Commands {
     ///
     ///   # Disable a flag in an environment
     ///   pup feature-flags disable <flag-id> <env-id>
+    ///
+    ///   # Create allocations for a flag in an environment
+    ///   pup feature-flags allocations create <flag-id> <env-id> --file=alloc.json
+    ///
+    ///   # Update (overwrite) allocations for a flag in an environment
+    ///   pup feature-flags allocations update <flag-id> <env-id> --file=alloc.json
+    ///
+    ///   # Start an exposure schedule
+    ///   pup feature-flags exposure start <schedule-id>
+    ///
+    ///   # Stop an exposure schedule
+    ///   pup feature-flags exposure stop <schedule-id>
     ///
     /// AUTHENTICATION:
     ///   Requires either OAuth2 authentication (pup auth login) or API keys
@@ -6232,6 +6247,16 @@ enum FeatureFlagActions {
         #[command(subcommand)]
         action: FeatureFlagEnvActions,
     },
+    /// Manage traffic allocations for a feature flag in an environment
+    Allocations {
+        #[command(subcommand)]
+        action: FeatureFlagAllocActions,
+    },
+    /// Manage exposure schedules for a feature flag
+    Exposure {
+        #[command(subcommand)]
+        action: FeatureFlagExposureActions,
+    },
     /// Enable a feature flag in an environment
     Enable {
         #[arg(help = "Feature flag ID (UUID)")]
@@ -6324,6 +6349,52 @@ enum FeatureFlagEnvActions {
     Delete {
         #[arg(help = "Environment ID (UUID)")]
         feature_flags_env_id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum FeatureFlagAllocActions {
+    /// Create allocations for a feature flag in an environment
+    Create {
+        #[arg(help = "Feature flag ID (UUID)")]
+        feature_flag_id: String,
+        #[arg(help = "Environment ID (UUID)")]
+        environment_id: String,
+        #[arg(long, help = "JSON file with request body (required)")]
+        file: String,
+    },
+    /// Update (overwrite) allocations for a feature flag in an environment
+    Update {
+        #[arg(help = "Feature flag ID (UUID)")]
+        feature_flag_id: String,
+        #[arg(help = "Environment ID (UUID)")]
+        environment_id: String,
+        #[arg(long, help = "JSON file with request body (required)")]
+        file: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum FeatureFlagExposureActions {
+    /// Start an exposure schedule
+    Start {
+        #[arg(help = "Exposure schedule ID (UUID)")]
+        exposure_schedule_id: String,
+    },
+    /// Stop an exposure schedule
+    Stop {
+        #[arg(help = "Exposure schedule ID (UUID)")]
+        exposure_schedule_id: String,
+    },
+    /// Pause an exposure schedule
+    Pause {
+        #[arg(help = "Exposure schedule ID (UUID)")]
+        exposure_schedule_id: String,
+    },
+    /// Resume an exposure schedule
+    Resume {
+        #[arg(help = "Exposure schedule ID (UUID)")]
+        exposure_schedule_id: String,
     },
 }
 
@@ -10787,6 +10858,59 @@ async fn main_inner() -> anyhow::Result<()> {
                         feature_flags_env_id,
                     } => {
                         commands::feature_flags::envs_delete(&cfg, &feature_flags_env_id).await?;
+                    }
+                },
+                FeatureFlagActions::Allocations { action } => match action {
+                    FeatureFlagAllocActions::Create {
+                        feature_flag_id,
+                        environment_id,
+                        file,
+                    } => {
+                        commands::feature_flags::allocations_create(
+                            &cfg,
+                            &feature_flag_id,
+                            &environment_id,
+                            &file,
+                        )
+                        .await?;
+                    }
+                    FeatureFlagAllocActions::Update {
+                        feature_flag_id,
+                        environment_id,
+                        file,
+                    } => {
+                        commands::feature_flags::allocations_update(
+                            &cfg,
+                            &feature_flag_id,
+                            &environment_id,
+                            &file,
+                        )
+                        .await?;
+                    }
+                },
+                FeatureFlagActions::Exposure { action } => match action {
+                    FeatureFlagExposureActions::Start {
+                        exposure_schedule_id,
+                    } => {
+                        commands::feature_flags::exposure_start(&cfg, &exposure_schedule_id)
+                            .await?;
+                    }
+                    FeatureFlagExposureActions::Stop {
+                        exposure_schedule_id,
+                    } => {
+                        commands::feature_flags::exposure_stop(&cfg, &exposure_schedule_id).await?;
+                    }
+                    FeatureFlagExposureActions::Pause {
+                        exposure_schedule_id,
+                    } => {
+                        commands::feature_flags::exposure_pause(&cfg, &exposure_schedule_id)
+                            .await?;
+                    }
+                    FeatureFlagExposureActions::Resume {
+                        exposure_schedule_id,
+                    } => {
+                        commands::feature_flags::exposure_resume(&cfg, &exposure_schedule_id)
+                            .await?;
                     }
                 },
                 FeatureFlagActions::Enable {

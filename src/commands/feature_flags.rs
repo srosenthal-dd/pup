@@ -231,3 +231,103 @@ pub async fn disable(
     eprintln!("Feature flag {feature_flag_id} disabled in environment {feature_flags_env_id}.");
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Allocations
+// ---------------------------------------------------------------------------
+
+pub async fn allocations_create(
+    cfg: &Config,
+    feature_flag_id: &str,
+    environment_id: &str,
+    file: &str,
+) -> Result<()> {
+    let body: datadog_api_client::datadogV2::model::CreateAllocationsRequest =
+        util::read_json_file(file)?;
+    let api = make_api(cfg);
+    let flag_id = feature_flag_id
+        .parse::<uuid::Uuid>()
+        .map_err(|e| anyhow::anyhow!("invalid feature flag ID: {e:?}"))?;
+    let env_id = environment_id
+        .parse::<uuid::Uuid>()
+        .map_err(|e| anyhow::anyhow!("invalid environment ID: {e:?}"))?;
+    let resp = api
+        .create_allocations_for_feature_flag_in_environment(flag_id, env_id, body)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to create allocations: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn allocations_update(
+    cfg: &Config,
+    feature_flag_id: &str,
+    environment_id: &str,
+    file: &str,
+) -> Result<()> {
+    let body: datadog_api_client::datadogV2::model::OverwriteAllocationsRequest =
+        util::read_json_file(file)?;
+    let api = make_api(cfg);
+    let flag_id = feature_flag_id
+        .parse::<uuid::Uuid>()
+        .map_err(|e| anyhow::anyhow!("invalid feature flag ID: {e:?}"))?;
+    let env_id = environment_id
+        .parse::<uuid::Uuid>()
+        .map_err(|e| anyhow::anyhow!("invalid environment ID: {e:?}"))?;
+    let resp = api
+        .update_allocations_for_feature_flag_in_environment(flag_id, env_id, body)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to update allocations: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+// ---------------------------------------------------------------------------
+// Exposure schedules
+// ---------------------------------------------------------------------------
+
+pub async fn exposure_start(cfg: &Config, exposure_schedule_id: &str) -> Result<()> {
+    let api = make_api(cfg);
+    let id = exposure_schedule_id
+        .parse::<uuid::Uuid>()
+        .map_err(|e| anyhow::anyhow!("invalid exposure schedule ID: {e:?}"))?;
+    let resp = api
+        .start_exposure_schedule(id)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to start exposure schedule: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn exposure_stop(cfg: &Config, exposure_schedule_id: &str) -> Result<()> {
+    let api = make_api(cfg);
+    let id = exposure_schedule_id
+        .parse::<uuid::Uuid>()
+        .map_err(|e| anyhow::anyhow!("invalid exposure schedule ID: {e:?}"))?;
+    let resp = api
+        .stop_exposure_schedule(id)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to stop exposure schedule: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn exposure_pause(cfg: &Config, exposure_schedule_id: &str) -> Result<()> {
+    let api = make_api(cfg);
+    let id = exposure_schedule_id
+        .parse::<uuid::Uuid>()
+        .map_err(|e| anyhow::anyhow!("invalid exposure schedule ID: {e:?}"))?;
+    let resp = api
+        .pause_exposure_schedule(id)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to pause exposure schedule: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn exposure_resume(cfg: &Config, exposure_schedule_id: &str) -> Result<()> {
+    let api = make_api(cfg);
+    let id = exposure_schedule_id
+        .parse::<uuid::Uuid>()
+        .map_err(|e| anyhow::anyhow!("invalid exposure schedule ID: {e:?}"))?;
+    let resp = api
+        .resume_exposure_schedule(id)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to resume exposure schedule: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
