@@ -7440,6 +7440,8 @@ enum ReferenceTablesActions {
 // ---- Scorecards ----
 #[derive(Subcommand)]
 enum ScorecardsActions {
+    /// List all scorecards
+    List,
     /// Manage scorecard rules
     Rules {
         #[command(subcommand)]
@@ -7449,6 +7451,11 @@ enum ScorecardsActions {
     Outcomes {
         #[command(subcommand)]
         action: ScorecardsOutcomesActions,
+    },
+    /// Manage scorecard campaigns
+    Campaigns {
+        #[command(subcommand)]
+        action: ScorecardsCampaignsActions,
     },
 }
 
@@ -7484,6 +7491,34 @@ enum ScorecardsOutcomesActions {
     BatchCreate {
         #[arg(long, help = "Path to JSON file with outcomes batch")]
         file: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum ScorecardsCampaignsActions {
+    /// List all scorecard campaigns
+    List,
+    /// Get a scorecard campaign by ID
+    Get {
+        #[arg(help = "Campaign ID to retrieve")]
+        campaign_id: String,
+    },
+    /// Create a scorecard campaign from a JSON file
+    Create {
+        #[arg(long, help = "Path to JSON file with campaign definition")]
+        file: String,
+    },
+    /// Update a scorecard campaign from a JSON file
+    Update {
+        #[arg(help = "Campaign ID to update")]
+        campaign_id: String,
+        #[arg(long, help = "Path to JSON file with updated campaign definition")]
+        file: String,
+    },
+    /// Delete a scorecard campaign
+    Delete {
+        #[arg(help = "Campaign ID to delete")]
+        campaign_id: String,
     },
 }
 
@@ -11547,6 +11582,9 @@ async fn main_inner() -> anyhow::Result<()> {
         Commands::Scorecards { action } => {
             cfg.validate_auth()?;
             match action {
+                ScorecardsActions::List => {
+                    commands::scorecards::list_scorecards(&cfg).await?;
+                }
                 ScorecardsActions::Rules { action } => match action {
                     ScorecardsRulesActions::List => {
                         commands::scorecards::rules_list(&cfg).await?;
@@ -11567,6 +11605,23 @@ async fn main_inner() -> anyhow::Result<()> {
                     }
                     ScorecardsOutcomesActions::BatchCreate { file } => {
                         commands::scorecards::outcomes_batch_create(&cfg, &file).await?;
+                    }
+                },
+                ScorecardsActions::Campaigns { action } => match action {
+                    ScorecardsCampaignsActions::List => {
+                        commands::scorecards::campaigns_list(&cfg).await?;
+                    }
+                    ScorecardsCampaignsActions::Get { campaign_id } => {
+                        commands::scorecards::campaigns_get(&cfg, &campaign_id).await?;
+                    }
+                    ScorecardsCampaignsActions::Create { file } => {
+                        commands::scorecards::campaigns_create(&cfg, &file).await?;
+                    }
+                    ScorecardsCampaignsActions::Update { campaign_id, file } => {
+                        commands::scorecards::campaigns_update(&cfg, &campaign_id, &file).await?;
+                    }
+                    ScorecardsCampaignsActions::Delete { campaign_id } => {
+                        commands::scorecards::campaigns_delete(&cfg, &campaign_id).await?;
                     }
                 },
             }
