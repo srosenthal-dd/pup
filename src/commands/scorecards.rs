@@ -122,7 +122,9 @@ pub async fn campaigns_update(cfg: &Config, campaign_id: &str, file: &str) -> Re
     let resp = api
         .update_scorecard_campaign(campaign_id.to_string(), body)
         .await
-        .map_err(|e| anyhow::anyhow!("failed to update scorecard campaign '{campaign_id}': {e:?}"))?;
+        .map_err(|e| {
+            anyhow::anyhow!("failed to update scorecard campaign '{campaign_id}': {e:?}")
+        })?;
     formatter::output(cfg, &resp)
 }
 
@@ -130,7 +132,9 @@ pub async fn campaigns_delete(cfg: &Config, campaign_id: &str) -> Result<()> {
     let api = make_api(cfg);
     api.delete_scorecard_campaign(campaign_id.to_string())
         .await
-        .map_err(|e| anyhow::anyhow!("failed to delete scorecard campaign '{campaign_id}': {e:?}"))?;
+        .map_err(|e| {
+            anyhow::anyhow!("failed to delete scorecard campaign '{campaign_id}': {e:?}")
+        })?;
     println!("Scorecard campaign '{campaign_id}' deleted successfully.");
     Ok(())
 }
