@@ -8,8 +8,6 @@ use crate::config::Config;
 use crate::formatter;
 
 // ---- Service Settings ----
-// Note: API construction is inlined per function rather than extracted into a make_api helper.
-// A future refactor should extract this (see scorecards.rs for the established pattern).
 
 pub async fn settings_get(cfg: &Config, file: &str) -> Result<()> {
     let dd_cfg = client::make_dd_config(cfg);
