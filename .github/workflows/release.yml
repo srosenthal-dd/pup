@@ -24,7 +24,7 @@ jobs:
         run: git fetch --force --tags
       - name: Cache Zig
         id: cache-zig
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ${{ github.workspace }}/zig-linux-x86_64-0.13.0
           key: zig-0.13.0-linux-x86_64
@@ -40,7 +40,7 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
       - name: Cache Rust dependencies
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             ~/.cargo/registry/index
@@ -62,7 +62,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload artifacts
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist-linux
           path: |
@@ -88,7 +88,7 @@ jobs:
           rustup default stable
           rustup target add x86_64-apple-darwin
       - name: Cache Rust dependencies
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             ~/.cargo/registry/index
@@ -108,7 +108,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload artifacts
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist-macos
           path: |
@@ -132,7 +132,7 @@ jobs:
           rustup default stable
           rustup target add wasm32-wasip2 wasm32-unknown-unknown
       - name: Cache Rust dependencies
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             ~/.cargo/registry/index
@@ -154,7 +154,7 @@ jobs:
           wasm-pack build --target web --no-default-features --features browser
           tar czf wasm-out/pup_browser_wasm.tar.gz -C pkg .
       - name: Upload artifacts
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist-wasm
           path: wasm-out/
@@ -184,7 +184,7 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
       - name: Cache Rust dependencies
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             ~/.cargo/registry/index
@@ -209,7 +209,7 @@ jobs:
           cd staging
           7z a "../pup_${{ steps.version.outputs.version }}_Windows_x86_64.zip" .
       - name: Upload artifacts
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist-windows
           path: "pup_*_Windows_x86_64.zip"
