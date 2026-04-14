@@ -20,6 +20,7 @@ pub struct AggregateArgs {
     pub group_by: Vec<String>,
     pub limit: i32,
     pub storage: Option<String>,
+    pub sort: String,
 }
 
 fn normalize_storage_tier(storage: Option<String>) -> Result<Option<String>> {
@@ -132,6 +133,36 @@ fn parse_compute_raw(input: &str) -> Result<(String, Option<String>)> {
     )
 }
 
+const VALID_SORT_AGGREGATIONS: &[&str] = &[
+    "count",
+    "cardinality",
+    "pc75",
+    "pc90",
+    "pc95",
+    "pc98",
+    "pc99",
+    "sum",
+    "min",
+    "max",
+];
+
+fn parse_aggregate_sort(sort: &str) -> Result<serde_json::Value> {
+    let sort = sort.trim().to_lowercase();
+    if !VALID_SORT_AGGREGATIONS.contains(&sort.as_str()) {
+        bail!(
+            "unknown sort aggregation {:?}; valid values are: {}",
+            sort,
+            VALID_SORT_AGGREGATIONS.join(", ")
+        );
+    }
+    Ok(serde_json::json!({
+        "type": "measure",
+        "order": "desc",
+        "aggregation": sort
+    }))
+}
+
+#[allow(clippy::too_many_arguments)]
 fn build_aggregate_body(
     query: String,
     from_ms: i64,
@@ -140,6 +171,7 @@ fn build_aggregate_body(
     group_bys: Vec<String>,
     limit: i32,
     storage: Option<String>,
+    sort: &str,
 ) -> Result<serde_json::Value> {
     let storage_tier = normalize_storage_tier(storage)?;
 
@@ -170,10 +202,11 @@ fn build_aggregate_body(
     });
 
     if !group_bys.is_empty() {
+        let sort_obj = parse_aggregate_sort(sort)?;
         let group_by_arr: Vec<serde_json::Value> = group_bys
             .iter()
             .map(|facet| {
-                let mut obj = serde_json::json!({ "facet": facet });
+                let mut obj = serde_json::json!({ "facet": facet, "sort": sort_obj });
                 if limit > 0 {
                     obj["limit"] = serde_json::json!(limit);
                 }
@@ -291,13 +324,16 @@ pub async fn aggregate(cfg: &Config, args: AggregateArgs) -> Result<()> {
         group_by,
         limit,
         storage,
+        sort,
     } = args;
     if compute.is_empty() {
         compute.push("count".into());
     }
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;
-    let body = build_aggregate_body(query, from_ms, to_ms, compute, group_by, limit, storage)?;
+    let body = build_aggregate_body(
+        query, from_ms, to_ms, compute, group_by, limit, storage, &sort,
+    )?;
     let data = client::raw_post(cfg, "/api/v2/logs/analytics/aggregate", body).await?;
     formatter::output(cfg, &data)?;
     Ok(())
@@ -565,6 +601,7 @@ mod tests {
             vec!["service".into()],
             3,
             Some("flex".into()),
+            "count",
         )
         .unwrap();
 
@@ -583,7 +620,12 @@ mod tests {
                 }],
                 "group_by": [{
                     "facet": "service",
-                    "limit": 3
+                    "limit": 3,
+                    "sort": {
+                        "type": "measure",
+                        "order": "desc",
+                        "aggregation": "count"
+                    }
                 }]
             })
         );
@@ -591,8 +633,17 @@ mod tests {
 
     #[test]
     fn test_build_aggregate_body_omits_group_by_for_plain_count() {
-        let body =
-            build_aggregate_body("*".into(), 1, 2, vec!["count".into()], vec![], 10, None).unwrap();
+        let body = build_aggregate_body(
+            "*".into(),
+            1,
+            2,
+            vec!["count".into()],
+            vec![],
+            10,
+            None,
+            "count",
+        )
+        .unwrap();
 
         assert_eq!(
             body,
@@ -623,6 +674,7 @@ mod tests {
             vec![],
             10,
             None,
+            "count",
         )
         .unwrap();
 
@@ -653,6 +705,7 @@ mod tests {
             vec!["service".into(), "status".into()],
             5,
             None,
+            "count",
         )
         .unwrap();
 
@@ -666,11 +719,80 @@ mod tests {
                 },
                 "compute": [{ "aggregation": "count" }],
                 "group_by": [
-                    { "facet": "service", "limit": 5 },
-                    { "facet": "status", "limit": 5 }
+                    { "facet": "service", "limit": 5, "sort": { "type": "measure", "order": "desc", "aggregation": "count" } },
+                    { "facet": "status", "limit": 5, "sort": { "type": "measure", "order": "desc", "aggregation": "count" } }
                 ]
             })
         );
+    }
+
+    #[test]
+    fn test_parse_aggregate_sort_valid_values() {
+        for agg in VALID_SORT_AGGREGATIONS {
+            let sort = parse_aggregate_sort(agg).unwrap();
+            assert_eq!(sort["aggregation"], *agg);
+            assert_eq!(sort["order"], "desc");
+            assert_eq!(sort["type"], "measure");
+        }
+    }
+
+    #[test]
+    fn test_parse_aggregate_sort_case_insensitive() {
+        let sort = parse_aggregate_sort("PC95").unwrap();
+        assert_eq!(sort["aggregation"], "pc95");
+    }
+
+    #[test]
+    fn test_parse_aggregate_sort_trims_whitespace() {
+        let sort = parse_aggregate_sort("  sum  ").unwrap();
+        assert_eq!(sort["aggregation"], "sum");
+    }
+
+    #[test]
+    fn test_parse_aggregate_sort_invalid() {
+        let err = parse_aggregate_sort("invalid").unwrap_err();
+        assert!(err.to_string().contains("unknown sort aggregation"));
+    }
+
+    #[test]
+    fn test_build_aggregate_body_sort_pc95() {
+        let body = build_aggregate_body(
+            "*".into(),
+            1,
+            2,
+            vec!["count".into()],
+            vec!["host".into()],
+            10,
+            None,
+            "pc95",
+        )
+        .unwrap();
+
+        assert_eq!(
+            body["group_by"][0]["sort"],
+            serde_json::json!({
+                "type": "measure",
+                "order": "desc",
+                "aggregation": "pc95"
+            })
+        );
+    }
+
+    #[test]
+    fn test_build_aggregate_body_sort_not_included_without_group_by() {
+        let body = build_aggregate_body(
+            "*".into(),
+            1,
+            2,
+            vec!["count".into()],
+            vec![],
+            10,
+            None,
+            "pc95",
+        )
+        .unwrap();
+
+        assert!(body.get("group_by").is_none());
     }
 
     #[test]

@@ -2889,6 +2889,12 @@ enum LogActions {
         limit: i32,
         #[arg(long, help = "Storage tier: indexes, online-archives, or flex")]
         storage: Option<String>,
+        #[arg(
+            long,
+            default_value = "count",
+            help = "Sort groups by aggregation (count,cardinality,pc75,pc90,pc95,pc98,pc99,sum,min,max)"
+        )]
+        sort: String,
     },
     /// Manage log archives
     Archives {
@@ -9045,6 +9051,7 @@ async fn main_inner() -> anyhow::Result<()> {
                     group_by,
                     limit,
                     storage,
+                    sort,
                 } => {
                     commands::logs::aggregate(
                         &cfg,
@@ -9063,6 +9070,7 @@ async fn main_inner() -> anyhow::Result<()> {
                                 .unwrap_or_default(),
                             limit,
                             storage,
+                            sort,
                         },
                     )
                     .await?;

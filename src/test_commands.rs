@@ -594,6 +594,7 @@ async fn test_logs_aggregate() {
             group_by: vec![],
             limit: 10,
             storage: None,
+            sort: "count".into(),
         },
     )
     .await;
@@ -620,6 +621,7 @@ async fn test_logs_aggregate_multiple_computes() {
             group_by: vec!["service".into(), "status".into()],
             limit: 10,
             storage: None,
+            sort: "count".into(),
         },
     )
     .await;
@@ -728,6 +730,7 @@ async fn test_logs_aggregate_with_flex_storage() {
             group_by: vec![],
             limit: 10,
             storage: Some("flex".into()),
+            sort: "count".into(),
         },
     )
     .await;
