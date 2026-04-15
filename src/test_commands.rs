@@ -1584,7 +1584,6 @@ async fn test_cicd_flaky_tests_search() {
         Some("@test.service:my-service".into()),
         None,
         50,
-        false,
         Some("-last_flaked".into()),
     )
     .await;
