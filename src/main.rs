@@ -6117,10 +6117,7 @@ enum FleetClusterActions {
     /// Returns clusters with node counts, agent versions, enabled products, and services.
     /// Use this to discover cluster names for use with instrumented-pods.
     List {
-        #[arg(
-            long,
-            help = "Filter query (e.g. cluster_name:production, env:prod)"
-        )]
+        #[arg(long, help = "Filter query (e.g. cluster_name:production, env:prod)")]
         filter: Option<String>,
         #[arg(long)]
         page_size: Option<i64>,
@@ -10934,8 +10931,7 @@ async fn main_inner() -> anyhow::Result<()> {
                 },
                 FleetActions::InstrumentedPods { action } => match action {
                     FleetInstrumentedPodsActions::List { cluster_name } => {
-                        commands::fleet::instrumented_pods_list(&cfg, cluster_name)
-                            .await?;
+                        commands::fleet::instrumented_pods_list(&cfg, cluster_name).await?;
                     }
                 },
             }

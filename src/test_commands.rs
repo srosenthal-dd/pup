@@ -1633,13 +1633,8 @@ async fn test_fleet_tracers_list() {
         .create_async()
         .await;
 
-    let result =
-        crate::commands::fleet::tracers_list(&cfg, None, None, None, None, false).await;
-    assert!(
-        result.is_ok(),
-        "tracers_list failed: {:?}",
-        result.err()
-    );
+    let result = crate::commands::fleet::tracers_list(&cfg, None, None, None, None, false).await;
+    assert!(result.is_ok(), "tracers_list failed: {:?}", result.err());
     mock.assert_async().await;
     cleanup_env();
 }
@@ -1722,12 +1717,13 @@ async fn test_fleet_instrumented_pods_list() {
         )
         .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body(r#"{"data":{"type":"cluster_name","id":"my-cluster","attributes":{"groups":[]}}}"#)
+        .with_body(
+            r#"{"data":{"type":"cluster_name","id":"my-cluster","attributes":{"groups":[]}}}"#,
+        )
         .create_async()
         .await;
 
-    let result =
-        crate::commands::fleet::instrumented_pods_list(&cfg, "my-cluster".into()).await;
+    let result = crate::commands::fleet::instrumented_pods_list(&cfg, "my-cluster".into()).await;
     assert!(
         result.is_ok(),
         "instrumented_pods_list failed: {:?}",
@@ -1750,13 +1746,8 @@ async fn test_fleet_clusters_list() {
         .create_async()
         .await;
 
-    let result =
-        crate::commands::fleet::clusters_list(&cfg, None, None, None, None, false).await;
-    assert!(
-        result.is_ok(),
-        "clusters_list failed: {:?}",
-        result.err()
-    );
+    let result = crate::commands::fleet::clusters_list(&cfg, None, None, None, None, false).await;
+    assert!(result.is_ok(), "clusters_list failed: {:?}", result.err());
     mock.assert_async().await;
     cleanup_env();
 }

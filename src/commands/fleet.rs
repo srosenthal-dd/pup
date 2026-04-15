@@ -319,10 +319,7 @@ pub async fn clusters_list(
     formatter::output(cfg, &resp)
 }
 
-pub async fn instrumented_pods_list(
-    cfg: &Config,
-    cluster_name: String,
-) -> Result<()> {
+pub async fn instrumented_pods_list(cfg: &Config, cluster_name: String) -> Result<()> {
     let dd_cfg = client::make_dd_config(cfg);
     let api = match client::make_bearer_client(cfg) {
         Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
