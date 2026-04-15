@@ -168,10 +168,14 @@ static UNSTABLE_OPS: &[&str] = &[
     "v2.get_incident_service",
     "v2.list_incident_services",
     "v2.update_incident_service",
-    // Fleet Automation (14)
+    // Fleet Automation (18)
     "v2.list_fleet_agents",
     "v2.get_fleet_agent_info",
     "v2.list_fleet_agent_versions",
+    "v2.list_fleet_agent_tracers",
+    "v2.list_fleet_tracers",
+    "v2.list_fleet_clusters",
+    "v2.list_fleet_instrumented_pods",
     "v2.list_fleet_deployments",
     "v2.get_fleet_deployment",
     "v2.create_fleet_deployment_configure",

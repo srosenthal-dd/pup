@@ -1685,7 +1685,7 @@ async fn test_fleet_agents_tracers_list() {
     let cfg = test_config(&server.url());
 
     let mock = server
-        .mock("GET", "/api/unstable/fleet/agents/details/agent-123/tracers")
+        .mock("GET", "/api/unstable/fleet/agents/agent-123/tracers")
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(r#"{"data":{"type":"status","attributes":{"tracers":[]}}}"#)
@@ -1718,7 +1718,7 @@ async fn test_fleet_instrumented_pods_list() {
     let mock = server
         .mock(
             "GET",
-            "/api/unstable/fleet/cluster_agents/details/my-cluster/instrumented_pods",
+            "/api/unstable/fleet/clusters/my-cluster/instrumented_pods",
         )
         .with_status(200)
         .with_header("content-type", "application/json")

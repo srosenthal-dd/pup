@@ -821,7 +821,7 @@ checksum = "d7a1e2f27636f116493b8b860f5546edb47c8d8f8ea73e1d2a20be88e28d1fea"
 [[package]]
 name = "datadog-api-client"
 version = "0.29.0"
-source = "git+https://github.com/DataDog/datadog-api-client-rust?rev=8fa08ce098d0218b50be712d064f0c52006d6c19#8fa08ce098d0218b50be712d064f0c52006d6c19"
+source = "git+https://github.com/DataDog/datadog-api-client-rust?rev=d70b186e29175ba7e160fe77091cd8571950c553#d70b186e29175ba7e160fe77091cd8571950c553"
 dependencies = [
  "async-stream",
  "chrono",
@@ -1809,7 +1809,7 @@ checksum = "ae8e22120c32fb4d19ec55fba35015f57095cd95a2e3b732e44457f5915b2ee8"
 dependencies = [
  "num-integer",
  "num-traits",
- "rand 0.10.1",
+ "rand 0.10.0",
  "rand_core 0.10.0",
 ]
 
@@ -2730,7 +2730,7 @@ dependencies = [
  "mockito",
  "open",
  "openssl",
- "rand 0.10.1",
+ "rand 0.10.0",
  "regex",
  "reqwest",
  "reqwest-middleware",
@@ -2807,7 +2807,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2854,9 +2854,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.10.1"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2e8e8bcc7961af1fdac401278c6a831614941f6164ee3bf4ce61b7edb162207"
+checksum = "bc266eb313df6c5c09c1c7b1fbe2510961e5bcd3add930c1e31f7ed9da0feff8"
 dependencies = [
  "chacha20 0.10.0",
  "getrandom 0.4.2",
@@ -3190,7 +3190,7 @@ dependencies = [
  "pkcs5",
  "pkcs8 0.11.0-rc.11",
  "polyval 0.7.1",
- "rand 0.10.1",
+ "rand 0.10.0",
  "rand_core 0.10.0",
  "rsa 0.10.0-rc.17",
  "russh-cryptovec",
@@ -3347,9 +3347,9 @@ checksum = "f87165f0995f63a9fbeea62b64d10b4d9d8e78ec6d7d51fb2125fda7bb36788f"
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.12"
+version = "0.103.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8279bb85272c9f10811ae6a6c547ff594d6a7f3c6c6b02ee9726d1d0dcfcdd06"
+checksum = "df33b2b81ac578cabaf06b89b0631153a3f416b0a886e8a7a1707fb51abbd1ef"
 dependencies = [
  "aws-lc-rs",
  "ring",
@@ -4295,7 +4295,7 @@ checksum = "5ac8b6f42ead25368cf5b098aeb3dc8a1a2c05a3eee8a9a1a68c640edbfc79d9"
 dependencies = [
  "getrandom 0.4.2",
  "js-sys",
- "rand 0.10.1",
+ "rand 0.10.0",
  "serde_core",
  "wasm-bindgen",
 ]

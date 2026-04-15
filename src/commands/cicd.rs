@@ -302,9 +302,8 @@ pub async fn flaky_tests_search(
         page_opts = page_opts.cursor(c);
     }
     attrs = attrs.page(page_opts);
-    if include_history {
-        attrs = attrs.include_history(true);
-    }
+    // include_history was removed from the SDK in d70b186e
+    let _ = include_history;
     if let Some(s) = sort {
         let sort_val = match s.as_str() {
             "fqn" => FlakyTestsSearchSort::FQN_ASCENDING,

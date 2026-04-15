@@ -1,7 +1,8 @@
 use anyhow::Result;
 use datadog_api_client::datadogV2::api_fleet_automation::{
-    FleetAutomationAPI, GetFleetDeploymentOptionalParams, ListFleetAgentsOptionalParams,
-    ListFleetDeploymentsOptionalParams,
+    FleetAutomationAPI, GetFleetDeploymentOptionalParams, ListFleetAgentTracersOptionalParams,
+    ListFleetAgentsOptionalParams, ListFleetClustersOptionalParams,
+    ListFleetDeploymentsOptionalParams, ListFleetTracersOptionalParams,
 };
 
 use crate::client;
@@ -221,34 +222,32 @@ pub async fn tracers_list(
     sort_attribute: Option<String>,
     sort_descending: bool,
 ) -> Result<()> {
-    let mut query: Vec<(&str, &str)> = Vec::new();
-    let filter_owned;
-    if let Some(f) = &filter {
-        filter_owned = f.clone();
-        query.push(("filter", filter_owned.as_str()));
+    let dd_cfg = client::make_dd_config(cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
+        None => FleetAutomationAPI::with_config(dd_cfg),
+    };
+    let mut params = ListFleetTracersOptionalParams::default();
+    if let Some(f) = filter {
+        params = params.filter(f);
     }
-    let ps_owned;
-    if let Some(ps) = &page_size {
-        ps_owned = ps.to_string();
-        query.push(("page_size", ps_owned.as_str()));
+    if let Some(ps) = page_size {
+        params = params.page_size(ps);
     }
-    let pn_owned;
-    if let Some(pn) = &page_number {
-        pn_owned = pn.to_string();
-        query.push(("page_number", pn_owned.as_str()));
+    if let Some(pn) = page_number {
+        params = params.page_number(pn);
     }
-    let sa_owned;
-    if let Some(sa) = &sort_attribute {
-        sa_owned = sa.clone();
-        query.push(("sort_attribute", sa_owned.as_str()));
+    if let Some(sa) = sort_attribute {
+        params = params.sort_attribute(sa);
     }
-    let sd_owned;
     if sort_descending {
-        sd_owned = "true".to_string();
-        query.push(("sort_descending", sd_owned.as_str()));
+        params = params.sort_descending(true);
     }
-    let data = client::raw_get(cfg, "/api/unstable/fleet/tracers", &query).await?;
-    formatter::output(cfg, &data)
+    let resp = api
+        .list_fleet_tracers(params)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to list fleet tracers: {e:?}"))?;
+    formatter::output(cfg, &resp)
 }
 
 pub async fn agents_tracers_list(
@@ -259,30 +258,29 @@ pub async fn agents_tracers_list(
     sort_attribute: Option<String>,
     sort_descending: bool,
 ) -> Result<()> {
-    let path = format!("/api/unstable/fleet/agents/{agent_key}/tracers");
-    let mut query: Vec<(&str, &str)> = Vec::new();
-    let ps_owned;
-    if let Some(ps) = &page_size {
-        ps_owned = ps.to_string();
-        query.push(("page_size", ps_owned.as_str()));
+    let dd_cfg = client::make_dd_config(cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
+        None => FleetAutomationAPI::with_config(dd_cfg),
+    };
+    let mut params = ListFleetAgentTracersOptionalParams::default();
+    if let Some(ps) = page_size {
+        params = params.page_size(ps);
     }
-    let pn_owned;
-    if let Some(pn) = &page_number {
-        pn_owned = pn.to_string();
-        query.push(("page_number", pn_owned.as_str()));
+    if let Some(pn) = page_number {
+        params = params.page_number(pn);
     }
-    let sa_owned;
-    if let Some(sa) = &sort_attribute {
-        sa_owned = sa.clone();
-        query.push(("sort_attribute", sa_owned.as_str()));
+    if let Some(sa) = sort_attribute {
+        params = params.sort_attribute(sa);
     }
-    let sd_owned;
     if sort_descending {
-        sd_owned = "true".to_string();
-        query.push(("sort_descending", sd_owned.as_str()));
+        params = params.sort_descending(true);
     }
-    let data = client::raw_get(cfg, &path, &query).await?;
-    formatter::output(cfg, &data)
+    let resp = api
+        .list_fleet_agent_tracers(agent_key, params)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to list agent tracers: {e:?}"))?;
+    formatter::output(cfg, &resp)
 }
 
 pub async fn clusters_list(
@@ -293,43 +291,46 @@ pub async fn clusters_list(
     sort_attribute: Option<String>,
     sort_descending: bool,
 ) -> Result<()> {
-    let mut query: Vec<(&str, &str)> = Vec::new();
-    let filter_owned;
-    if let Some(f) = &filter {
-        filter_owned = f.clone();
-        query.push(("filter", filter_owned.as_str()));
+    let dd_cfg = client::make_dd_config(cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
+        None => FleetAutomationAPI::with_config(dd_cfg),
+    };
+    let mut params = ListFleetClustersOptionalParams::default();
+    if let Some(f) = filter {
+        params = params.filter(f);
     }
-    let ps_owned;
-    if let Some(ps) = &page_size {
-        ps_owned = ps.to_string();
-        query.push(("page_size", ps_owned.as_str()));
+    if let Some(ps) = page_size {
+        params = params.page_size(ps);
     }
-    let pn_owned;
-    if let Some(pn) = &page_number {
-        pn_owned = pn.to_string();
-        query.push(("page_number", pn_owned.as_str()));
+    if let Some(pn) = page_number {
+        params = params.page_number(pn);
     }
-    let sa_owned;
-    if let Some(sa) = &sort_attribute {
-        sa_owned = sa.clone();
-        query.push(("sort_attribute", sa_owned.as_str()));
+    if let Some(sa) = sort_attribute {
+        params = params.sort_attribute(sa);
     }
-    let sd_owned;
     if sort_descending {
-        sd_owned = "true".to_string();
-        query.push(("sort_descending", sd_owned.as_str()));
+        params = params.sort_descending(true);
     }
-    let data = client::raw_get(cfg, "/api/unstable/fleet/clusters", &query).await?;
-    formatter::output(cfg, &data)
+    let resp = api
+        .list_fleet_clusters(params)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to list fleet clusters: {e:?}"))?;
+    formatter::output(cfg, &resp)
 }
 
 pub async fn instrumented_pods_list(
     cfg: &Config,
     cluster_name: String,
 ) -> Result<()> {
-    let path = format!(
-        "/api/unstable/fleet/clusters/{cluster_name}/instrumented_pods"
-    );
-    let data = client::raw_get(cfg, &path, &[]).await?;
-    formatter::output(cfg, &data)
+    let dd_cfg = client::make_dd_config(cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
+        None => FleetAutomationAPI::with_config(dd_cfg),
+    };
+    let resp = api
+        .list_fleet_instrumented_pods(cluster_name)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to list instrumented pods: {e:?}"))?;
+    formatter::output(cfg, &resp)
 }

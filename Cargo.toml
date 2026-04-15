@@ -120,9 +120,9 @@ ssh-key = { version = "0.6", features = ["p256", "std"], optional = true }
 futures = { version = "0.3", optional = true }
 tokio-util = { version = "0.7", features = ["compat", "io"], optional = true }
 
-# Datadog API client — latest master as of 2026-04-10 (8fa08ce0)
+# Datadog API client — includes fleet tracers/clusters/instrumented-pods (d70b186e)
 # Use default-features = false; feature sets are activated per-target via features above
-datadog-api-client = { git = "https://github.com/DataDog/datadog-api-client-rust", rev = "8fa08ce098d0218b50be712d064f0c52006d6c19", optional = true, default-features = false }
+datadog-api-client = { git = "https://github.com/DataDog/datadog-api-client-rust", rev = "d70b186e29175ba7e160fe77091cd8571950c553", optional = true, default-features = false }
 
 # HTTP middleware (version-matched to DD client; compiles on all targets)
 reqwest-middleware = "0.5"
