@@ -1590,6 +1590,24 @@ async fn test_cicd_flaky_tests_search() {
     cleanup_env();
 }
 
+#[tokio::test]
+async fn test_cicd_flaky_tests_search_invalid_sort() {
+    let _lock = lock_env();
+    let s = mockito::Server::new_async().await;
+    let cfg = test_config(&s.url());
+    let result = crate::commands::cicd::flaky_tests_search(
+        &cfg,
+        None,
+        None,
+        10,
+        Some("bogus".into()),
+    )
+    .await;
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("invalid sort value"));
+    cleanup_env();
+}
+
 // --- Fleet ---
 #[tokio::test]
 async fn test_fleet_agents_list() {
