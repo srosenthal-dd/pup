@@ -10670,14 +10670,8 @@ async fn main_inner() -> anyhow::Result<()> {
                         limit,
                         sort,
                     } => {
-                        commands::cicd::flaky_tests_search(
-                            &cfg,
-                            query,
-                            cursor,
-                            limit,
-                            sort,
-                        )
-                        .await?;
+                        commands::cicd::flaky_tests_search(&cfg, query, cursor, limit, sort)
+                            .await?;
                     }
                     CicdFlakyTestActions::Update { file } => {
                         commands::cicd::flaky_tests_update(&cfg, &file).await?;
