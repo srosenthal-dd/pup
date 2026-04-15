@@ -383,6 +383,20 @@ pup fleet agents tracers <agent-key> --page-size 20
 pup fleet instrumented-pods list <cluster-name>
 ```
 
+## Fleet Clusters
+
+### List Kubernetes Clusters in the Fleet
+```bash
+# List all clusters
+pup fleet clusters list
+
+# Filter by cluster name
+pup fleet clusters list --filter "cluster_name:production"
+
+# Paginate
+pup fleet clusters list --filter "env:prod" --page-size 50 --page-number 0
+```
+
 ## Live Debugger
 
 ### Service Context
