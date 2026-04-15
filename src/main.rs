@@ -4904,7 +4904,10 @@ enum SoftwareCatalogEntityActions {
         filter_kind: Option<String>,
         #[arg(long, help = "Filter entities by owner")]
         filter_owner: Option<String>,
-        #[arg(long, help = "Filter entities by reference, e.g. service:shop-frontend")]
+        #[arg(
+            long,
+            help = "Filter entities by reference, e.g. service:shop-frontend"
+        )]
         filter_ref: Option<String>,
     },
     /// Create or update entities from a JSON file

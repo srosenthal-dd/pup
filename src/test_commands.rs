@@ -4154,8 +4154,7 @@ async fn test_software_catalog_entities_list() {
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(&mut server, "GET", r#"{"data":[]}"#).await;
-    let result =
-        crate::commands::software_catalog::entities_list(&cfg, None, None, None).await;
+    let result = crate::commands::software_catalog::entities_list(&cfg, None, None, None).await;
     assert!(
         result.is_ok(),
         "software catalog entities list failed: {:?}",
@@ -4236,8 +4235,7 @@ async fn test_software_catalog_entities_list_error() {
         .with_body(r#"{"errors":["Internal Server Error"]}"#)
         .create_async()
         .await;
-    let result =
-        crate::commands::software_catalog::entities_list(&cfg, None, None, None).await;
+    let result = crate::commands::software_catalog::entities_list(&cfg, None, None, None).await;
     assert!(
         result.is_err(),
         "expected software catalog entities list to fail on 500"
