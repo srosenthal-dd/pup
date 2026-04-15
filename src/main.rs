@@ -5555,8 +5555,6 @@ enum CicdFlakyTestActions {
         cursor: Option<String>,
         #[arg(long, default_value_t = 100, help = "Maximum results")]
         limit: i64,
-        #[arg(long, default_value_t = false, help = "Include status history")]
-        include_history: bool,
         #[arg(
             long,
             help = "Sort order (fqn, -fqn, first_flaked, -first_flaked, last_flaked, -last_flaked, failure_rate, -failure_rate, pipelines_failed, -pipelines_failed, pipelines_duration_lost, -pipelines_duration_lost)"
@@ -10670,7 +10668,6 @@ async fn main_inner() -> anyhow::Result<()> {
                         query,
                         cursor,
                         limit,
-                        include_history,
                         sort,
                     } => {
                         commands::cicd::flaky_tests_search(
@@ -10678,7 +10675,6 @@ async fn main_inner() -> anyhow::Result<()> {
                             query,
                             cursor,
                             limit,
-                            include_history,
                             sort,
                         )
                         .await?;
