@@ -10,14 +10,29 @@ use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
-pub async fn entities_list(cfg: &Config) -> Result<()> {
+pub async fn entities_list(
+    cfg: &Config,
+    filter_kind: Option<String>,
+    filter_owner: Option<String>,
+    filter_ref: Option<String>,
+) -> Result<()> {
     let dd_cfg = client::make_dd_config(cfg);
     let api = match client::make_bearer_client(cfg) {
         Some(c) => SoftwareCatalogAPI::with_client_and_config(dd_cfg, c),
         None => SoftwareCatalogAPI::with_config(dd_cfg),
     };
+    let mut params = ListCatalogEntityOptionalParams::default();
+    if let Some(v) = &filter_kind {
+        params = params.filter_kind(v.clone());
+    }
+    if let Some(v) = &filter_owner {
+        params = params.filter_owner(v.clone());
+    }
+    if let Some(v) = &filter_ref {
+        params = params.filter_ref(v.clone());
+    }
     let resp = api
-        .list_catalog_entity(ListCatalogEntityOptionalParams::default())
+        .list_catalog_entity(params)
         .await
         .map_err(|e| anyhow::anyhow!("failed to list catalog entities: {e:?}"))?;
     formatter::output(cfg, &resp)

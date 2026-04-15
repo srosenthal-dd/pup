@@ -4893,7 +4893,20 @@ enum SoftwareCatalogActions {
 #[derive(Subcommand)]
 enum SoftwareCatalogEntityActions {
     /// List catalog entities
-    List,
+    ///
+    /// EXAMPLES:
+    ///   pup software-catalog entities list --filter-kind service
+    ///   pup software-catalog entities list --filter-owner team-claude
+    ///   pup software-catalog entities list --filter-ref service:shop-frontend
+    #[command(verbatim_doc_comment)]
+    List {
+        #[arg(long, help = "Filter entities by kind (e.g. service, datastore)")]
+        filter_kind: Option<String>,
+        #[arg(long, help = "Filter entities by owner")]
+        filter_owner: Option<String>,
+        #[arg(long, help = "Filter entities by reference, e.g. service:shop-frontend")]
+        filter_ref: Option<String>,
+    },
     /// Create or update entities from a JSON file
     Upsert {
         #[arg(long, help = "JSON file with entity definition (required)")]
@@ -9982,8 +9995,18 @@ async fn main_inner() -> anyhow::Result<()> {
             cfg.validate_auth()?;
             match action {
                 SoftwareCatalogActions::Entities { action } => match action {
-                    SoftwareCatalogEntityActions::List => {
-                        commands::software_catalog::entities_list(&cfg).await?;
+                    SoftwareCatalogEntityActions::List {
+                        filter_kind,
+                        filter_owner,
+                        filter_ref,
+                    } => {
+                        commands::software_catalog::entities_list(
+                            &cfg,
+                            filter_kind,
+                            filter_owner,
+                            filter_ref,
+                        )
+                        .await?;
                     }
                     SoftwareCatalogEntityActions::Upsert { file } => {
                         commands::software_catalog::entities_upsert(&cfg, &file).await?;
