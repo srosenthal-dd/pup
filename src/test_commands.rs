@@ -1737,6 +1737,30 @@ async fn test_fleet_instrumented_pods_list() {
     cleanup_env();
 }
 #[tokio::test]
+async fn test_fleet_clusters_list() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+
+    let mock = server
+        .mock("GET", "/api/unstable/fleet/clusters")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"data":{"type":"status","id":"done","attributes":{"clusters":[]}}}"#)
+        .create_async()
+        .await;
+
+    let result =
+        crate::commands::fleet::clusters_list(&cfg, None, None, None, None, false).await;
+    assert!(
+        result.is_ok(),
+        "clusters_list failed: {:?}",
+        result.err()
+    );
+    mock.assert_async().await;
+    cleanup_env();
+}
+#[tokio::test]
 async fn test_fleet_deployments_list() {
     let _lock = lock_env();
     let mut s = mockito::Server::new_async().await;

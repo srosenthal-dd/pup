@@ -5992,17 +5992,17 @@ enum FleetActions {
         #[command(subcommand)]
         action: FleetScheduleActions,
     },
-    /// List Kubernetes clusters in the fleet
+    /// Manage fleet clusters
     Clusters {
         #[command(subcommand)]
         action: FleetClusterActions,
     },
-    /// Query fleet tracers (telemetry-derived service names, language, runtime IDs)
+    /// Manage fleet tracers
     Tracers {
         #[command(subcommand)]
         action: FleetTracerActions,
     },
-    /// List instrumented pods in a Kubernetes cluster
+    /// Manage fleet instrumented pods
     #[command(name = "instrumented-pods")]
     InstrumentedPods {
         #[command(subcommand)]
@@ -6029,8 +6029,8 @@ enum FleetAgentActions {
     /// List tracers for a specific agent
     Tracers {
         agent_key: String,
-        #[arg(long, default_value_t = 10, help = "Results per page (max 100)")]
-        page_size: i64,
+        #[arg(long)]
+        page_size: Option<i64>,
         #[arg(long, help = "Page number (0-indexed)")]
         page_number: Option<i64>,
         #[arg(long, help = "Sort by attribute (e.g. service, language, hostname)")]
@@ -6099,8 +6099,8 @@ enum FleetTracerActions {
             help = "Filter query (e.g. env:prod, hostname:my-host, service:web-api)"
         )]
         filter: Option<String>,
-        #[arg(long, default_value_t = 10, help = "Results per page (max 100)")]
-        page_size: i64,
+        #[arg(long)]
+        page_size: Option<i64>,
         #[arg(long, help = "Page number (0-indexed)")]
         page_number: Option<i64>,
         #[arg(long, help = "Sort by attribute (e.g. service, language, hostname)")]
@@ -6122,8 +6122,8 @@ enum FleetClusterActions {
             help = "Filter query (e.g. cluster_name:production, env:prod)"
         )]
         filter: Option<String>,
-        #[arg(long, default_value_t = 10, help = "Results per page (max 100)")]
-        page_size: i64,
+        #[arg(long)]
+        page_size: Option<i64>,
         #[arg(long, help = "Page number (0-indexed)")]
         page_number: Option<i64>,
         #[arg(long, help = "Sort by attribute (e.g. cluster_name, node_count)")]
@@ -10851,7 +10851,7 @@ async fn main_inner() -> anyhow::Result<()> {
                         commands::fleet::agents_tracers_list(
                             &cfg,
                             agent_key,
-                            Some(page_size),
+                            page_size,
                             page_number,
                             sort_attribute,
                             sort_descending,
@@ -10905,7 +10905,7 @@ async fn main_inner() -> anyhow::Result<()> {
                         commands::fleet::clusters_list(
                             &cfg,
                             filter,
-                            Some(page_size),
+                            page_size,
                             page_number,
                             sort_attribute,
                             sort_descending,
@@ -10924,7 +10924,7 @@ async fn main_inner() -> anyhow::Result<()> {
                         commands::fleet::tracers_list(
                             &cfg,
                             filter,
-                            Some(page_size),
+                            page_size,
                             page_number,
                             sort_attribute,
                             sort_descending,
