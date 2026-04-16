@@ -5835,3 +5835,134 @@ async fn test_flaky_tests_management_policies_update_missing_file() {
     cleanup_env();
     std::env::remove_var("DD_TOKEN_STORAGE");
 }
+
+// -------------------------------------------------------------------------
+// raw_request query parameter path
+// -------------------------------------------------------------------------
+
+/// Verifies that raw_request attaches query parameters and returns Ok when the
+/// server responds 200. Exercises the `!query.is_empty()` branch added to the function.
+#[tokio::test]
+async fn test_raw_request_with_query_params_ok() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+    let _mock = server
+        .mock("GET", "/api/v2/monitors")
+        .match_query(mockito::Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body("[]")
+        .create_async()
+        .await;
+    let resp = crate::client::raw_request(
+        &cfg,
+        "GET",
+        "/api/v2/monitors",
+        &[("page", "1"), ("page_size", "10")],
+        None,
+        None,
+        "application/json",
+        &[],
+    )
+    .await;
+    assert!(
+        resp.is_ok(),
+        "raw_request with query failed: {:?}",
+        resp.err()
+    );
+    cleanup_env();
+}
+
+// -------------------------------------------------------------------------
+// Cloud Cost Management — tag description positive-path tests
+// -------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_tag_desc_upsert_success() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+    let _mock = mock_any(&mut server, "PUT", r#"{}"#).await;
+    let result =
+        crate::commands::cost_ccm::tag_desc_upsert(&cfg, "team", "The team tag", None).await;
+    assert!(result.is_ok(), "tag_desc_upsert failed: {:?}", result.err());
+    cleanup_env();
+}
+
+#[tokio::test]
+async fn test_tag_desc_upsert_with_cloud_success() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+    let _mock = mock_any(&mut server, "PUT", r#"{}"#).await;
+    let result = crate::commands::cost_ccm::tag_desc_upsert(
+        &cfg,
+        "team",
+        "The team tag",
+        Some("aws".into()),
+    )
+    .await;
+    assert!(
+        result.is_ok(),
+        "tag_desc_upsert with cloud failed: {:?}",
+        result.err()
+    );
+    cleanup_env();
+}
+
+#[tokio::test]
+async fn test_tag_desc_delete_success() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+    let _mock = mock_any(&mut server, "DELETE", r#"{}"#).await;
+    let result = crate::commands::cost_ccm::tag_desc_delete(&cfg, "team", None).await;
+    assert!(result.is_ok(), "tag_desc_delete failed: {:?}", result.err());
+    cleanup_env();
+}
+
+#[tokio::test]
+async fn test_tag_desc_delete_with_cloud_success() {
+    let _lock = lock_env();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+    let _mock = mock_any(&mut server, "DELETE", r#"{}"#).await;
+    let result =
+        crate::commands::cost_ccm::tag_desc_delete(&cfg, "team", Some("azure".into())).await;
+    assert!(
+        result.is_ok(),
+        "tag_desc_delete with cloud failed: {:?}",
+        result.err()
+    );
+    cleanup_env();
+}
+
+// -------------------------------------------------------------------------
+// Cloud Cost Management — custom_costs_upload with version query parameter
+// -------------------------------------------------------------------------
+
+/// Verifies that the optional `version` query parameter is passed through
+/// correctly after the refactor from path-string embedding to params vec.
+#[tokio::test]
+async fn test_custom_costs_upload_with_version_success() {
+    let _lock = lock_env();
+    let tmp = std::env::temp_dir().join("pup_test_upload_version.csv");
+    std::fs::write(&tmp, b"cost,amount\nec2,100\n").unwrap();
+    let mut server = mockito::Server::new_async().await;
+    let cfg = test_config(&server.url());
+    let _mock = mock_any(&mut server, "PUT", r#"{}"#).await;
+    let result = crate::commands::cost_ccm::custom_costs_upload(
+        &cfg,
+        tmp.to_str().unwrap(),
+        Some("v2".into()),
+    )
+    .await;
+    assert!(
+        result.is_ok(),
+        "custom_costs_upload with version failed: {:?}",
+        result.err()
+    );
+    let _ = std::fs::remove_file(&tmp);
+    cleanup_env();
+}

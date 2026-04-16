@@ -41,10 +41,14 @@ pub async fn custom_costs_get(cfg: &Config, file_id: &str) -> Result<()> {
 }
 
 pub async fn custom_costs_upload(cfg: &Config, file: &str, version: Option<String>) -> Result<()> {
-    let mut path = "/api/v2/cost/custom_costs".to_string();
+    let mut params: Vec<(String, String)> = Vec::new();
     if let Some(v) = version {
-        path.push_str(&format!("?version={}", util::percent_encode(&v)));
+        params.push(("version".into(), v));
     }
+    let q: Vec<(&str, &str)> = params
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
 
     let file_content =
         std::fs::read(file).map_err(|e| anyhow::anyhow!("failed to read '{file}': {e}"))?;
@@ -71,7 +75,8 @@ pub async fn custom_costs_upload(cfg: &Config, file: &str, version: Option<Strin
     let resp = client::raw_request(
         cfg,
         "PUT",
-        &path,
+        "/api/v2/cost/custom_costs",
+        &q,
         Some(body),
         Some(&content_type),
         "application/json",
@@ -138,15 +143,28 @@ pub async fn tag_desc_upsert(
     description: &str,
     cloud: Option<String>,
 ) -> Result<()> {
-    let mut path = format!(
-        "/api/v2/cost/tag_descriptions?tag_key={}&description={}",
-        util::percent_encode(tag_key),
-        util::percent_encode(description)
-    );
+    let mut params: Vec<(String, String)> = vec![
+        ("tag_key".into(), tag_key.to_string()),
+        ("description".into(), description.to_string()),
+    ];
     if let Some(c) = cloud {
-        path.push_str(&format!("&cloud={}", util::percent_encode(&c)));
+        params.push(("cloud".into(), c));
     }
-    let resp = client::raw_request(cfg, "PUT", &path, None, None, "application/json", &[]).await?;
+    let q: Vec<(&str, &str)> = params
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    let resp = client::raw_request(
+        cfg,
+        "PUT",
+        "/api/v2/cost/tag_descriptions",
+        &q,
+        None,
+        None,
+        "application/json",
+        &[],
+    )
+    .await?;
     if resp.bytes.is_empty() {
         eprintln!("Tag description for '{tag_key}' updated.");
         return Ok(());
@@ -157,15 +175,25 @@ pub async fn tag_desc_upsert(
 }
 
 pub async fn tag_desc_delete(cfg: &Config, tag_key: &str, cloud: Option<String>) -> Result<()> {
-    let mut path = format!(
-        "/api/v2/cost/tag_descriptions?tag_key={}",
-        util::percent_encode(tag_key)
-    );
+    let mut params: Vec<(String, String)> = vec![("tag_key".into(), tag_key.to_string())];
     if let Some(c) = cloud {
-        path.push_str(&format!("&cloud={}", util::percent_encode(&c)));
+        params.push(("cloud".into(), c));
     }
-    let resp =
-        client::raw_request(cfg, "DELETE", &path, None, None, "application/json", &[]).await?;
+    let q: Vec<(&str, &str)> = params
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    let resp = client::raw_request(
+        cfg,
+        "DELETE",
+        "/api/v2/cost/tag_descriptions",
+        &q,
+        None,
+        None,
+        "application/json",
+        &[],
+    )
+    .await?;
     if resp.bytes.is_empty() {
         eprintln!("Tag description for '{tag_key}' deleted.");
         return Ok(());
@@ -368,6 +396,7 @@ pub async fn budgets_upsert(cfg: &Config, file: &str) -> Result<()> {
         cfg,
         "PUT",
         "/api/v2/cost/budget",
+        &[],
         Some(body_bytes),
         Some("application/json"),
         "application/json",
@@ -713,6 +742,66 @@ mod tests {
         assert!(
             err.to_string().contains("failed to read"),
             "expected read error, got: {err}"
+        );
+    }
+
+    // Verify tag_desc_upsert and tag_desc_delete reach raw_request (and fail at
+    // the auth check) for both the with-cloud and without-cloud code paths. This
+    // ensures the refactored query-param building runs without panic.
+    #[test]
+    fn test_tag_desc_upsert_no_auth() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let cfg = test_cfg();
+        let err = rt
+            .block_on(tag_desc_upsert(&cfg, "team", "The team tag", None))
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("no authentication configured"),
+            "expected auth error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_tag_desc_upsert_with_cloud_no_auth() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let cfg = test_cfg();
+        let err = rt
+            .block_on(tag_desc_upsert(
+                &cfg,
+                "team",
+                "The team tag",
+                Some("aws".into()),
+            ))
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("no authentication configured"),
+            "expected auth error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_tag_desc_delete_no_auth() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let cfg = test_cfg();
+        let err = rt
+            .block_on(tag_desc_delete(&cfg, "team", None))
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("no authentication configured"),
+            "expected auth error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_tag_desc_delete_with_cloud_no_auth() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let cfg = test_cfg();
+        let err = rt
+            .block_on(tag_desc_delete(&cfg, "team", Some("azure".into())))
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("no authentication configured"),
+            "expected auth error, got: {err}"
         );
     }
 }
