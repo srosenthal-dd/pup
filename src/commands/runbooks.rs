@@ -142,25 +142,19 @@ pub fn validate(cfg: &Config, name: &str) -> Result<()> {
 
         // Kind-specific required fields
         match step.kind.as_str() {
-            "pup" | "shell" => {
-                if step.run.is_none() {
-                    errors.push(format!(
-                        "{step_id}: kind '{kind}' requires 'run'",
-                        kind = step.kind
-                    ));
-                }
+            "pup" | "shell" if step.run.is_none() => {
+                errors.push(format!(
+                    "{step_id}: kind '{kind}' requires 'run'",
+                    kind = step.kind
+                ));
             }
-            "datadog-workflow" => {
-                if step.workflow_id.is_none() {
-                    errors.push(format!(
-                        "{step_id}: kind 'datadog-workflow' requires 'workflow_id'"
-                    ));
-                }
+            "datadog-workflow" if step.workflow_id.is_none() => {
+                errors.push(format!(
+                    "{step_id}: kind 'datadog-workflow' requires 'workflow_id'"
+                ));
             }
-            "confirm" => {
-                if step.message.is_none() {
-                    errors.push(format!("{step_id}: kind 'confirm' requires 'message'"));
-                }
+            "confirm" if step.message.is_none() => {
+                errors.push(format!("{step_id}: kind 'confirm' requires 'message'"));
             }
             _ => {}
         }
