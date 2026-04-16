@@ -73,7 +73,7 @@ pup <domain> <subgroup> <action> [options] # Nested commands
 | status-pages | pages, components, degradations | src/commands/status_pages.rs | ✅ |
 | code-coverage | branch-summary, commit-summary | src/commands/code_coverage.rs | ✅ |
 | hamr | connections (get, create) | src/commands/hamr.rs | ✅ |
-| fleet | agents (list, get, versions), deployments (list, get, configure, upgrade, cancel), schedules (list, get, create, update, delete, trigger) | src/commands/fleet.rs | ✅ |
+| fleet | agents (list, get, versions, tracers), deployments (list, get, configure, upgrade, cancel), schedules (list, get, create, update, delete, trigger), tracers (list), clusters (list), instrumented-pods (list) | src/commands/fleet.rs | ✅ |
 | skills | list, install, path | src/commands/skills.rs | ✅ |
 | runbooks | list, describe, run, import, validate | src/commands/runbooks.rs | ✅ |
 | workflows | get, create, update, delete, run, instances (list, get, cancel), connections (get, create, update, delete) | src/commands/workflows.rs | ✅ |
@@ -179,7 +179,7 @@ pup infrastructure hosts list
 - **on-call** - Team management (create, update, delete teams; manage memberships with roles)
 - **cases** - Case management (create, search, assign, archive, unarchive, update, projects, jira, servicenow, move)
 - **hamr** - High Availability Multi-Region connections
-- **fleet** - Fleet Automation (agents, deployments, schedules)
+- **fleet** - Fleet Automation (agents, deployments, schedules, tracers, clusters, instrumented-pods)
 - **runbooks** - Local runbook execution engine (list, describe, run, import, validate)
 - **workflows** - Workflow Automation (get, create, update, delete, run, instances, connections)
 - **investigations** - Bits AI SRE investigations (list, get, trigger)

@@ -101,7 +101,8 @@ comfy-table = { version = "7", default-features = false }
 # Auth — OAuth2 PKCE + token storage (optional — not needed for browser)
 sha2 = { version = "0.11", optional = true }
 base64 = { version = "0.22", optional = true }
-rand = { version = "0.10", optional = true }
+# Pinned to 0.10.1+ to prevent the SDK rev (d70b186e) from pulling in the older 0.10.0 patch
+rand = { version = "0.10.1", optional = true }
 url = { version = "2", optional = true }
 
 # Vendored OpenSSL for cross-compilation (optional — only for CI cross-builds)
@@ -120,9 +121,9 @@ ssh-key = { version = "0.6", features = ["p256", "std"], optional = true }
 futures = { version = "0.3", optional = true }
 tokio-util = { version = "0.7", features = ["compat", "io"], optional = true }
 
-# Datadog API client — latest master as of 2026-04-10 (8fa08ce0)
+# Datadog API client — includes fleet tracers/clusters/instrumented-pods (d70b186e)
 # Use default-features = false; feature sets are activated per-target via features above
-datadog-api-client = { git = "https://github.com/DataDog/datadog-api-client-rust", rev = "8fa08ce098d0218b50be712d064f0c52006d6c19", optional = true, default-features = false }
+datadog-api-client = { git = "https://github.com/DataDog/datadog-api-client-rust", rev = "d70b186e29175ba7e160fe77091cd8571950c553", optional = true, default-features = false }
 
 # HTTP middleware (version-matched to DD client; compiles on all targets)
 reqwest-middleware = "0.5"

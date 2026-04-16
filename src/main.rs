@@ -5555,8 +5555,6 @@ enum CicdFlakyTestActions {
         cursor: Option<String>,
         #[arg(long, default_value_t = 100, help = "Maximum results")]
         limit: i64,
-        #[arg(long, default_value_t = false, help = "Include status history")]
-        include_history: bool,
         #[arg(
             long,
             help = "Sort order (fqn, -fqn, first_flaked, -first_flaked, last_flaked, -last_flaked, failure_rate, -failure_rate, pipelines_failed, -pipelines_failed, pipelines_duration_lost, -pipelines_duration_lost)"
@@ -5992,6 +5990,22 @@ enum FleetActions {
         #[command(subcommand)]
         action: FleetScheduleActions,
     },
+    /// Manage fleet clusters
+    Clusters {
+        #[command(subcommand)]
+        action: FleetClusterActions,
+    },
+    /// Manage fleet tracers
+    Tracers {
+        #[command(subcommand)]
+        action: FleetTracerActions,
+    },
+    /// Manage fleet instrumented pods
+    #[command(name = "instrumented-pods")]
+    InstrumentedPods {
+        #[command(subcommand)]
+        action: FleetInstrumentedPodsActions,
+    },
 }
 
 #[derive(Subcommand)]
@@ -6010,6 +6024,18 @@ enum FleetAgentActions {
     Get { agent_key: String },
     /// List available agent versions
     Versions,
+    /// List tracers for a specific agent
+    Tracers {
+        agent_key: String,
+        #[arg(long)]
+        page_size: Option<i64>,
+        #[arg(long, help = "Page number (0-indexed)")]
+        page_number: Option<i64>,
+        #[arg(long, help = "Sort by attribute (e.g. service, language, hostname)")]
+        sort_attribute: Option<String>,
+        #[arg(long, default_value_t = false, help = "Sort descending")]
+        sort_descending: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -6056,6 +6082,62 @@ enum FleetScheduleActions {
     Delete { schedule_id: String },
     /// Trigger a fleet schedule
     Trigger { schedule_id: String },
+}
+
+#[derive(Subcommand)]
+enum FleetTracerActions {
+    /// List tracers across the fleet.
+    ///
+    /// Returns telemetry-derived service names, language, tracer version, and runtime IDs.
+    /// Note: service names here come from the SDK telemetry pipeline and may differ from
+    /// span-derived names in APM (e.g. pup apm services list).
+    List {
+        #[arg(
+            long,
+            help = "Filter query (e.g. env:prod, hostname:my-host, service:web-api)"
+        )]
+        filter: Option<String>,
+        #[arg(long)]
+        page_size: Option<i64>,
+        #[arg(long, help = "Page number (0-indexed)")]
+        page_number: Option<i64>,
+        #[arg(long, help = "Sort by attribute (e.g. service, language, hostname)")]
+        sort_attribute: Option<String>,
+        #[arg(long, default_value_t = false, help = "Sort descending")]
+        sort_descending: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum FleetClusterActions {
+    /// List Kubernetes clusters in the fleet.
+    ///
+    /// Returns clusters with node counts, agent versions, enabled products, and services.
+    /// Use this to discover cluster names for use with instrumented-pods.
+    List {
+        #[arg(long, help = "Filter query (e.g. cluster_name:production, env:prod)")]
+        filter: Option<String>,
+        #[arg(long)]
+        page_size: Option<i64>,
+        #[arg(long, help = "Page number (0-indexed)")]
+        page_number: Option<i64>,
+        #[arg(long, help = "Sort by attribute (e.g. cluster_name, node_count)")]
+        sort_attribute: Option<String>,
+        #[arg(long, default_value_t = false, help = "Sort descending")]
+        sort_descending: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum FleetInstrumentedPodsActions {
+    /// List instrumented pods in a Kubernetes cluster.
+    ///
+    /// Returns pod groups with namespace, owner, injection annotations, and pod names.
+    /// Use this to verify the Admission Controller targeted pods for SSI injection.
+    List {
+        #[arg(help = "Kubernetes cluster name (required)")]
+        cluster_name: String,
+    },
 }
 
 // ---- Data Deletion ----
@@ -10586,18 +10668,10 @@ async fn main_inner() -> anyhow::Result<()> {
                         query,
                         cursor,
                         limit,
-                        include_history,
                         sort,
                     } => {
-                        commands::cicd::flaky_tests_search(
-                            &cfg,
-                            query,
-                            cursor,
-                            limit,
-                            include_history,
-                            sort,
-                        )
-                        .await?;
+                        commands::cicd::flaky_tests_search(&cfg, query, cursor, limit, sort)
+                            .await?;
                     }
                     CicdFlakyTestActions::Update { file } => {
                         commands::cicd::flaky_tests_update(&cfg, &file).await?;
@@ -10754,6 +10828,23 @@ async fn main_inner() -> anyhow::Result<()> {
                         commands::fleet::agents_get(&cfg, &agent_key).await?;
                     }
                     FleetAgentActions::Versions => commands::fleet::agents_versions(&cfg).await?,
+                    FleetAgentActions::Tracers {
+                        agent_key,
+                        page_size,
+                        page_number,
+                        sort_attribute,
+                        sort_descending,
+                    } => {
+                        commands::fleet::agents_tracers_list(
+                            &cfg,
+                            agent_key,
+                            page_size,
+                            page_number,
+                            sort_attribute,
+                            sort_descending,
+                        )
+                        .await?;
+                    }
                 },
                 FleetActions::Deployments { action } => match action {
                     FleetDeploymentActions::List { page_size } => {
@@ -10788,6 +10879,49 @@ async fn main_inner() -> anyhow::Result<()> {
                     }
                     FleetScheduleActions::Trigger { schedule_id } => {
                         commands::fleet::schedules_trigger(&cfg, &schedule_id).await?;
+                    }
+                },
+                FleetActions::Clusters { action } => match action {
+                    FleetClusterActions::List {
+                        filter,
+                        page_size,
+                        page_number,
+                        sort_attribute,
+                        sort_descending,
+                    } => {
+                        commands::fleet::clusters_list(
+                            &cfg,
+                            filter,
+                            page_size,
+                            page_number,
+                            sort_attribute,
+                            sort_descending,
+                        )
+                        .await?;
+                    }
+                },
+                FleetActions::Tracers { action } => match action {
+                    FleetTracerActions::List {
+                        filter,
+                        page_size,
+                        page_number,
+                        sort_attribute,
+                        sort_descending,
+                    } => {
+                        commands::fleet::tracers_list(
+                            &cfg,
+                            filter,
+                            page_size,
+                            page_number,
+                            sort_attribute,
+                            sort_descending,
+                        )
+                        .await?;
+                    }
+                },
+                FleetActions::InstrumentedPods { action } => match action {
+                    FleetInstrumentedPodsActions::List { cluster_name } => {
+                        commands::fleet::instrumented_pods_list(&cfg, cluster_name).await?;
                     }
                 },
             }

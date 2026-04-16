@@ -279,7 +279,6 @@ pub async fn flaky_tests_search(
     query: Option<String>,
     cursor: Option<String>,
     limit: i64,
-    include_history: bool,
     sort: Option<String>,
 ) -> Result<()> {
     let dd_cfg = client::make_dd_config(cfg);
@@ -302,9 +301,6 @@ pub async fn flaky_tests_search(
         page_opts = page_opts.cursor(c);
     }
     attrs = attrs.page(page_opts);
-    if include_history {
-        attrs = attrs.include_history(true);
-    }
     if let Some(s) = sort {
         let sort_val = match s.as_str() {
             "fqn" => FlakyTestsSearchSort::FQN_ASCENDING,
