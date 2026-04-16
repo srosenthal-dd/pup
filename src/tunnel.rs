@@ -113,11 +113,10 @@ impl Tunnel {
         tokio::spawn(async move {
             while let Some(msg) = ws_read.next().await {
                 match msg {
-                    Ok(Message::Binary(data)) => {
-                        if our_write.write_all(&data).await.is_err() {
-                            break;
-                        }
+                    Ok(Message::Binary(data)) if our_write.write_all(&data).await.is_err() => {
+                        break;
                     }
+                    Ok(Message::Binary(_)) => {}
                     Ok(Message::Close(_)) | Err(_) => break,
                     _ => {}
                 }
