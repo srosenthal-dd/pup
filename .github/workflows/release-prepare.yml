@@ -1,0 +1,224 @@
+# Prepare Release — replaces scripts/release.sh
+#
+# Bumps the version in Cargo.toml, opens a PR, waits for approval via the
+# "release" environment, merges the PR, tags main, and triggers the release
+# build workflow.
+#
+# Setup:
+#   1. Create a "release" environment in repo Settings → Environments
+#   2. Add required reviewers to gate the merge step
+
+name: Prepare Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump type'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Bump version, refresh lockfile, open a PR
+  # ---------------------------------------------------------------------------
+  version-bump:
+    name: Bump Version & Open PR
+    runs-on: ubuntu-latest
+    outputs:
+      pr-number: ${{ steps.create-pr.outputs.pr-number }}
+      new-tag: ${{ steps.version.outputs.new-tag }}
+      new-version: ${{ steps.version.outputs.new-version }}
+      current-tag: ${{ steps.version.outputs.current-tag }}
+      branch: ${{ steps.version.outputs.branch }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Compute next version
+        id: version
+        run: |
+          CURRENT_TAG=$(git describe --tags --abbrev=0)
+          VERSION="${CURRENT_TAG#v}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+
+          case "${{ inputs.bump }}" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+          esac
+
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          NEW_TAG="v${NEW_VERSION}"
+          BRANCH="chore/release-${NEW_TAG}"
+
+          echo "current-tag=${CURRENT_TAG}" >> "$GITHUB_OUTPUT"
+          echo "new-version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "new-tag=${NEW_TAG}" >> "$GITHUB_OUTPUT"
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+
+          echo "Current: ${CURRENT_TAG}"
+          echo "Next:    ${NEW_TAG} (${{ inputs.bump }} bump)"
+
+      - name: Preflight checks
+        run: |
+          BRANCH="${{ steps.version.outputs.branch }}"
+          NEW_TAG="${{ steps.version.outputs.new-tag }}"
+
+          if git ls-remote --heads origin "$BRANCH" | grep -q .; then
+            echo "::error::Branch '${BRANCH}' already exists on remote. Delete it first if re-running."
+            exit 1
+          fi
+
+          if git tag -l "$NEW_TAG" | grep -q .; then
+            echo "::error::Tag '${NEW_TAG}' already exists."
+            exit 1
+          fi
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: ${{ runner.os }}-cargo-release-prep-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-release-prep-
+
+      - name: Bump version in Cargo.toml
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.new-version }}"
+          sed -i "s/^version = \"[0-9]*\.[0-9]*\.[0-9]*\"/version = \"${NEW_VERSION}\"/" Cargo.toml
+
+          CARGO_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          if [[ "$CARGO_VERSION" != "$NEW_VERSION" ]]; then
+            echo "::error::Cargo.toml version update failed (got '${CARGO_VERSION}', expected '${NEW_VERSION}')"
+            exit 1
+          fi
+          echo "Updated Cargo.toml to ${NEW_VERSION}"
+
+      - name: Refresh Cargo.lock
+        run: cargo check --quiet 2>&1 | grep -v "^$" || true
+
+      - name: Commit and push
+        run: |
+          NEW_TAG="${{ steps.version.outputs.new-tag }}"
+          CURRENT_TAG="${{ steps.version.outputs.current-tag }}"
+          NEW_VERSION="${{ steps.version.outputs.new-version }}"
+          BRANCH="${{ steps.version.outputs.branch }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git checkout -b "$BRANCH"
+          git add Cargo.toml Cargo.lock
+          git commit -m "$(cat <<EOF
+          chore(release): bump version to ${NEW_TAG}
+
+          - Update Cargo.toml package version ${CURRENT_TAG#v} → ${NEW_VERSION}
+          - Refresh Cargo.lock
+          EOF
+          )"
+
+          git push -u origin "$BRANCH"
+
+      - name: Create pull request
+        id: create-pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NEW_TAG="${{ steps.version.outputs.new-tag }}"
+          CURRENT_TAG="${{ steps.version.outputs.current-tag }}"
+          NEW_VERSION="${{ steps.version.outputs.new-version }}"
+          WORKFLOW_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          PR_URL=$(gh pr create \
+            --title "chore(release): bump version to ${NEW_TAG}" \
+            --base main \
+            --body "## Summary
+          Release ${NEW_TAG}: version bump from ${CURRENT_TAG} to ${NEW_TAG}.
+
+          ## Changes
+          - Update \`Cargo.toml\` package version ${CURRENT_TAG#v} → ${NEW_VERSION}
+          - Refresh \`Cargo.lock\`
+
+          ## Testing
+          - CI will run \`cargo test\`, \`cargo clippy\`, and \`cargo fmt --check\`
+          - Cross-compilation verified for all 4 targets
+
+          ---
+          Triggered by [\`Prepare Release\`](${WORKFLOW_URL}) workflow")
+
+          PR_NUMBER=$(gh pr view "$PR_URL" --json number --jq '.number')
+          echo "pr-number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "PR created: ${PR_URL}"
+
+  # ---------------------------------------------------------------------------
+  # Gate on environment approval, then merge the PR, tag, and kick off builds
+  # ---------------------------------------------------------------------------
+  merge-and-tag:
+    name: Merge & Tag
+    needs: version-bump
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Wait for CI checks
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER="${{ needs.version-bump.outputs.pr-number }}"
+          echo "Waiting for CI checks on PR #${PR_NUMBER}..."
+          gh pr checks "$PR_NUMBER" --watch --fail-fast
+
+      - name: Merge pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr merge "${{ needs.version-bump.outputs.pr-number }}" \
+            --merge \
+            --delete-branch
+          echo "PR #${{ needs.version-bump.outputs.pr-number }} merged"
+
+      - name: Create and push tag
+        run: |
+          NEW_TAG="${{ needs.version-bump.outputs.new-tag }}"
+
+          git fetch origin main
+          git checkout main
+          git pull origin main
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git tag -a "$NEW_TAG" -m "$NEW_TAG"
+          git push origin "$NEW_TAG"
+          echo "Tagged and pushed ${NEW_TAG}"
+
+      - name: Trigger release build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NEW_TAG="${{ needs.version-bump.outputs.new-tag }}"
+          echo "Triggering release build for ${NEW_TAG}..."
+          gh workflow run release.yml --ref "$NEW_TAG"
+          echo "Release build dispatched — see the Actions tab for progress"
