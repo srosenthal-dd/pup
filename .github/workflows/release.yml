@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  workflow_dispatch: {} # allows triggering from release-prepare.yml
 
 permissions:
   contents: write
