@@ -868,7 +868,7 @@ enum Commands {
     /// AUTHENTICATION:
     ///   Requires OAuth2 (via 'pup auth login') or valid API + Application keys.
     ///   Cost management features require billing:read permissions.
-    #[command(name = "costs", verbatim_doc_comment)]
+    #[command(name = "costs", alias = "cost", verbatim_doc_comment)]
     Cost {
         #[command(subcommand)]
         action: CostActions,
