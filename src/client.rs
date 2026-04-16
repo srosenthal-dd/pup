@@ -958,7 +958,7 @@ mod tests {
 
     #[test]
     fn test_unstable_ops_count() {
-        assert_eq!(UNSTABLE_OPS.len(), 143);
+        assert_eq!(UNSTABLE_OPS.len(), 147);
     }
 
     #[test]

@@ -1643,7 +1643,7 @@ async fn test_fleet_tracers_list() {
         .mock("GET", "/api/unstable/fleet/tracers")
         .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body(r#"{"data":{"type":"status","attributes":{"tracers":[]}}}"#)
+        .with_body(r#"{"data":{"id":"status","type":"status","attributes":{"tracers":[]}}}"#)
         .create_async()
         .await;
 
@@ -1666,7 +1666,7 @@ async fn test_fleet_tracers_list_with_filter() {
         ))
         .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body(r#"{"data":{"type":"status","attributes":{"tracers":[]}}}"#)
+        .with_body(r#"{"data":{"id":"status","type":"status","attributes":{"tracers":[]}}}"#)
         .create_async()
         .await;
 
@@ -1697,7 +1697,7 @@ async fn test_fleet_agents_tracers_list() {
         .mock("GET", "/api/unstable/fleet/agents/agent-123/tracers")
         .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body(r#"{"data":{"type":"status","attributes":{"tracers":[]}}}"#)
+        .with_body(r#"{"data":{"id":"status","type":"status","attributes":{"tracers":[]}}}"#)
         .create_async()
         .await;
 
