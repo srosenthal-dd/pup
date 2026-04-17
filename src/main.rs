@@ -1057,6 +1057,7 @@ enum Commands {
     /// EXAMPLES:
     ///   pup ddsql table --query "SELECT * FROM reference_tables.offices_ips LIMIT 5"
     ///   pup ddsql table --query "SELECT * FROM reference_tables.offices_ips" -o csv > results.csv
+    ///   cat query.sql | pup ddsql table --query - -o table
     ///   pup ddsql time-series --query "SELECT avg(system.cpu.user) FROM metrics GROUP BY host" --from 1h --interval 300000
     ///
     /// AUTHENTICATION:
@@ -3742,7 +3743,11 @@ enum DbmSamplesActions {
 enum DdsqlActions {
     /// Execute DDSQL query and return columnar table data
     Table {
-        #[arg(long, help = "DDSQL query string")]
+        #[arg(
+            long,
+            allow_hyphen_values = true,
+            help = "DDSQL query string, or use --query - to read from stdin"
+        )]
         query: String,
         #[arg(
             long,
@@ -3762,7 +3767,11 @@ enum DdsqlActions {
     /// Execute DDSQL query and return time series data
     #[command(name = "time-series")]
     TimeSeries {
-        #[arg(long, help = "DDSQL query string")]
+        #[arg(
+            long,
+            allow_hyphen_values = true,
+            help = "DDSQL query string, or use --query - to read from stdin"
+        )]
         query: String,
         #[arg(long, default_value = "1h", help = "Start time")]
         from: String,

@@ -4151,6 +4151,70 @@ fn test_dbm_samples_search_parses() {
     }
 }
 
+#[test]
+fn test_ddsql_table_query_accepts_leading_comment() {
+    use clap::Parser;
+
+    let query = "-- owner breakdown\nSELECT 1";
+    let cli = crate::Cli::try_parse_from(["pup", "ddsql", "table", "--query", query])
+        .expect("ddsql table with leading SQL comment should parse");
+
+    match cli.command {
+        crate::Commands::Ddsql { action } => match action {
+            crate::DdsqlActions::Table { query: parsed, .. } => {
+                assert_eq!(parsed, query);
+            }
+            _ => panic!("expected DdsqlActions::Table"),
+        },
+        _ => panic!("expected Commands::Ddsql"),
+    }
+}
+
+#[test]
+fn test_ddsql_table_query_accepts_explicit_stdin_marker() {
+    use clap::Parser;
+
+    let cli = crate::Cli::try_parse_from(["pup", "ddsql", "table", "--query", "-"])
+        .expect("ddsql table --query - should parse");
+
+    match cli.command {
+        crate::Commands::Ddsql { action } => match action {
+            crate::DdsqlActions::Table { query, .. } => {
+                assert_eq!(query, "-");
+            }
+            _ => panic!("expected DdsqlActions::Table"),
+        },
+        _ => panic!("expected Commands::Ddsql"),
+    }
+}
+
+#[test]
+fn test_ddsql_time_series_query_accepts_explicit_stdin_marker() {
+    use clap::Parser;
+
+    let cli = crate::Cli::try_parse_from(["pup", "ddsql", "time-series", "--query", "-"])
+        .expect("ddsql time-series --query - should parse");
+
+    match cli.command {
+        crate::Commands::Ddsql { action } => match action {
+            crate::DdsqlActions::TimeSeries { query, .. } => {
+                assert_eq!(query, "-");
+            }
+            _ => panic!("expected DdsqlActions::TimeSeries"),
+        },
+        _ => panic!("expected Commands::Ddsql"),
+    }
+}
+
+#[test]
+fn test_ddsql_table_query_requires_explicit_value() {
+    let result = crate::Cli::command().try_get_matches_from(["pup", "ddsql", "table", "--query"]);
+    assert!(
+        result.is_err(),
+        "expected ddsql table --query to require a value"
+    );
+}
+
 // ---- Debugger ----
 
 #[tokio::test]
