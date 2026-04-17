@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
+use std::io::{self, Read};
 use std::time::Duration;
 
 use crate::client;
@@ -16,6 +17,30 @@ fn client_id() -> String {
     } else {
         format!("pup/{}", version::VERSION)
     }
+}
+
+fn read_query_from_reader(reader: &mut impl Read) -> Result<String> {
+    let mut query = String::new();
+    reader.read_to_string(&mut query)?;
+
+    if query.trim().is_empty() {
+        return Err(anyhow!("DDSQL query is empty"));
+    }
+
+    Ok(query)
+}
+
+fn resolve_query_from_reader(query: &str, reader: &mut impl Read) -> Result<String> {
+    match query {
+        "-" => read_query_from_reader(reader),
+        query => Ok(query.to_string()),
+    }
+}
+
+fn resolve_query(query: &str) -> Result<String> {
+    let stdin = io::stdin();
+    let mut handle = stdin.lock();
+    resolve_query_from_reader(query, &mut handle)
 }
 
 /// Build a request for the Advanced Query API (tabular/scalar endpoint).
@@ -182,7 +207,8 @@ pub async fn table(
     limit: Option<i32>,
     _offset: Option<i32>,
 ) -> Result<()> {
-    let rows = execute_ddsql_query(cfg, query, from, to, limit).await?;
+    let query = resolve_query(query)?;
+    let rows = execute_ddsql_query(cfg, &query, from, to, limit).await?;
     formatter::output(cfg, &rows)
 }
 
@@ -194,7 +220,8 @@ pub async fn time_series(
     _interval: Option<i64>,
     limit: i32,
 ) -> Result<()> {
-    let body = build_advanced_table_request(query, from, to, Some(limit))?;
+    let query = resolve_query(query)?;
+    let body = build_advanced_table_request(&query, from, to, Some(limit))?;
     let data = execute_async_query(cfg, body, None).await?;
     let rows = columnar_to_rows(&data)?;
     formatter::output(cfg, &rows)
@@ -297,6 +324,22 @@ mod tests {
     fn test_build_advanced_table_invalid_from() {
         let err = build_advanced_table_request("SELECT 1", "garbage", "now", None).unwrap_err();
         assert!(err.to_string().contains("invalid --from"));
+    }
+
+    #[test]
+    fn test_resolve_query_accepts_comment_prefix() {
+        let query = "-- comment\nSELECT 1";
+        assert_eq!(
+            resolve_query_from_reader(query, &mut io::empty()).unwrap(),
+            query
+        );
+    }
+
+    #[test]
+    fn test_resolve_query_reads_explicit_stdin_marker() {
+        let mut stdin = io::Cursor::new("-- comment\nSELECT 1");
+        let query = resolve_query_from_reader("-", &mut stdin).unwrap();
+        assert_eq!(query, "-- comment\nSELECT 1");
     }
 
     #[test]
