@@ -20,8 +20,40 @@ permissions:
   contents: read
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # Gate: on scheduled runs, skip if no commits since the last tag.
+  # Manual workflow_dispatch runs always proceed.
+  # ---------------------------------------------------------------------------
+  check:
+    name: Check for changes
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Check for changes since last tag
+        id: check
+        run: |
+          CURRENT_TAG=$(git describe --tags --abbrev=0)
+          COMMITS=$(git rev-list "${CURRENT_TAG}..HEAD" --count)
+          echo "Commits since ${CURRENT_TAG}: ${COMMITS}"
+          if [[ "$COMMITS" == "0" && "${{ github.event_name }}" == "schedule" ]]; then
+            echo "No commits since ${CURRENT_TAG} — skipping scheduled release."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Release: bump, commit to main, tag. Triggers release.yml via the tag push.
+  # ---------------------------------------------------------------------------
   release:
     name: Bump, Commit, Tag
+    needs: check
+    if: needs.check.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     environment: release
     steps:
