@@ -34,14 +34,15 @@ pub async fn entities_list(
     }
     // Client-side filter requires paginating through all results since the
     // API's filter[name] only supports exact match.
+    #[cfg(not(target_arch = "wasm32"))]
     if let Some(pattern) = &filter {
         use futures::StreamExt;
         let pattern = pattern.to_lowercase();
         let mut stream = Box::pin(api.list_catalog_entity_with_pagination(params));
         let mut filtered = Vec::new();
         while let Some(item) = stream.next().await {
-            let entity = item
-                .map_err(|e| anyhow::anyhow!("failed to list catalog entities: {e:?}"))?;
+            let entity =
+                item.map_err(|e| anyhow::anyhow!("failed to list catalog entities: {e:?}"))?;
             let matches = entity
                 .attributes
                 .as_ref()
@@ -51,14 +52,15 @@ pub async fn entities_list(
                 filtered.push(entity);
             }
         }
-        formatter::output(cfg, &serde_json::json!({"data": filtered}))
-    } else {
-        let resp = api
-            .list_catalog_entity(params)
-            .await
-            .map_err(|e| anyhow::anyhow!("failed to list catalog entities: {e:?}"))?;
-        formatter::output(cfg, &resp)
+        return formatter::output(cfg, &serde_json::json!({"data": filtered}));
     }
+    #[cfg(target_arch = "wasm32")]
+    let _ = &filter;
+    let resp = api
+        .list_catalog_entity(params)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to list catalog entities: {e:?}"))?;
+    formatter::output(cfg, &resp)
 }
 
 pub async fn entities_upsert(cfg: &Config, file: &str) -> Result<()> {
