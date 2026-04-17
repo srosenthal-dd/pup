@@ -27,7 +27,7 @@ pup <domain> <subgroup> <action> [options] # Nested commands
 | monitors | list, get, delete, search | src/commands/monitors.rs | ✅ |
 | dashboards | list, get, delete, url | src/commands/dashboards.rs | ✅ |
 | dbm | samples (search) | src/commands/dbm.rs | ✅ |
-| ddsql | table, time-series | src/commands/ddsql.rs | ✅ |
+| ddsql | table, time-series, spec, schema (tables, columns) | src/commands/ddsql.rs | ✅ |
 | debugger | probes (list, get, create, delete, watch) | src/commands/debugger.rs | ✅ |
 | slos | list, get, delete, status | src/commands/slos.rs | ✅ |
 | incidents | list, get, attachments, settings, handles, postmortem-templates | src/commands/incidents.rs | ✅ |
@@ -138,7 +138,7 @@ pup infrastructure hosts list
 - **traces** - APM spans metrics (list, get, create, update, delete)
 - **rum** - Real User Monitoring (apps, metrics, retention-filters, sessions)
 - **events** - Infrastructure events (list, search, get)
-- **ddsql** - DDSQL queries (table, csv, time-series)
+- **ddsql** - DDSQL queries and discovery (table, time-series, spec, schema)
 - **symdb** - Symbol Database queries (search scopes, probe locations)
 
 ### Monitoring & Alerting

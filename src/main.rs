@@ -1051,17 +1051,23 @@ enum Commands {
     /// DDSQL lets you query metrics, logs, and reference tables using SQL syntax.
     ///
     /// COMMANDS:
-    ///   table        Execute query and return table data (supports -o json/yaml/table/csv)
-    ///   time-series  Execute query and return time series data
+    ///   table         Execute query and return table data (supports -o json/yaml/table/csv)
+    ///   time-series   Execute query and return time series data
+    ///   spec          Print DDSQL reference guidance used by the editor tooling
+    ///   schema        Discover DDSQL tables and columns
     ///
     /// EXAMPLES:
     ///   pup ddsql table --query "SELECT * FROM reference_tables.offices_ips LIMIT 5"
     ///   pup ddsql table --query "SELECT * FROM reference_tables.offices_ips" -o csv > results.csv
     ///   cat query.sql | pup ddsql table --query - -o table
     ///   pup ddsql time-series --query "SELECT avg(system.cpu.user) FROM metrics GROUP BY host" --from 1h --interval 300000
+    ///   pup ddsql spec
+    ///   pup ddsql schema tables --query ec2 --limit 100
+    ///   pup ddsql schema columns --table-id public.aws.ec2_instance
     ///
     /// AUTHENTICATION:
-    ///   Requires OAuth2 (via 'pup auth login') or API key + Application key.
+    ///   Query commands support OAuth2 (via 'pup auth login') or API key + Application key.
+    ///   Discovery commands (`spec`, `schema ...`) currently require DD_API_KEY + DD_APP_KEY.
     #[command(verbatim_doc_comment)]
     Ddsql {
         #[command(subcommand)]
@@ -3785,6 +3791,46 @@ enum DdsqlActions {
             help = "Maximum number of rows to return"
         )]
         limit: i32,
+    },
+    /// Print DDSQL reference guidance from the editor tooling
+    Spec,
+    /// Discover DDSQL tables and columns
+    Schema {
+        #[command(subcommand)]
+        action: DdsqlSchemaActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum DdsqlSchemaActions {
+    /// List DDSQL tables visible to your org
+    Tables {
+        #[arg(long, help = "Case-insensitive substring filter for table names")]
+        query: Option<String>,
+        #[arg(
+            long,
+            default_value_t = 100,
+            help = "Maximum number of tables to return"
+        )]
+        limit: usize,
+        #[arg(long, default_value_t = 0, help = "Number of tables to skip")]
+        offset: usize,
+    },
+    /// Show columns for a DDSQL table
+    Columns {
+        #[arg(
+            long,
+            help = "Table ID, for example public.aws.ec2_instance or reference_tables.my_table"
+        )]
+        table_id: String,
+        #[arg(
+            long,
+            default_value_t = 100,
+            help = "Maximum number of columns to return"
+        )]
+        limit: usize,
+        #[arg(long, default_value_t = 0, help = "Number of columns to skip")]
+        offset: usize,
     },
 }
 
@@ -11782,6 +11828,26 @@ async fn main_inner() -> anyhow::Result<()> {
                 } => {
                     commands::ddsql::time_series(&cfg, &query, &from, &to, interval, limit).await?;
                 }
+                DdsqlActions::Spec => {
+                    commands::ddsql::spec(&cfg).await?;
+                }
+                DdsqlActions::Schema { action } => match action {
+                    DdsqlSchemaActions::Tables {
+                        query,
+                        limit,
+                        offset,
+                    } => {
+                        commands::ddsql::schema_tables(&cfg, query.as_deref(), limit, offset)
+                            .await?;
+                    }
+                    DdsqlSchemaActions::Columns {
+                        table_id,
+                        limit,
+                        offset,
+                    } => {
+                        commands::ddsql::schema_columns(&cfg, &table_id, limit, offset).await?;
+                    }
+                },
             }
         }
         // --- Investigations ---
