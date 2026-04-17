@@ -4960,11 +4960,14 @@ enum SoftwareCatalogEntityActions {
     /// List catalog entities
     ///
     /// EXAMPLES:
-    ///   pup software-catalog entities list --filter-kind service
+    ///   pup software-catalog entities list --filter shop-
+    ///   pup software-catalog entities list --filter-kind service --filter shop-
     ///   pup software-catalog entities list --filter-owner team-claude
     ///   pup software-catalog entities list --filter-ref service:shop-frontend
     #[command(verbatim_doc_comment)]
     List {
+        #[arg(long, help = "Filter entities by name (substring match)")]
+        filter: Option<String>,
         #[arg(long, help = "Filter entities by kind (e.g. service, datastore)")]
         filter_kind: Option<String>,
         #[arg(long, help = "Filter entities by owner")]
@@ -10325,12 +10328,14 @@ async fn main_inner() -> anyhow::Result<()> {
             match action {
                 SoftwareCatalogActions::Entities { action } => match action {
                     SoftwareCatalogEntityActions::List {
+                        filter,
                         filter_kind,
                         filter_owner,
                         filter_ref,
                     } => {
                         commands::software_catalog::entities_list(
                             &cfg,
+                            filter,
                             filter_kind,
                             filter_owner,
                             filter_ref,

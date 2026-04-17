@@ -12,6 +12,7 @@ use crate::util;
 
 pub async fn entities_list(
     cfg: &Config,
+    filter: Option<String>,
     filter_kind: Option<String>,
     filter_owner: Option<String>,
     filter_ref: Option<String>,
@@ -31,6 +32,30 @@ pub async fn entities_list(
     if let Some(v) = &filter_ref {
         params = params.filter_ref(v.clone());
     }
+    // Client-side filter requires paginating through all results since the
+    // API's filter[name] only supports exact match.
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some(pattern) = &filter {
+        use futures::StreamExt;
+        let pattern = pattern.to_lowercase();
+        let mut stream = Box::pin(api.list_catalog_entity_with_pagination(params));
+        let mut filtered = Vec::new();
+        while let Some(item) = stream.next().await {
+            let entity =
+                item.map_err(|e| anyhow::anyhow!("failed to list catalog entities: {e:?}"))?;
+            let matches = entity
+                .attributes
+                .as_ref()
+                .and_then(|a| a.name.as_ref())
+                .is_some_and(|n| n.to_lowercase().contains(&pattern));
+            if matches {
+                filtered.push(entity);
+            }
+        }
+        return formatter::output(cfg, &serde_json::json!({"data": filtered}));
+    }
+    #[cfg(target_arch = "wasm32")]
+    let _ = &filter;
     let resp = api
         .list_catalog_entity(params)
         .await
