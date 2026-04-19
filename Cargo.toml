@@ -129,6 +129,10 @@ datadog-api-client = { git = "https://github.com/DataDog/datadog-api-client-rust
 reqwest-middleware = "0.5"
 async-trait = "0.1"
 
+# Stream extension trait (used for paginated API streams on all targets;
+# already pulled in transitively via reqwest/hyper-util)
+futures-util = { version = "0.3", default-features = false }
+
 # OS keychain for token storage
 keyring = { version = "3", features = ["apple-native", "linux-native", "windows-native"], optional = true }
 

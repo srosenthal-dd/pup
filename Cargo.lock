@@ -2723,6 +2723,7 @@ dependencies = [
  "datadog-api-client",
  "dirs",
  "futures",
+ "futures-util",
  "getrandom 0.4.2",
  "http",
  "js-sys",
