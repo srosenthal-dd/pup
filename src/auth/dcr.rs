@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use super::types::{ClientCredentials, TokenSet};
 
 #[cfg(not(target_arch = "wasm32"))]
-pub const DCR_CLIENT_NAME: &str = "datadog-api-claude-plugin";
+pub const DCR_CLIENT_NAME: &str = "datadog-pup-cli";
 #[cfg(not(target_arch = "wasm32"))]
 pub const DCR_REDIRECT_PORTS: &[u16] = &[8000, 8080, 8888, 9000];
 
