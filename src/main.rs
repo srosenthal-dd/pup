@@ -842,30 +842,33 @@ enum Commands {
     },
     /// Manage cost and billing data
     ///
-    /// Query cost management and billing information.
+    /// Query Datadog billing and Cloud Cost Management (CCM) information.
     ///
-    /// Access projected costs, cost attribution by tags, and organizational cost breakdowns.
-    /// Cost data is typically available with 12-24 hour delay.
+    /// Use 'pup costs datadog' for projected costs, attribution, and cloud cost configs.
+    /// Use 'pup costs ccm' for custom costs, budgets, commitments, and tag management.
     ///
     /// CAPABILITIES:
-    ///   • View projected end-of-month costs
-    ///   • Get cost attribution by tags and teams
-    ///   • Query historical and estimated costs by organization
+    ///   • View projected end-of-month costs and attribution (datadog)
+    ///   • Manage AWS/Azure/GCP cloud cost configs (datadog)
+    ///   • Upload and manage custom cost files (ccm)
+    ///   • Create and track budgets (ccm)
+    ///   • Analyze commitment programs (RIs, Savings Plans) (ccm)
+    ///   • Explore cost tags, tag keys, and tag metadata (ccm)
     ///
     /// EXAMPLES:
     ///   # Get projected costs for current month
-    ///   pup cost projected
+    ///   pup costs datadog projected
     ///
-    ///   # Get cost attribution by team tag
-    ///   pup cost attribution --start-month=2024-01 --fields=team
+    ///   # List budgets
+    ///   pup costs ccm budgets list
     ///
-    ///   # Get actual costs for a specific month
-    ///   pup cost by-org --start-month=2024-01
+    ///   # View commitment utilization for AWS EC2
+    ///   pup costs ccm commitments utilization --provider aws --product EC2 --from 30d --to now
     ///
     /// AUTHENTICATION:
     ///   Requires OAuth2 (via 'pup auth login') or valid API + Application keys.
     ///   Cost management features require billing:read permissions.
-    #[command(verbatim_doc_comment)]
+    #[command(name = "costs", alias = "cost", verbatim_doc_comment)]
     Cost {
         #[command(subcommand)]
         action: CostActions,
@@ -7036,6 +7039,21 @@ enum ContainerImageActions {
 // ---- Cost ----
 #[derive(Subcommand)]
 enum CostActions {
+    /// Manage Datadog cost and billing data (projected costs, attribution, cloud cost configs)
+    Datadog {
+        #[command(subcommand)]
+        action: CostDatadogActions,
+    },
+    /// Manage Cloud Cost Management features (custom costs, budgets, commitments, tags)
+    #[command(name = "ccm")]
+    Ccm {
+        #[command(subcommand)]
+        action: CostCcmActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum CostDatadogActions {
     /// Get projected end-of-month costs
     Projected,
     /// Get costs by organization
@@ -7099,6 +7117,363 @@ enum CostCloudConfigActions {
     Delete {
         #[arg(help = "Cloud account ID")]
         id: i64,
+    },
+}
+
+#[derive(Subcommand)]
+enum CostCcmActions {
+    /// Manage custom cost files
+    #[command(name = "custom-costs")]
+    CustomCosts {
+        #[command(subcommand)]
+        action: CostCcmCustomCostsActions,
+    },
+    /// Manage tag descriptions
+    #[command(name = "tag-descriptions")]
+    TagDescriptions {
+        #[command(subcommand)]
+        action: CostCcmTagDescActions,
+    },
+    /// Query tag metadata and coverage analytics
+    #[command(name = "tag-metadata")]
+    TagMetadata {
+        #[command(subcommand)]
+        action: CostCcmTagMetadataActions,
+    },
+    /// List cost tags
+    Tags {
+        #[command(subcommand)]
+        action: CostCcmTagsActions,
+    },
+    /// Manage cost tag keys
+    #[command(name = "tag-keys")]
+    TagKeys {
+        #[command(subcommand)]
+        action: CostCcmTagKeysActions,
+    },
+    /// Manage cost budgets
+    Budgets {
+        #[command(subcommand)]
+        action: CostCcmBudgetsActions,
+    },
+    /// Query commitment programs (reserved instances, savings plans)
+    Commitments {
+        #[command(subcommand)]
+        action: CostCcmCommitmentsActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum CostCcmCustomCostsActions {
+    /// List custom cost files
+    List {
+        #[arg(long, help = "Page size (default: 100)")]
+        page_size: Option<i64>,
+        #[arg(long, help = "Filter by status (UPLOADING, SUCCESS, FAILED)")]
+        status: Option<String>,
+        #[arg(
+            long,
+            help = "Sort key (prefix with '-' for descending, e.g. '-created_at')"
+        )]
+        sort: Option<String>,
+    },
+    /// Get a custom cost file by ID
+    Get {
+        #[arg(help = "File ID (UUID)")]
+        file_id: String,
+    },
+    /// Upload a custom cost file
+    Upload {
+        #[arg(long, help = "Path to file to upload (required)")]
+        file: String,
+        #[arg(long, help = "File format version (default: 1.0)")]
+        version: Option<String>,
+    },
+    /// Delete a custom cost file by ID
+    Delete {
+        #[arg(help = "File ID (UUID)")]
+        file_id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum CostCcmTagDescActions {
+    /// List tag descriptions for the organization
+    List {
+        #[arg(long, help = "Filter by cloud provider (aws, azure, gcp)")]
+        cloud: Option<String>,
+    },
+    /// Get the description for a specific tag key
+    Get {
+        #[arg(long, help = "Tag key (required)")]
+        tag_key: String,
+        #[arg(long, help = "Cloud provider (aws, azure, gcp)")]
+        cloud: Option<String>,
+    },
+    /// AI-generate a description for a tag key
+    Generate {
+        #[arg(long, help = "Tag key (required)")]
+        tag_key: String,
+    },
+    /// Create or update a tag description
+    Upsert {
+        #[arg(long, help = "Tag key (required)")]
+        tag_key: String,
+        #[arg(long, help = "Description text (required)")]
+        description: String,
+        #[arg(long, help = "Cloud provider (aws, azure, gcp); omit for all clouds")]
+        cloud: Option<String>,
+    },
+    /// Delete a tag description
+    Delete {
+        #[arg(long, help = "Tag key (required)")]
+        tag_key: String,
+        #[arg(
+            long,
+            help = "Cloud provider; omit to delete all org descriptions for this key"
+        )]
+        cloud: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum CostCcmTagMetadataActions {
+    /// List tag metadata for a month
+    List {
+        #[arg(long, help = "Month in YYYY-MM format (required)")]
+        month: String,
+        #[arg(long, help = "Cloud provider (aws, azure, gcp, oci)")]
+        provider: Option<String>,
+        #[arg(long, help = "Cost metric (e.g. aws.cost.net.amortized)")]
+        metric: Option<String>,
+        #[arg(long, help = "Tag key filter")]
+        tag_key: Option<String>,
+        #[arg(long, help = "Return daily granularity instead of monthly")]
+        daily: bool,
+    },
+    /// List tag sources for a month
+    #[command(name = "tag-sources")]
+    TagSources {
+        #[arg(long, help = "Month in YYYY-MM format (required)")]
+        month: String,
+        #[arg(long, help = "Cloud provider (aws, azure, gcp, oci)")]
+        provider: Option<String>,
+    },
+    /// List available cost metrics for a month
+    Metrics {
+        #[arg(long, help = "Month in YYYY-MM format (required)")]
+        month: String,
+        #[arg(long, help = "Cloud provider (aws, azure, gcp, oci)")]
+        provider: Option<String>,
+    },
+    /// List orchestrators active in a month
+    Orchestrators {
+        #[arg(long, help = "Month in YYYY-MM format (required)")]
+        month: String,
+        #[arg(long, help = "Cloud provider (aws, azure, gcp, oci)")]
+        provider: Option<String>,
+    },
+    /// Get billing currency for a month
+    Currency {
+        #[arg(long, help = "Month in YYYY-MM format (required)")]
+        month: String,
+        #[arg(long, help = "Cloud provider (aws, azure, gcp, oci)")]
+        provider: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum CostCcmTagsActions {
+    /// List cost tags
+    List {
+        #[arg(long, help = "Cost metric filter (e.g. aws.cost.net.amortized)")]
+        metric: Option<String>,
+        #[arg(long, help = "Match filter for tag values")]
+        r#match: Option<String>,
+        #[arg(long = "tag", help = "Tag filter (key:value, repeatable)", action = clap::ArgAction::Append)]
+        tags: Vec<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum CostCcmTagKeysActions {
+    /// List cost tag keys
+    List {
+        #[arg(long, help = "Cost metric filter")]
+        metric: Option<String>,
+        #[arg(long = "tag", help = "Tag filter (key:value, repeatable)", action = clap::ArgAction::Append)]
+        tags: Vec<String>,
+    },
+    /// Get details for a specific tag key
+    Get {
+        #[arg(help = "Tag key")]
+        key: String,
+        #[arg(long, help = "Cost metric filter")]
+        metric: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum CostCcmBudgetsActions {
+    /// List all budgets
+    List,
+    /// Get a budget by ID
+    Get {
+        #[arg(help = "Budget ID (UUID)")]
+        budget_id: String,
+        #[arg(long, help = "Start time for cost data (e.g. 30d, 2024-01)")]
+        start: Option<String>,
+        #[arg(long, help = "End time for cost data (e.g. now, 2024-03)")]
+        end: Option<String>,
+        #[arg(long, help = "Include actual costs")]
+        actual: bool,
+        #[arg(long, help = "Include forecast costs")]
+        forecast: bool,
+    },
+    /// Create or update a budget from a JSON file
+    Upsert {
+        #[arg(long, help = "JSON file with budget body (required)")]
+        file: String,
+    },
+    /// Delete a budget by ID
+    Delete {
+        #[arg(help = "Budget ID (UUID)")]
+        budget_id: String,
+    },
+    /// Validate a budget JSON file without saving
+    Validate {
+        #[arg(long, help = "JSON file with budget body (required)")]
+        file: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum CostCcmCommitmentsActions {
+    /// Get utilization scalar metrics for commitment programs
+    Utilization {
+        #[arg(long, help = "Cloud provider: aws, azure (required)")]
+        provider: String,
+        #[arg(
+            long,
+            help = "Cloud product: EC2, RDS, ElastiCache, VirtualMachines, etc. (required)"
+        )]
+        product: String,
+        #[arg(long, help = "Start time (required, e.g. 30d, 2024-01-01)")]
+        from: String,
+        #[arg(long, help = "End time (required, e.g. now, 2024-01-31)")]
+        to: String,
+        #[arg(long, help = "Commitment type: RI or SP (default: RI)")]
+        commitment_type: Option<String>,
+        #[arg(long, help = "Tag filter (key:value syntax)")]
+        filter_by: Option<String>,
+    },
+    /// Get coverage scalar metrics for commitment programs
+    Coverage {
+        #[arg(long, help = "Cloud provider: aws, azure (required)")]
+        provider: String,
+        #[arg(long, help = "Cloud product (required)")]
+        product: String,
+        #[arg(long, help = "Start time (required)")]
+        from: String,
+        #[arg(long, help = "End time (required)")]
+        to: String,
+        #[arg(long, help = "Commitment type: RI or SP (default: RI)")]
+        commitment_type: Option<String>,
+        #[arg(long, help = "Tag filter (key:value syntax)")]
+        filter_by: Option<String>,
+    },
+    /// Get savings scalar metrics for commitment programs
+    Savings {
+        #[arg(long, help = "Cloud provider: aws, azure (required)")]
+        provider: String,
+        #[arg(long, help = "Cloud product (required)")]
+        product: String,
+        #[arg(long, help = "Start time (required)")]
+        from: String,
+        #[arg(long, help = "End time (required)")]
+        to: String,
+        #[arg(long, help = "Commitment type: RI or SP (default: RI)")]
+        commitment_type: Option<String>,
+        #[arg(long, help = "Tag filter (key:value syntax)")]
+        filter_by: Option<String>,
+    },
+    /// Get on-demand hot spots (uncovered spend) for commitment programs
+    Hotspots {
+        #[arg(long, help = "Cloud provider: aws, azure (required)")]
+        provider: String,
+        #[arg(long, help = "Cloud product (required)")]
+        product: String,
+        #[arg(long, help = "Start time (required)")]
+        from: String,
+        #[arg(long, help = "End time (required)")]
+        to: String,
+        #[arg(long, help = "Commitment type: RI or SP (default: RI)")]
+        commitment_type: Option<String>,
+        #[arg(long, help = "Tag filter (key:value syntax)")]
+        filter_by: Option<String>,
+    },
+    /// Get utilization timeseries for commitment programs
+    #[command(name = "utilization-ts")]
+    UtilizationTs {
+        #[arg(long, help = "Cloud provider: aws, azure (required)")]
+        provider: String,
+        #[arg(long, help = "Cloud product (required)")]
+        product: String,
+        #[arg(long, help = "Start time (required)")]
+        from: String,
+        #[arg(long, help = "End time (required)")]
+        to: String,
+        #[arg(long, help = "Commitment type: RI or SP (default: RI)")]
+        commitment_type: Option<String>,
+        #[arg(long, help = "Tag filter (key:value syntax)")]
+        filter_by: Option<String>,
+    },
+    /// Get coverage timeseries for commitment programs
+    #[command(name = "coverage-ts")]
+    CoverageTs {
+        #[arg(long, help = "Cloud provider: aws, azure (required)")]
+        provider: String,
+        #[arg(long, help = "Cloud product (required)")]
+        product: String,
+        #[arg(long, help = "Start time (required)")]
+        from: String,
+        #[arg(long, help = "End time (required)")]
+        to: String,
+        #[arg(long, help = "Commitment type: RI or SP (default: RI)")]
+        commitment_type: Option<String>,
+        #[arg(long, help = "Tag filter (key:value syntax)")]
+        filter_by: Option<String>,
+    },
+    /// Get savings timeseries for commitment programs
+    #[command(name = "savings-ts")]
+    SavingsTs {
+        #[arg(long, help = "Cloud provider: aws, azure (required)")]
+        provider: String,
+        #[arg(long, help = "Cloud product (required)")]
+        product: String,
+        #[arg(long, help = "Start time (required)")]
+        from: String,
+        #[arg(long, help = "End time (required)")]
+        to: String,
+        #[arg(long, help = "Commitment type: RI or SP (default: RI)")]
+        commitment_type: Option<String>,
+        #[arg(long, help = "Tag filter (key:value syntax)")]
+        filter_by: Option<String>,
+    },
+    /// List individual commitments (reserved instances, savings plans)
+    List {
+        #[arg(long, help = "Cloud provider: aws, azure (required)")]
+        provider: String,
+        #[arg(long, help = "Cloud product (required)")]
+        product: String,
+        #[arg(long, help = "Start time (required)")]
+        from: String,
+        #[arg(long, help = "End time (required)")]
+        to: String,
+        #[arg(long, help = "Commitment type: RI or SP (default: RI)")]
+        commitment_type: Option<String>,
+        #[arg(long, help = "Tag filter (key:value syntax)")]
+        filter_by: Option<String>,
     },
 }
 
@@ -11838,54 +12213,332 @@ async fn main_inner() -> anyhow::Result<()> {
         Commands::Cost { action } => {
             cfg.validate_auth()?;
             match action {
-                CostActions::Projected => commands::cost::projected(&cfg).await?,
-                CostActions::ByOrg {
-                    start_month,
-                    end_month,
-                    ..
-                } => {
-                    commands::cost::by_org(&cfg, start_month, end_month).await?;
-                }
-                CostActions::Attribution { start, fields, .. } => {
-                    commands::cost::attribution(&cfg, start, fields).await?;
-                }
-                CostActions::AwsConfig { action } => match action {
-                    CostCloudConfigActions::List => commands::cost::aws_config_list(&cfg).await?,
-                    CostCloudConfigActions::Get { id } => {
-                        commands::cost::aws_config_get(&cfg, id).await?;
+                CostActions::Datadog { action } => match action {
+                    CostDatadogActions::Projected => commands::cost::projected(&cfg).await?,
+                    CostDatadogActions::ByOrg {
+                        start_month,
+                        end_month,
+                        ..
+                    } => {
+                        commands::cost::by_org(&cfg, start_month, end_month).await?;
                     }
-                    CostCloudConfigActions::Create { file } => {
-                        commands::cost::aws_config_create(&cfg, &file).await?;
+                    CostDatadogActions::Attribution { start, fields, .. } => {
+                        commands::cost::attribution(&cfg, start, fields).await?;
                     }
-                    CostCloudConfigActions::Delete { id } => {
-                        commands::cost::aws_config_delete(&cfg, id).await?;
-                    }
+                    CostDatadogActions::AwsConfig { action } => match action {
+                        CostCloudConfigActions::List => {
+                            commands::cost::aws_config_list(&cfg).await?
+                        }
+                        CostCloudConfigActions::Get { id } => {
+                            commands::cost::aws_config_get(&cfg, id).await?;
+                        }
+                        CostCloudConfigActions::Create { file } => {
+                            commands::cost::aws_config_create(&cfg, &file).await?;
+                        }
+                        CostCloudConfigActions::Delete { id } => {
+                            commands::cost::aws_config_delete(&cfg, id).await?;
+                        }
+                    },
+                    CostDatadogActions::AzureConfig { action } => match action {
+                        CostCloudConfigActions::List => {
+                            commands::cost::azure_config_list(&cfg).await?;
+                        }
+                        CostCloudConfigActions::Get { id } => {
+                            commands::cost::azure_config_get(&cfg, id).await?;
+                        }
+                        CostCloudConfigActions::Create { file } => {
+                            commands::cost::azure_config_create(&cfg, &file).await?;
+                        }
+                        CostCloudConfigActions::Delete { id } => {
+                            commands::cost::azure_config_delete(&cfg, id).await?;
+                        }
+                    },
+                    CostDatadogActions::GcpConfig { action } => match action {
+                        CostCloudConfigActions::List => {
+                            commands::cost::gcp_config_list(&cfg).await?
+                        }
+                        CostCloudConfigActions::Get { id } => {
+                            commands::cost::gcp_config_get(&cfg, id).await?;
+                        }
+                        CostCloudConfigActions::Create { file } => {
+                            commands::cost::gcp_config_create(&cfg, &file).await?;
+                        }
+                        CostCloudConfigActions::Delete { id } => {
+                            commands::cost::gcp_config_delete(&cfg, id).await?;
+                        }
+                    },
                 },
-                CostActions::AzureConfig { action } => match action {
-                    CostCloudConfigActions::List => {
-                        commands::cost::azure_config_list(&cfg).await?;
-                    }
-                    CostCloudConfigActions::Get { id } => {
-                        commands::cost::azure_config_get(&cfg, id).await?;
-                    }
-                    CostCloudConfigActions::Create { file } => {
-                        commands::cost::azure_config_create(&cfg, &file).await?;
-                    }
-                    CostCloudConfigActions::Delete { id } => {
-                        commands::cost::azure_config_delete(&cfg, id).await?;
-                    }
-                },
-                CostActions::GcpConfig { action } => match action {
-                    CostCloudConfigActions::List => commands::cost::gcp_config_list(&cfg).await?,
-                    CostCloudConfigActions::Get { id } => {
-                        commands::cost::gcp_config_get(&cfg, id).await?;
-                    }
-                    CostCloudConfigActions::Create { file } => {
-                        commands::cost::gcp_config_create(&cfg, &file).await?;
-                    }
-                    CostCloudConfigActions::Delete { id } => {
-                        commands::cost::gcp_config_delete(&cfg, id).await?;
-                    }
+                CostActions::Ccm { action } => match action {
+                    CostCcmActions::CustomCosts { action } => match action {
+                        CostCcmCustomCostsActions::List {
+                            page_size,
+                            status,
+                            sort,
+                        } => {
+                            commands::cost_ccm::custom_costs_list(&cfg, page_size, status, sort)
+                                .await?;
+                        }
+                        CostCcmCustomCostsActions::Get { file_id } => {
+                            commands::cost_ccm::custom_costs_get(&cfg, &file_id).await?;
+                        }
+                        CostCcmCustomCostsActions::Upload { file, version } => {
+                            commands::cost_ccm::custom_costs_upload(&cfg, &file, version).await?;
+                        }
+                        CostCcmCustomCostsActions::Delete { file_id } => {
+                            commands::cost_ccm::custom_costs_delete(&cfg, &file_id).await?;
+                        }
+                    },
+                    CostCcmActions::TagDescriptions { action } => match action {
+                        CostCcmTagDescActions::List { cloud } => {
+                            commands::cost_ccm::tag_desc_list(&cfg, cloud).await?;
+                        }
+                        CostCcmTagDescActions::Get { tag_key, cloud } => {
+                            commands::cost_ccm::tag_desc_get(&cfg, &tag_key, cloud).await?;
+                        }
+                        CostCcmTagDescActions::Generate { tag_key } => {
+                            commands::cost_ccm::tag_desc_generate(&cfg, &tag_key).await?;
+                        }
+                        CostCcmTagDescActions::Upsert {
+                            tag_key,
+                            description,
+                            cloud,
+                        } => {
+                            commands::cost_ccm::tag_desc_upsert(
+                                &cfg,
+                                &tag_key,
+                                &description,
+                                cloud,
+                            )
+                            .await?;
+                        }
+                        CostCcmTagDescActions::Delete { tag_key, cloud } => {
+                            commands::cost_ccm::tag_desc_delete(&cfg, &tag_key, cloud).await?;
+                        }
+                    },
+                    CostCcmActions::TagMetadata { action } => match action {
+                        CostCcmTagMetadataActions::List {
+                            month,
+                            provider,
+                            metric,
+                            tag_key,
+                            daily,
+                        } => {
+                            commands::cost_ccm::tag_meta_list(
+                                &cfg, &month, provider, metric, tag_key, daily,
+                            )
+                            .await?;
+                        }
+                        CostCcmTagMetadataActions::TagSources { month, provider } => {
+                            commands::cost_ccm::tag_meta_sources(&cfg, &month, provider).await?;
+                        }
+                        CostCcmTagMetadataActions::Metrics { month, provider } => {
+                            commands::cost_ccm::tag_meta_metrics(&cfg, &month, provider).await?;
+                        }
+                        CostCcmTagMetadataActions::Orchestrators { month, provider } => {
+                            commands::cost_ccm::tag_meta_orchestrators(&cfg, &month, provider)
+                                .await?;
+                        }
+                        CostCcmTagMetadataActions::Currency { month, provider } => {
+                            commands::cost_ccm::tag_meta_currency(&cfg, &month, provider).await?;
+                        }
+                    },
+                    CostCcmActions::Tags { action } => match action {
+                        CostCcmTagsActions::List {
+                            metric,
+                            r#match,
+                            tags,
+                        } => {
+                            commands::cost_ccm::tags_list(&cfg, metric, r#match, tags).await?;
+                        }
+                    },
+                    CostCcmActions::TagKeys { action } => match action {
+                        CostCcmTagKeysActions::List { metric, tags } => {
+                            commands::cost_ccm::tag_keys_list(&cfg, metric, tags).await?;
+                        }
+                        CostCcmTagKeysActions::Get { key, metric } => {
+                            commands::cost_ccm::tag_keys_get(&cfg, &key, metric).await?;
+                        }
+                    },
+                    CostCcmActions::Budgets { action } => match action {
+                        CostCcmBudgetsActions::List => {
+                            commands::cost_ccm::budgets_list(&cfg).await?;
+                        }
+                        CostCcmBudgetsActions::Get {
+                            budget_id,
+                            start,
+                            end,
+                            actual,
+                            forecast,
+                        } => {
+                            commands::cost_ccm::budgets_get(
+                                &cfg, &budget_id, start, end, actual, forecast,
+                            )
+                            .await?;
+                        }
+                        CostCcmBudgetsActions::Upsert { file } => {
+                            commands::cost_ccm::budgets_upsert(&cfg, &file).await?;
+                        }
+                        CostCcmBudgetsActions::Delete { budget_id } => {
+                            commands::cost_ccm::budgets_delete(&cfg, &budget_id).await?;
+                        }
+                        CostCcmBudgetsActions::Validate { file } => {
+                            commands::cost_ccm::budgets_validate(&cfg, &file).await?;
+                        }
+                    },
+                    CostCcmActions::Commitments { action } => match action {
+                        CostCcmCommitmentsActions::Utilization {
+                            provider,
+                            product,
+                            from,
+                            to,
+                            commitment_type,
+                            filter_by,
+                        } => {
+                            commands::cost_ccm::commitments_utilization(
+                                &cfg,
+                                &provider,
+                                &product,
+                                &from,
+                                &to,
+                                commitment_type,
+                                filter_by,
+                            )
+                            .await?;
+                        }
+                        CostCcmCommitmentsActions::Coverage {
+                            provider,
+                            product,
+                            from,
+                            to,
+                            commitment_type,
+                            filter_by,
+                        } => {
+                            commands::cost_ccm::commitments_coverage(
+                                &cfg,
+                                &provider,
+                                &product,
+                                &from,
+                                &to,
+                                commitment_type,
+                                filter_by,
+                            )
+                            .await?;
+                        }
+                        CostCcmCommitmentsActions::Savings {
+                            provider,
+                            product,
+                            from,
+                            to,
+                            commitment_type,
+                            filter_by,
+                        } => {
+                            commands::cost_ccm::commitments_savings(
+                                &cfg,
+                                &provider,
+                                &product,
+                                &from,
+                                &to,
+                                commitment_type,
+                                filter_by,
+                            )
+                            .await?;
+                        }
+                        CostCcmCommitmentsActions::Hotspots {
+                            provider,
+                            product,
+                            from,
+                            to,
+                            commitment_type,
+                            filter_by,
+                        } => {
+                            commands::cost_ccm::commitments_hotspots(
+                                &cfg,
+                                &provider,
+                                &product,
+                                &from,
+                                &to,
+                                commitment_type,
+                                filter_by,
+                            )
+                            .await?;
+                        }
+                        CostCcmCommitmentsActions::UtilizationTs {
+                            provider,
+                            product,
+                            from,
+                            to,
+                            commitment_type,
+                            filter_by,
+                        } => {
+                            commands::cost_ccm::commitments_utilization_ts(
+                                &cfg,
+                                &provider,
+                                &product,
+                                &from,
+                                &to,
+                                commitment_type,
+                                filter_by,
+                            )
+                            .await?;
+                        }
+                        CostCcmCommitmentsActions::CoverageTs {
+                            provider,
+                            product,
+                            from,
+                            to,
+                            commitment_type,
+                            filter_by,
+                        } => {
+                            commands::cost_ccm::commitments_coverage_ts(
+                                &cfg,
+                                &provider,
+                                &product,
+                                &from,
+                                &to,
+                                commitment_type,
+                                filter_by,
+                            )
+                            .await?;
+                        }
+                        CostCcmCommitmentsActions::SavingsTs {
+                            provider,
+                            product,
+                            from,
+                            to,
+                            commitment_type,
+                            filter_by,
+                        } => {
+                            commands::cost_ccm::commitments_savings_ts(
+                                &cfg,
+                                &provider,
+                                &product,
+                                &from,
+                                &to,
+                                commitment_type,
+                                filter_by,
+                            )
+                            .await?;
+                        }
+                        CostCcmCommitmentsActions::List {
+                            provider,
+                            product,
+                            from,
+                            to,
+                            commitment_type,
+                            filter_by,
+                        } => {
+                            commands::cost_ccm::commitments_list(
+                                &cfg,
+                                &provider,
+                                &product,
+                                &from,
+                                &to,
+                                commitment_type,
+                                filter_by,
+                            )
+                            .await?;
+                        }
+                    },
                 },
             }
         }

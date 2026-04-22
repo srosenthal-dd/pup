@@ -169,7 +169,7 @@ See [docs/COMMANDS.md](docs/COMMANDS.md) for detailed command reference.
 | API Domain | Status | Pup Commands | Notes |
 |------------|--------|--------------|-------|
 | Usage Metering | ✅ | `usage summary`, `usage hourly` | Usage and billing metrics |
-| Cost Management | ✅ | `cost projected`, `cost attribution`, `cost by-org`, `cost aws-config`, `cost azure-config`, `cost gcp-config` | Cost attribution plus AWS/Azure/GCP cloud cost config management |
+| Cost Management | ✅ | `costs datadog projected`, `costs datadog attribution`, `costs datadog by-org`, `costs datadog aws-config`, `costs datadog azure-config`, `costs datadog gcp-config`, `costs ccm custom-costs`, `costs ccm tag-descriptions`, `costs ccm tag-metadata`, `costs ccm tags`, `costs ccm tag-keys`, `costs ccm budgets`, `costs ccm commitments` | Cost attribution, cloud cost configs (AWS/Azure/GCP), and Cloud Cost Management (custom costs, tag descriptions, budgets, commitment programs) |
 | Product Analytics | ✅ | `product-analytics events send`, `product-analytics query` | Server-side product analytics events and queries |
 | Integrations | ✅ | `integrations slack`, `integrations pagerduty`, `integrations webhooks`, `integrations jira`, `integrations servicenow`, `integrations google-chat` | Third-party integrations with Jira, ServiceNow, and Google Chat support |
 | Observability Pipelines | ✅ | `obs-pipelines list`, `obs-pipelines get`, `obs-pipelines create`, `obs-pipelines update`, `obs-pipelines delete`, `obs-pipelines validate` | Full pipeline CRUD and validation |

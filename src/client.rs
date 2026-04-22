@@ -606,6 +606,7 @@ static OAUTH_EXCLUDED_ENDPOINTS: &[EndpointRequirement] = &[
 // ---------------------------------------------------------------------------
 
 /// Raw HTTP response returned by [`raw_request`].
+#[derive(Debug)]
 pub struct HttpResponse {
     /// The `Content-Type` header value from the response, or an empty string if absent.
     pub content_type: String,
@@ -615,15 +616,19 @@ pub struct HttpResponse {
 
 /// Makes an authenticated request with any HTTP method via reqwest.
 ///
+/// - `query` — key/value pairs appended as URL query parameters (reqwest handles percent-encoding).
+///   Pass `&[]` when no query parameters are needed.
 /// - `body` — raw bytes to send; `content_type` sets the `Content-Type` header when present.
 /// - `accept` — value for the `Accept` header (e.g. `"application/json"`, `"*/*"`).
 /// - `extra_headers` — additional headers applied after auth and before the body.
 /// - Returns an [`HttpResponse`] with the raw bytes and response `Content-Type`.
 ///   Callers are responsible for decoding the bytes.
+#[allow(clippy::too_many_arguments)]
 pub async fn raw_request(
     cfg: &Config,
     method: &str,
     path: &str,
+    query: &[(&str, &str)],
     body: Option<Vec<u8>>,
     content_type: Option<&str>,
     accept: &str,
@@ -635,6 +640,9 @@ pub async fn raw_request(
     let method = reqwest::Method::from_bytes(method_name.as_bytes())
         .map_err(|_| anyhow::anyhow!("unsupported HTTP method: {method}"))?;
     let mut req = client.request(method, &url);
+    if !query.is_empty() {
+        req = req.query(query);
+    }
 
     req = apply_auth(req, cfg, &method_name, path)?;
 
@@ -1114,6 +1122,57 @@ mod tests {
             "POST",
             "/api/v2/error_tracking/issues/search"
         ));
+    }
+
+    // Verify raw_request reaches the auth check (and fails there) for both the
+    // empty-query and non-empty-query paths. This ensures the `if !query.is_empty()`
+    // branch compiles and runs without panic.
+    #[test]
+    fn test_raw_request_no_auth_empty_query() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let mut cfg = test_cfg();
+        cfg.api_key = None;
+        cfg.app_key = None;
+        let err = rt
+            .block_on(raw_request(
+                &cfg,
+                "GET",
+                "/api/v2/monitors",
+                &[],
+                None,
+                None,
+                "application/json",
+                &[],
+            ))
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("no authentication configured"),
+            "expected auth error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_raw_request_no_auth_with_query() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let mut cfg = test_cfg();
+        cfg.api_key = None;
+        cfg.app_key = None;
+        let err = rt
+            .block_on(raw_request(
+                &cfg,
+                "GET",
+                "/api/v2/monitors",
+                &[("page", "1"), ("page_size", "10")],
+                None,
+                None,
+                "application/json",
+                &[],
+            ))
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("no authentication configured"),
+            "expected auth error, got: {err}"
+        );
     }
 
     #[test]

@@ -57,7 +57,7 @@ pup <domain> <subgroup> <action> [options] # Nested commands
 | usage | summary, hourly | src/commands/usage.rs | ✅ |
 | apm | services (list, stats, operations, resources), entities (list), dependencies (list), flow-map, troubleshooting (list), service-config (get), service-library-config (get) | src/commands/apm.rs | ✅ |
 | containers | list, images (list) | src/commands/containers.rs | ✅ |
-| cost | projected, attribution, by-org, aws-config (list, get, create, delete), azure-config (list, get, create, delete), gcp-config (list, get, create, delete) | src/commands/cost.rs | ✅ |
+| costs | datadog (projected, attribution, by-org, aws-config, azure-config, gcp-config), ccm (custom-costs, tag-descriptions, tag-metadata, tags, tag-keys, budgets, commitments) | src/commands/cost.rs, src/commands/cost_ccm.rs | ✅ |
 | product-analytics | events send | src/commands/product_analytics.rs | ✅ |
 | profiling | aggregate, analysis, analytics, breakdown, callgraph, download, fields, info, list, save-favorite, timeline | src/commands/profiling.rs | ✅ |
 | datasets | list, get, create, update, delete | src/commands/datasets.rs | ✅ |
@@ -197,7 +197,7 @@ pup infrastructure hosts list
 
 ### Cost & Usage
 - **usage** - Usage and billing (summary, hourly)
-- **cost** - Cost management (projected, attribution, by-org, aws-config, azure-config, gcp-config)
+- **costs** - Cost management: `datadog` subgroup (projected, attribution, by-org, aws-config, azure-config, gcp-config) and `ccm` subgroup (custom-costs, tag-descriptions, tag-metadata, tags, tag-keys, budgets, commitments)
 
 ### Configuration & Data Management
 - **obs-pipelines** - Observability pipelines (list, get, create, update, delete, validate)
@@ -246,7 +246,7 @@ Available on all commands:
 - ✅ **llm-obs** (new) — LLM Observability: projects (create, list), experiments (create, list, update, delete, summary, events (list, get), metric-values, dimension-values), datasets (create, list), spans (search)
 - ✅ **reference-tables** (new) — Reference table management (list, get, create, batch-query)
 - ✅ **obs-pipelines** (upgraded from placeholder) — Full CRUD: list, get, create, update, delete, validate
-- **cost** — Added cloud cost configs: `aws-config`, `azure-config`, `gcp-config` (list, get, create, delete each)
+- **costs** — Added cloud cost configs: `aws-config`, `azure-config`, `gcp-config` (list, get, create, delete each)
 
 ### v0.27.0 — Major Expansion
 

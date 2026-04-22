@@ -163,6 +163,7 @@ pub async fn download(cfg: &Config, event_id: &str, output: Option<String>) -> R
         cfg,
         "GET",
         &url_path,
+        &[],
         None,
         None,
         "application/octet-stream",

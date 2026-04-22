@@ -131,6 +131,29 @@ pub fn parse_uuid(id: &str, label: &str) -> anyhow::Result<uuid::Uuid> {
     uuid::Uuid::parse_str(id).map_err(|e| anyhow::anyhow!("invalid {label} UUID '{id}': {e}"))
 }
 
+/// Percent-encode a string for safe use in URL paths and query values.
+///
+/// Unreserved characters (RFC 3986 §2.3) — `A-Z a-z 0-9 - _ . ~` — are
+/// passed through; every other byte is encoded as `%XX`.  Spaces become
+/// `%20`, not `+`.
+///
+/// The implementation is intentionally hand-rolled rather than pulling in the
+/// `percent-encoding` crate: that crate is only a transitive dependency (via
+/// `url`/`reqwest`) and its `AsciiSet` API requires more boilerplate than this
+/// 8-line loop for the single RFC 3986 unreserved-character set we need.
+pub fn percent_encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for &b in s.as_bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -259,6 +282,37 @@ mod tests {
         let ms = parse_time_to_unix_millis("1week").unwrap();
         let expected = (Utc::now().timestamp() - 7 * 86400) * 1000;
         assert!((ms - expected).abs() < 2000);
+    }
+
+    #[test]
+    fn test_percent_encode_unreserved_passthrough() {
+        // RFC 3986 §2.3 unreserved characters must not be encoded.
+        assert_eq!(percent_encode("abc"), "abc");
+        assert_eq!(percent_encode("foo.bar"), "foo.bar");
+        assert_eq!(percent_encode("foo-bar_baz"), "foo-bar_baz");
+        assert_eq!(percent_encode("UPPER"), "UPPER");
+        assert_eq!(percent_encode("123"), "123");
+        assert_eq!(percent_encode("foo~bar"), "foo~bar"); // tilde is unreserved
+    }
+
+    #[test]
+    fn test_percent_encode_special_chars() {
+        assert_eq!(percent_encode("env:prod"), "env%3Aprod");
+        assert_eq!(percent_encode("k8s cluster"), "k8s%20cluster");
+        assert_eq!(percent_encode("a&b=c"), "a%26b%3Dc");
+        assert_eq!(percent_encode("path/value"), "path%2Fvalue");
+    }
+
+    #[test]
+    fn test_percent_encode_empty() {
+        assert_eq!(percent_encode(""), "");
+    }
+
+    #[test]
+    fn test_percent_encode_multibyte_utf8() {
+        // Multi-byte UTF-8 characters must be encoded byte-by-byte per RFC 3986.
+        // "é" is 0xC3 0xA9 in UTF-8.
+        assert_eq!(percent_encode("café"), "caf%C3%A9");
     }
 
     #[test]

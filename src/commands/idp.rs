@@ -4,6 +4,7 @@ use serde::Serialize;
 use crate::client;
 use crate::config::Config;
 use crate::formatter;
+use crate::util;
 
 // ---------------------------------------------------------------------------
 // Response types
@@ -116,33 +117,6 @@ struct SloCounts {
 struct DependencySummary {
     upstream: Vec<String>,
     downstream: Vec<String>,
-}
-
-// ---------------------------------------------------------------------------
-// URL-encode a query string value (spaces become %20)
-// ---------------------------------------------------------------------------
-
-fn url_encode(s: &str) -> String {
-    s.bytes()
-        .flat_map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' | b':' => {
-                vec![b as char]
-            }
-            b' ' => vec!['+'],
-            _ => {
-                let hi = b >> 4;
-                let lo = b & 0x0f;
-                let hex = |n: u8| {
-                    if n < 10 {
-                        (b'0' + n) as char
-                    } else {
-                        (b'A' + n - 10) as char
-                    }
-                };
-                vec!['%', hex(hi), hex(lo)]
-            }
-        })
-        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -455,7 +429,7 @@ fn parse_dependencies(deps_data: &serde_json::Value, entity: &str) -> (Vec<Strin
 // ---------------------------------------------------------------------------
 
 fn entity_query_url(entity: &str, include: &str) -> String {
-    let query = url_encode(&format!("kind:service AND name:{entity}"));
+    let query = util::percent_encode(&format!("kind:service AND name:{entity}"));
     let mut url = format!("/api/v2/idp/entity_graph/entities?query={query}&page%5Blimit%5D=1");
     if !include.is_empty() {
         url.push_str(&format!("&include={include}"));
@@ -551,7 +525,7 @@ pub async fn find(cfg: &Config, query: &str) -> Result<()> {
     } else {
         format!("kind:service AND name:*{query}*")
     };
-    let encoded = url_encode(&full_query);
+    let encoded = util::percent_encode(&full_query);
     let path = format!("/api/v2/idp/entity_graph/entities?query={encoded}&page%5Blimit%5D=10");
     let data = client::raw_get(cfg, &path, &[]).await?;
 
@@ -665,4 +639,34 @@ pub async fn register(cfg: &Config, file: &str) -> Result<()> {
     };
 
     formatter::format_and_print(&data, &cfg.output_format, cfg.agent_mode, Some(&meta))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_entity_query_url_encodes_special_chars() {
+        // Colons, spaces, and other characters in entity names and the query
+        // syntax must be percent-encoded so the URL is well-formed.
+        let url = entity_query_url("my service", "");
+        assert!(
+            url.contains("kind%3Aservice"),
+            "colon should be encoded: {url}"
+        );
+        assert!(
+            url.contains("my%20service"),
+            "space should be encoded: {url}"
+        );
+        assert!(!url.contains("include="), "empty include should be omitted");
+    }
+
+    #[test]
+    fn test_entity_query_url_appends_include() {
+        let url = entity_query_url("svc", "owner_teams");
+        assert!(
+            url.contains("&include=owner_teams"),
+            "include param missing: {url}"
+        );
+    }
 }

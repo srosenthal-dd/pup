@@ -21,6 +21,7 @@ pub mod code_coverage;
 pub mod completions;
 pub mod containers;
 pub mod cost;
+pub mod cost_ccm;
 pub mod csm_threats;
 pub mod dashboards;
 pub mod data_deletion;
