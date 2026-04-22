@@ -48,35 +48,29 @@ fn split_csv(flag: &str, value: Option<String>) -> Result<Vec<String>> {
     Ok(parts)
 }
 
-pub async fn list(
+#[allow(clippy::too_many_arguments)]
+pub async fn aggregate(
     cfg: &Config,
     query: String,
+    profile_type: String,
     from: String,
     to: String,
-    sort_field: Option<String>,
-    sort_order: String,
     limit: u32,
+    aggregation_function: String,
 ) -> Result<()> {
-    let mut body = filter_body(&query, &from, &to)?;
-    body["limit"] = json!(limit);
-    if let Some(field) = sort_field {
-        body["sort"] = json!({ "field": field, "order": sort_order });
-    }
-    let resp = client::raw_post(cfg, "/api/unstable/profiles/list", body)
+    let (from_iso, to_iso) = parse_window(&from, &to)?;
+    // /profiling/api/v1/aggregate expects a flat body — query/from/to are siblings, not wrapped in filter{}.
+    let body = json!({
+        "profileType": profile_type,
+        "query": query,
+        "from": from_iso,
+        "to": to_iso,
+        "limit": limit,
+        "aggregationFunction": aggregation_function,
+    });
+    let resp = client::raw_post(cfg, "/profiling/api/v1/aggregate", body)
         .await
-        .map_err(|e| anyhow::anyhow!("failed to list profiles: {e:?}"))?;
-    formatter::output(cfg, &resp)
-}
-
-pub async fn info(cfg: &Config, profile_id: &str, event_id: Option<String>) -> Result<()> {
-    let path = format!("/profiling/api/v1/profiles/{profile_id}/info");
-    let query: Vec<(&str, &str)> = match event_id.as_deref() {
-        Some(eid) => vec![("eventId", eid)],
-        None => vec![],
-    };
-    let resp = client::raw_get(cfg, &path, &query)
-        .await
-        .map_err(|e| anyhow::anyhow!("failed to get profile info: {e:?}"))?;
+        .map_err(|e| anyhow::anyhow!("failed to aggregate profiles: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
 
@@ -118,68 +112,6 @@ pub async fn analytics(
     formatter::output(cfg, &resp)
 }
 
-pub async fn insights(
-    cfg: &Config,
-    query: String,
-    from: String,
-    to: String,
-    limit: u32,
-) -> Result<()> {
-    let mut body = filter_body(&query, &from, &to)?;
-    body["limit"] = json!(limit);
-    let resp = client::raw_post(cfg, "/api/unstable/profiles/insights", body)
-        .await
-        .map_err(|e| anyhow::anyhow!("failed to list profiling insights: {e:?}"))?;
-    formatter::output(cfg, &resp)
-}
-
-pub async fn fields(
-    cfg: &Config,
-    field: String,
-    query: String,
-    from: String,
-    to: String,
-    limit: u32,
-) -> Result<()> {
-    let mut body = filter_body(&query, &from, &to)?;
-    body["fieldName"] = json!(field);
-    body["limit"] = json!(limit);
-    let resp = client::raw_post(
-        cfg,
-        "/api/unstable/profiles/interactive-analytics/field",
-        body,
-    )
-    .await
-    .map_err(|e| anyhow::anyhow!("failed to list field values: {e:?}"))?;
-    formatter::output(cfg, &resp)
-}
-
-#[allow(clippy::too_many_arguments)]
-pub async fn aggregate(
-    cfg: &Config,
-    query: String,
-    profile_type: String,
-    from: String,
-    to: String,
-    limit: u32,
-    aggregation_function: String,
-) -> Result<()> {
-    let (from_iso, to_iso) = parse_window(&from, &to)?;
-    // /profiling/api/v1/aggregate expects a flat body — query/from/to are siblings, not wrapped in filter{}.
-    let body = json!({
-        "profileType": profile_type,
-        "query": query,
-        "from": from_iso,
-        "to": to_iso,
-        "limit": limit,
-        "aggregationFunction": aggregation_function,
-    });
-    let resp = client::raw_post(cfg, "/profiling/api/v1/aggregate", body)
-        .await
-        .map_err(|e| anyhow::anyhow!("failed to aggregate profiles: {e:?}"))?;
-    formatter::output(cfg, &resp)
-}
-
 pub async fn breakdown(
     cfg: &Config,
     profile_id: &str,
@@ -205,30 +137,6 @@ pub async fn breakdown(
     formatter::output(cfg, &resp)
 }
 
-pub async fn timeline(cfg: &Config, profile_id: &str) -> Result<()> {
-    let body = json!({ "profileIds": [profile_id] });
-    let path = format!("/profiling/api/v1/profiles/{profile_id}/timeline");
-    let resp = client::raw_post(cfg, &path, body)
-        .await
-        .map_err(|e| anyhow::anyhow!("failed to load profile timeline: {e:?}"))?;
-    formatter::output(cfg, &resp)
-}
-
-pub async fn utilization(
-    cfg: &Config,
-    query: String,
-    from: String,
-    to: String,
-    limit: u32,
-) -> Result<()> {
-    let mut body = filter_body(&query, &from, &to)?;
-    body["limit"] = json!(limit);
-    let resp = client::raw_post(cfg, "/api/unstable/profiles/service/utilization", body)
-        .await
-        .map_err(|e| anyhow::anyhow!("failed to get service utilization: {e:?}"))?;
-    formatter::output(cfg, &resp)
-}
-
 pub async fn callgraph(
     cfg: &Config,
     query: String,
@@ -243,23 +151,6 @@ pub async fn callgraph(
     let resp = client::raw_post(cfg, "/api/unstable/profiles/callgraph", body)
         .await
         .map_err(|e| anyhow::anyhow!("failed to load call graph: {e:?}"))?;
-    formatter::output(cfg, &resp)
-}
-
-pub async fn save_favorite(
-    cfg: &Config,
-    query: String,
-    from: String,
-    to: String,
-    query_id: String,
-    limit: u32,
-) -> Result<()> {
-    let mut body = filter_body(&query, &from, &to)?;
-    body["queryId"] = json!(query_id);
-    body["limit"] = json!(limit);
-    let resp = client::raw_post(cfg, "/api/unstable/profiles/save-favorite", body)
-        .await
-        .map_err(|e| anyhow::anyhow!("failed to save favorite: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
 
@@ -297,4 +188,113 @@ pub async fn download(cfg: &Config, profile_id: &str, output: Option<String>) ->
         }
     }
     Ok(())
+}
+
+pub async fn fields(
+    cfg: &Config,
+    field: String,
+    query: String,
+    from: String,
+    to: String,
+    limit: u32,
+) -> Result<()> {
+    let mut body = filter_body(&query, &from, &to)?;
+    body["fieldName"] = json!(field);
+    body["limit"] = json!(limit);
+    let resp = client::raw_post(
+        cfg,
+        "/api/unstable/profiles/interactive-analytics/field",
+        body,
+    )
+    .await
+    .map_err(|e| anyhow::anyhow!("failed to list field values: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn info(cfg: &Config, profile_id: &str, event_id: Option<String>) -> Result<()> {
+    let path = format!("/profiling/api/v1/profiles/{profile_id}/info");
+    let query: Vec<(&str, &str)> = match event_id.as_deref() {
+        Some(eid) => vec![("eventId", eid)],
+        None => vec![],
+    };
+    let resp = client::raw_get(cfg, &path, &query)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to get profile info: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn insights(
+    cfg: &Config,
+    query: String,
+    from: String,
+    to: String,
+    limit: u32,
+) -> Result<()> {
+    let mut body = filter_body(&query, &from, &to)?;
+    body["limit"] = json!(limit);
+    let resp = client::raw_post(cfg, "/api/unstable/profiles/insights", body)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to list profiling insights: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn list(
+    cfg: &Config,
+    query: String,
+    from: String,
+    to: String,
+    sort_field: Option<String>,
+    sort_order: String,
+    limit: u32,
+) -> Result<()> {
+    let mut body = filter_body(&query, &from, &to)?;
+    body["limit"] = json!(limit);
+    if let Some(field) = sort_field {
+        body["sort"] = json!({ "field": field, "order": sort_order });
+    }
+    let resp = client::raw_post(cfg, "/api/unstable/profiles/list", body)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to list profiles: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn save_favorite(
+    cfg: &Config,
+    query: String,
+    from: String,
+    to: String,
+    query_id: String,
+    limit: u32,
+) -> Result<()> {
+    let mut body = filter_body(&query, &from, &to)?;
+    body["queryId"] = json!(query_id);
+    body["limit"] = json!(limit);
+    let resp = client::raw_post(cfg, "/api/unstable/profiles/save-favorite", body)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to save favorite: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn timeline(cfg: &Config, profile_id: &str) -> Result<()> {
+    let body = json!({ "profileIds": [profile_id] });
+    let path = format!("/profiling/api/v1/profiles/{profile_id}/timeline");
+    let resp = client::raw_post(cfg, &path, body)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to load profile timeline: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn utilization(
+    cfg: &Config,
+    query: String,
+    from: String,
+    to: String,
+    limit: u32,
+) -> Result<()> {
+    let mut body = filter_body(&query, &from, &to)?;
+    body["limit"] = json!(limit);
+    let resp = client::raw_post(cfg, "/api/unstable/profiles/service/utilization", body)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to get service utilization: {e:?}"))?;
+    formatter::output(cfg, &resp)
 }

@@ -8112,35 +8112,24 @@ enum ProductAnalyticsEventActions {
 // ---- Profiling ----
 #[derive(Subcommand)]
 enum ProfilingActions {
-    /// List profiles matching a query
-    List {
+    /// Aggregate flamegraph across matching profiles
+    Aggregate {
         #[arg(long, default_value = "*", help = "Profile search query")]
         query: String,
         #[arg(
             long,
-            default_value = "15m",
-            help = "Start time: 1h, 5min, 2hours, RFC3339, Unix timestamp, or 'now'"
+            default_value = "cpu-time",
+            help = "Profile type (e.g. cpu-time, wall-time)"
         )]
+        profile_type: String,
+        #[arg(long, default_value = "15m", help = "Start time")]
         from: String,
-        #[arg(
-            long,
-            default_value = "now",
-            help = "End time: 1h, 5min, 2hours, RFC3339, Unix timestamp, or 'now'"
-        )]
+        #[arg(long, default_value = "now", help = "End time")]
         to: String,
-        #[arg(long, help = "Field to sort by (e.g. 'start', 'duration')")]
-        sort_field: Option<String>,
-        #[arg(long, default_value = "desc", help = "Sort order: asc or desc")]
-        sort_order: String,
-        #[arg(long, default_value = "100", help = "Maximum profiles to return")]
+        #[arg(long, default_value = "100", help = "Maximum profiles to aggregate")]
         limit: u32,
-    },
-    /// Get profile metadata
-    Info {
-        #[arg(help = "Profile ID")]
-        profile_id: String,
-        #[arg(long, help = "Event ID scope (optional)")]
-        event_id: Option<String>,
+        #[arg(long, default_value = "sum", help = "Aggregation function: sum or avg")]
+        aggregation_function: String,
     },
     /// Get automated analysis for a profile
     Analysis {
@@ -8167,49 +8156,6 @@ enum ProfilingActions {
         #[arg(long, default_value = "100", help = "Maximum rows to return")]
         limit: u32,
     },
-    /// List surfaced profiling insights
-    Insights {
-        #[arg(long, default_value = "*", help = "Profile search query")]
-        query: String,
-        #[arg(long, default_value = "1h", help = "Start time")]
-        from: String,
-        #[arg(long, default_value = "now", help = "End time")]
-        to: String,
-        #[arg(long, default_value = "100", help = "Maximum insights to return")]
-        limit: u32,
-    },
-    /// Enumerate values for a field
-    Fields {
-        #[arg(long, help = "Field name (required)")]
-        field: String,
-        #[arg(long, default_value = "*", help = "Profile search query")]
-        query: String,
-        #[arg(long, default_value = "15m", help = "Start time")]
-        from: String,
-        #[arg(long, default_value = "now", help = "End time")]
-        to: String,
-        #[arg(long, default_value = "100", help = "Maximum values to return")]
-        limit: u32,
-    },
-    /// Aggregate flamegraph across matching profiles
-    Aggregate {
-        #[arg(long, default_value = "*", help = "Profile search query")]
-        query: String,
-        #[arg(
-            long,
-            default_value = "cpu-time",
-            help = "Profile type (e.g. cpu-time, wall-time)"
-        )]
-        profile_type: String,
-        #[arg(long, default_value = "15m", help = "Start time")]
-        from: String,
-        #[arg(long, default_value = "now", help = "End time")]
-        to: String,
-        #[arg(long, default_value = "100", help = "Maximum profiles to aggregate")]
-        limit: u32,
-        #[arg(long, default_value = "sum", help = "Aggregation function: sum or avg")]
-        aggregation_function: String,
-    },
     /// Compute a breakdown for a single profile (JSON output)
     Breakdown {
         #[arg(help = "Profile ID")]
@@ -8230,22 +8176,6 @@ enum ProfilingActions {
         )]
         to: Option<String>,
     },
-    /// Fetch the timeline for a single profile (JSON output)
-    Timeline {
-        #[arg(help = "Profile ID")]
-        profile_id: String,
-    },
-    /// Report per-service profiling utilization
-    Utilization {
-        #[arg(long, default_value = "*", help = "Profile search query")]
-        query: String,
-        #[arg(long, default_value = "1h", help = "Start time")]
-        from: String,
-        #[arg(long, default_value = "now", help = "End time")]
-        to: String,
-        #[arg(long, default_value = "100", help = "Maximum services to return")]
-        limit: u32,
-    },
     /// Compute a call graph (JSON output)
     Callgraph {
         #[arg(long, default_value = "*", help = "Profile search query")]
@@ -8257,6 +8187,67 @@ enum ProfilingActions {
         #[arg(long, default_value = "now", help = "End time")]
         to: String,
         #[arg(long, default_value = "100", help = "Node limit")]
+        limit: u32,
+    },
+    /// Download a profile archive
+    Download {
+        #[arg(help = "Profile ID")]
+        profile_id: String,
+        #[arg(short = 'o', long, help = "Output path (writes to stdout if omitted)")]
+        output: Option<String>,
+    },
+    /// Enumerate values for a field
+    Fields {
+        #[arg(long, help = "Field name (required)")]
+        field: String,
+        #[arg(long, default_value = "*", help = "Profile search query")]
+        query: String,
+        #[arg(long, default_value = "15m", help = "Start time")]
+        from: String,
+        #[arg(long, default_value = "now", help = "End time")]
+        to: String,
+        #[arg(long, default_value = "100", help = "Maximum values to return")]
+        limit: u32,
+    },
+    /// Get profile metadata
+    Info {
+        #[arg(help = "Profile ID")]
+        profile_id: String,
+        #[arg(long, help = "Event ID scope (optional)")]
+        event_id: Option<String>,
+    },
+    /// List surfaced profiling insights
+    Insights {
+        #[arg(long, default_value = "*", help = "Profile search query")]
+        query: String,
+        #[arg(long, default_value = "1h", help = "Start time")]
+        from: String,
+        #[arg(long, default_value = "now", help = "End time")]
+        to: String,
+        #[arg(long, default_value = "100", help = "Maximum insights to return")]
+        limit: u32,
+    },
+    /// List profiles matching a query
+    List {
+        #[arg(long, default_value = "*", help = "Profile search query")]
+        query: String,
+        #[arg(
+            long,
+            default_value = "15m",
+            help = "Start time: 1h, 5min, 2hours, RFC3339, Unix timestamp, or 'now'"
+        )]
+        from: String,
+        #[arg(
+            long,
+            default_value = "now",
+            help = "End time: 1h, 5min, 2hours, RFC3339, Unix timestamp, or 'now'"
+        )]
+        to: String,
+        #[arg(long, help = "Field to sort by (e.g. 'start', 'duration')")]
+        sort_field: Option<String>,
+        #[arg(long, default_value = "desc", help = "Sort order: asc or desc")]
+        sort_order: String,
+        #[arg(long, default_value = "100", help = "Maximum profiles to return")]
         limit: u32,
     },
     /// Save a query as a favorite
@@ -8277,12 +8268,21 @@ enum ProfilingActions {
         )]
         limit: u32,
     },
-    /// Download a profile archive
-    Download {
+    /// Fetch the timeline for a single profile (JSON output)
+    Timeline {
         #[arg(help = "Profile ID")]
         profile_id: String,
-        #[arg(short = 'o', long, help = "Output path (writes to stdout if omitted)")]
-        output: Option<String>,
+    },
+    /// Report per-service profiling utilization
+    Utilization {
+        #[arg(long, default_value = "*", help = "Profile search query")]
+        query: String,
+        #[arg(long, default_value = "1h", help = "Start time")]
+        from: String,
+        #[arg(long, default_value = "now", help = "End time")]
+        to: String,
+        #[arg(long, default_value = "100", help = "Maximum services to return")]
+        limit: u32,
     },
 }
 
@@ -12693,57 +12693,6 @@ async fn main_inner() -> anyhow::Result<()> {
         Commands::Profiling { action } => {
             cfg.validate_auth()?;
             match action {
-                ProfilingActions::List {
-                    query,
-                    from,
-                    to,
-                    sort_field,
-                    sort_order,
-                    limit,
-                } => {
-                    commands::profiling::list(&cfg, query, from, to, sort_field, sort_order, limit)
-                        .await?;
-                }
-                ProfilingActions::Info {
-                    profile_id,
-                    event_id,
-                } => {
-                    commands::profiling::info(&cfg, &profile_id, event_id).await?;
-                }
-                ProfilingActions::Analysis {
-                    profile_id,
-                    event_id,
-                } => {
-                    commands::profiling::analysis(&cfg, &profile_id, event_id).await?;
-                }
-                ProfilingActions::Analytics {
-                    query,
-                    from,
-                    to,
-                    group_by,
-                    compute,
-                    limit,
-                } => {
-                    commands::profiling::analytics(&cfg, query, from, to, group_by, compute, limit)
-                        .await?;
-                }
-                ProfilingActions::Insights {
-                    query,
-                    from,
-                    to,
-                    limit,
-                } => {
-                    commands::profiling::insights(&cfg, query, from, to, limit).await?;
-                }
-                ProfilingActions::Fields {
-                    field,
-                    query,
-                    from,
-                    to,
-                    limit,
-                } => {
-                    commands::profiling::fields(&cfg, field, query, from, to, limit).await?;
-                }
                 ProfilingActions::Aggregate {
                     query,
                     profile_type,
@@ -12763,6 +12712,23 @@ async fn main_inner() -> anyhow::Result<()> {
                     )
                     .await?;
                 }
+                ProfilingActions::Analysis {
+                    profile_id,
+                    event_id,
+                } => {
+                    commands::profiling::analysis(&cfg, &profile_id, event_id).await?;
+                }
+                ProfilingActions::Analytics {
+                    query,
+                    from,
+                    to,
+                    group_by,
+                    compute,
+                    limit,
+                } => {
+                    commands::profiling::analytics(&cfg, query, from, to, group_by, compute, limit)
+                        .await?;
+                }
                 ProfilingActions::Breakdown {
                     profile_id,
                     query,
@@ -12770,17 +12736,6 @@ async fn main_inner() -> anyhow::Result<()> {
                     to,
                 } => {
                     commands::profiling::breakdown(&cfg, &profile_id, query, from, to).await?;
-                }
-                ProfilingActions::Timeline { profile_id } => {
-                    commands::profiling::timeline(&cfg, &profile_id).await?;
-                }
-                ProfilingActions::Utilization {
-                    query,
-                    from,
-                    to,
-                    limit,
-                } => {
-                    commands::profiling::utilization(&cfg, query, from, to, limit).await?;
                 }
                 ProfilingActions::Callgraph {
                     query,
@@ -12790,6 +12745,43 @@ async fn main_inner() -> anyhow::Result<()> {
                     limit,
                 } => {
                     commands::profiling::callgraph(&cfg, query, profile_type, from, to, limit)
+                        .await?;
+                }
+                ProfilingActions::Download { profile_id, output } => {
+                    commands::profiling::download(&cfg, &profile_id, output).await?;
+                }
+                ProfilingActions::Fields {
+                    field,
+                    query,
+                    from,
+                    to,
+                    limit,
+                } => {
+                    commands::profiling::fields(&cfg, field, query, from, to, limit).await?;
+                }
+                ProfilingActions::Info {
+                    profile_id,
+                    event_id,
+                } => {
+                    commands::profiling::info(&cfg, &profile_id, event_id).await?;
+                }
+                ProfilingActions::Insights {
+                    query,
+                    from,
+                    to,
+                    limit,
+                } => {
+                    commands::profiling::insights(&cfg, query, from, to, limit).await?;
+                }
+                ProfilingActions::List {
+                    query,
+                    from,
+                    to,
+                    sort_field,
+                    sort_order,
+                    limit,
+                } => {
+                    commands::profiling::list(&cfg, query, from, to, sort_field, sort_order, limit)
                         .await?;
                 }
                 ProfilingActions::SaveFavorite {
@@ -12802,8 +12794,16 @@ async fn main_inner() -> anyhow::Result<()> {
                     commands::profiling::save_favorite(&cfg, query, from, to, query_id, limit)
                         .await?;
                 }
-                ProfilingActions::Download { profile_id, output } => {
-                    commands::profiling::download(&cfg, &profile_id, output).await?;
+                ProfilingActions::Timeline { profile_id } => {
+                    commands::profiling::timeline(&cfg, &profile_id).await?;
+                }
+                ProfilingActions::Utilization {
+                    query,
+                    from,
+                    to,
+                    limit,
+                } => {
+                    commands::profiling::utilization(&cfg, query, from, to, limit).await?;
                 }
             }
         }
