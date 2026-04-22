@@ -59,6 +59,7 @@ pup <domain> <subgroup> <action> [options] # Nested commands
 | containers | list, images (list) | src/commands/containers.rs | ✅ |
 | costs | datadog (projected, attribution, by-org, aws-config, azure-config, gcp-config), ccm (custom-costs, tag-descriptions, tag-metadata, tags, tag-keys, budgets, commitments) | src/commands/cost.rs, src/commands/cost_ccm.rs | ✅ |
 | product-analytics | events send | src/commands/product_analytics.rs | ✅ |
+| profiling | aggregate, analysis, analytics, breakdown, callgraph, download, fields, info, list, save-favorite, timeline | src/commands/profiling.rs | ✅ |
 | datasets | list, get, create, update, delete | src/commands/datasets.rs | ✅ |
 | data-deletion | requests (list, create, cancel) | src/commands/data_deletion.rs | ✅ |
 | data-governance | scanner-rules (list) | src/commands/data_governance.rs | ✅ |
@@ -81,11 +82,13 @@ pup <domain> <subgroup> <action> [options] # Nested commands
 | change-requests | create, get, update, create-branch, decisions (update, delete) | src/commands/change_management.rs | ✅ |
 | app-builder | list, get, create, update, delete, delete-batch, publish, unpublish | src/commands/app_builder.rs | ✅ |
 
-**Summary:** 58 working, 0 API-blocked, 0 placeholders
+**Summary:** 59 working, 0 API-blocked, 0 placeholders
 
 **Note:** RUM command is fully operational. Apps and sessions work completely. Metrics and retention-filters support list/get operations (create/update/delete operations pending due to complex API type structures).
 
 **Auth note:** All workflow commands require `DD_API_KEY` + `DD_APP_KEY`. OAuth2 bearer tokens are not supported for workflow operations.
+
+**Auth note (profiling):** All `pup profiling` commands require `DD_API_KEY` + `DD_APP_KEY`. No OAuth2 scope is declared for Continuous Profiler endpoints, so bearer tokens are not supported.
 
 ## Common Patterns
 
@@ -154,6 +157,7 @@ pup infrastructure hosts list
 - **infrastructure** - Host inventory (hosts list, hosts get)
 - **network** - Network monitoring (flows list, devices list/get/interfaces/tags, interfaces list/update)
 - **tags** - Host tag management (list, get, add, update, delete)
+- **profiling** - Continuous Profiler data (aggregate, analysis, analytics, breakdown, callgraph, download, fields, info, list, save-favorite, timeline)
 
 ### Security & Compliance
 - **security** - Security monitoring (rules, signals, findings, content-packs, risk-scores)
