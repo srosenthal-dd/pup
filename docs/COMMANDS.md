@@ -88,6 +88,8 @@ pup <domain> <subgroup> <action> [options] # Nested commands
 
 **Auth note:** All workflow commands require `DD_API_KEY` + `DD_APP_KEY`. OAuth2 bearer tokens are not supported for workflow operations.
 
+**Auth note (profiling):** All `pup profiling` commands require `DD_API_KEY` + `DD_APP_KEY`. No OAuth2 scope is declared for Continuous Profiler endpoints, so bearer tokens are not supported.
+
 ## Common Patterns
 
 ### List Operations

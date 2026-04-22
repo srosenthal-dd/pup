@@ -581,6 +581,24 @@ static OAUTH_EXCLUDED_ENDPOINTS: &[EndpointRequirement] = &[
         path: "/api/v2/cost/gcp_uc_config/",
         method: "DELETE",
     },
+    // Profiling (4)
+    // No OAuth scope is declared for Continuous Profiler endpoints; force API-key auth.
+    EndpointRequirement {
+        path: "/profiling/api/v1/",
+        method: "POST",
+    },
+    EndpointRequirement {
+        path: "/profiling/api/v1/",
+        method: "GET",
+    },
+    EndpointRequirement {
+        path: "/api/unstable/profiles/",
+        method: "POST",
+    },
+    EndpointRequirement {
+        path: "/api/ui/profiling/",
+        method: "GET",
+    },
 ];
 
 // ---------------------------------------------------------------------------
@@ -980,7 +998,7 @@ mod tests {
 
     #[test]
     fn test_oauth_excluded_count() {
-        assert_eq!(OAUTH_EXCLUDED_ENDPOINTS.len(), 48);
+        assert_eq!(OAUTH_EXCLUDED_ENDPOINTS.len(), 52);
     }
 
     #[test]
@@ -1095,6 +1113,65 @@ mod tests {
         assert!(!requires_api_key_fallback(
             "POST",
             "/api/v2/error_tracking/issues/search"
+        ));
+    }
+
+    #[test]
+    fn test_requires_api_key_fallback_profiling() {
+        // /profiling/api/v1/*
+        assert!(requires_api_key_fallback(
+            "POST",
+            "/profiling/api/v1/aggregate"
+        ));
+        assert!(requires_api_key_fallback(
+            "GET",
+            "/profiling/api/v1/profiles/abc/info"
+        ));
+        assert!(requires_api_key_fallback(
+            "GET",
+            "/profiling/api/v1/profiles/abc/analysis"
+        ));
+        assert!(requires_api_key_fallback(
+            "POST",
+            "/profiling/api/v1/profiles/abc/breakdown"
+        ));
+        assert!(requires_api_key_fallback(
+            "POST",
+            "/profiling/api/v1/profiles/abc/timeline"
+        ));
+        // /api/unstable/profiles/*
+        assert!(requires_api_key_fallback(
+            "POST",
+            "/api/unstable/profiles/list"
+        ));
+        assert!(requires_api_key_fallback(
+            "POST",
+            "/api/unstable/profiles/analytics"
+        ));
+        assert!(requires_api_key_fallback(
+            "POST",
+            "/api/unstable/profiles/insights"
+        ));
+        assert!(requires_api_key_fallback(
+            "POST",
+            "/api/unstable/profiles/callgraph"
+        ));
+        assert!(requires_api_key_fallback(
+            "POST",
+            "/api/unstable/profiles/interactive-analytics/field"
+        ));
+        assert!(requires_api_key_fallback(
+            "POST",
+            "/api/unstable/profiles/service/utilization"
+        ));
+        assert!(requires_api_key_fallback(
+            "POST",
+            "/api/unstable/profiles/save-favorite"
+        ));
+        // /api/ui/profiling/*
+        assert!(requires_api_key_fallback(
+            "GET",
+            "/api/ui/profiling/profiles/abc/download"
         ));
     }
 }

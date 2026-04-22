@@ -2054,7 +2054,9 @@ enum Commands {
     ///   pup profiling download <profile-id> -o profile.zip
     ///
     /// AUTHENTICATION:
-    ///   Requires either OAuth2 authentication or API keys.
+    ///   Requires DD_API_KEY + DD_APP_KEY. OAuth2 bearer tokens are not
+    ///   supported for Continuous Profiler endpoints — no OAuth scope is
+    ///   declared for them.
     #[command(verbatim_doc_comment)]
     Profiling {
         #[command(subcommand)]
