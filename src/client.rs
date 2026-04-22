@@ -168,10 +168,14 @@ static UNSTABLE_OPS: &[&str] = &[
     "v2.get_incident_service",
     "v2.list_incident_services",
     "v2.update_incident_service",
-    // Fleet Automation (14)
+    // Fleet Automation (18)
     "v2.list_fleet_agents",
     "v2.get_fleet_agent_info",
     "v2.list_fleet_agent_versions",
+    "v2.list_fleet_agent_tracers",
+    "v2.list_fleet_tracers",
+    "v2.list_fleet_clusters",
+    "v2.list_fleet_instrumented_pods",
     "v2.list_fleet_deployments",
     "v2.get_fleet_deployment",
     "v2.create_fleet_deployment_configure",
@@ -412,6 +416,19 @@ static OAUTH_EXCLUDED_ENDPOINTS: &[EndpointRequirement] = &[
         path: "/api/v2/application_keys/",
         method: "PATCH",
     },
+    // DDSQL editor tools (3)
+    EndpointRequirement {
+        path: "/api/unstable/ddsql-editor/tools/ddsql-docs",
+        method: "GET",
+    },
+    EndpointRequirement {
+        path: "/api/unstable/ddsql-editor/tools/table-names",
+        method: "GET",
+    },
+    EndpointRequirement {
+        path: "/api/unstable/ddsql-editor/tools/table-data",
+        method: "POST",
+    },
     EndpointRequirement {
         path: "/api/v2/application_keys/",
         method: "DELETE",
@@ -601,22 +618,15 @@ pub async fn raw_request(
 ) -> anyhow::Result<HttpResponse> {
     let url = format!("{}{}", cfg.api_base_url(), path);
     let client = reqwest::Client::new();
-    let method = reqwest::Method::from_bytes(method.to_uppercase().as_bytes())
+    let method_name = method.to_uppercase();
+    let method = reqwest::Method::from_bytes(method_name.as_bytes())
         .map_err(|_| anyhow::anyhow!("unsupported HTTP method: {method}"))?;
     let mut req = client.request(method, &url);
     if !query.is_empty() {
         req = req.query(query);
     }
 
-    if let Some(token) = &cfg.access_token {
-        req = req.header("Authorization", format!("Bearer {token}"));
-    } else if let (Some(api_key), Some(app_key)) = (&cfg.api_key, &cfg.app_key) {
-        req = req
-            .header("DD-API-KEY", api_key.as_str())
-            .header("DD-APPLICATION-KEY", app_key.as_str());
-    } else {
-        anyhow::bail!("no authentication configured");
-    }
+    req = apply_auth(req, cfg, &method_name, path)?;
 
     req = req
         .header("Accept", accept)
@@ -673,15 +683,7 @@ pub async fn raw_get(
     let client = reqwest::Client::new();
     let mut req = client.get(&url);
 
-    if let Some(token) = &cfg.access_token {
-        req = req.header("Authorization", format!("Bearer {token}"));
-    } else if let (Some(api_key), Some(app_key)) = (&cfg.api_key, &cfg.app_key) {
-        req = req
-            .header("DD-API-KEY", api_key.as_str())
-            .header("DD-APPLICATION-KEY", app_key.as_str());
-    } else {
-        anyhow::bail!("no authentication configured");
-    }
+    req = apply_auth(req, cfg, "GET", path)?;
 
     if !query.is_empty() {
         req = req.query(query);
@@ -712,15 +714,7 @@ pub async fn raw_patch(
     let client = reqwest::Client::new();
     let mut req = client.patch(&url);
 
-    if let Some(token) = &cfg.access_token {
-        req = req.header("Authorization", format!("Bearer {token}"));
-    } else if let (Some(api_key), Some(app_key)) = (&cfg.api_key, &cfg.app_key) {
-        req = req
-            .header("DD-API-KEY", api_key.as_str())
-            .header("DD-APPLICATION-KEY", app_key.as_str());
-    } else {
-        anyhow::bail!("no authentication configured");
-    }
+    req = apply_auth(req, cfg, "PATCH", path)?;
 
     let resp = req
         .header("Content-Type", "application/json")
@@ -745,7 +739,7 @@ pub async fn raw_post(
     body: serde_json::Value,
 ) -> anyhow::Result<serde_json::Value> {
     let url = format!("{}{}", cfg.api_base_url(), path);
-    raw_post_impl(cfg, &url, body, useragent::get()).await
+    raw_post_impl(cfg, path, &url, body, useragent::get()).await
 }
 
 /// Like `raw_post`, but with a custom User-Agent string for audit log differentiation.
@@ -756,11 +750,12 @@ pub async fn raw_post_with_ua(
     ua: String,
 ) -> anyhow::Result<serde_json::Value> {
     let url = format!("{}{}", cfg.api_base_url(), path);
-    raw_post_impl(cfg, &url, body, ua).await
+    raw_post_impl(cfg, path, &url, body, ua).await
 }
 
 async fn raw_post_impl(
     cfg: &Config,
+    path: &str,
     url: &str,
     body: serde_json::Value,
     ua: String,
@@ -768,15 +763,7 @@ async fn raw_post_impl(
     let client = reqwest::Client::new();
     let mut req = client.post(url);
 
-    if let Some(token) = &cfg.access_token {
-        req = req.header("Authorization", format!("Bearer {token}"));
-    } else if let (Some(api_key), Some(app_key)) = (&cfg.api_key, &cfg.app_key) {
-        req = req
-            .header("DD-API-KEY", api_key.as_str())
-            .header("DD-APPLICATION-KEY", app_key.as_str());
-    } else {
-        anyhow::bail!("no authentication configured");
-    }
+    req = apply_auth(req, cfg, "POST", path)?;
 
     let resp = req
         .header("Content-Type", "application/json")
@@ -791,6 +778,40 @@ async fn raw_post_impl(
         anyhow::bail!("POST {url} failed (HTTP {status}): {body}");
     }
     Ok(resp.json().await?)
+}
+
+fn apply_auth(
+    mut req: reqwest::RequestBuilder,
+    cfg: &Config,
+    method: &str,
+    path: &str,
+) -> anyhow::Result<reqwest::RequestBuilder> {
+    if requires_api_key_fallback(method, path) {
+        if let (Some(api_key), Some(app_key)) = (&cfg.api_key, &cfg.app_key) {
+            req = req
+                .header("DD-API-KEY", api_key.as_str())
+                .header("DD-APPLICATION-KEY", app_key.as_str());
+            return Ok(req);
+        }
+
+        anyhow::bail!(
+            "{method} {path} requires DD_API_KEY and DD_APP_KEY; OAuth2 bearer tokens are not supported"
+        );
+    }
+
+    if let Some(token) = &cfg.access_token {
+        req = req.header("Authorization", format!("Bearer {token}"));
+        return Ok(req);
+    }
+
+    if let (Some(api_key), Some(app_key)) = (&cfg.api_key, &cfg.app_key) {
+        req = req
+            .header("DD-API-KEY", api_key.as_str())
+            .header("DD-APPLICATION-KEY", app_key.as_str());
+        return Ok(req);
+    }
+
+    anyhow::bail!("no authentication configured")
 }
 
 /// Like `raw_post`, but returns the parsed JSON body even on non-2xx responses.
@@ -962,12 +983,12 @@ mod tests {
 
     #[test]
     fn test_unstable_ops_count() {
-        assert_eq!(UNSTABLE_OPS.len(), 143);
+        assert_eq!(UNSTABLE_OPS.len(), 147);
     }
 
     #[test]
     fn test_oauth_excluded_count() {
-        assert_eq!(OAUTH_EXCLUDED_ENDPOINTS.len(), 45);
+        assert_eq!(OAUTH_EXCLUDED_ENDPOINTS.len(), 48);
     }
 
     #[test]
@@ -1058,6 +1079,22 @@ mod tests {
         assert!(requires_api_key_fallback(
             "DELETE",
             "/api/v2/api_keys/key-123"
+        ));
+    }
+
+    #[test]
+    fn test_requires_api_key_fallback_ddsql_editor_tools() {
+        assert!(requires_api_key_fallback(
+            "GET",
+            "/api/unstable/ddsql-editor/tools/ddsql-docs"
+        ));
+        assert!(requires_api_key_fallback(
+            "GET",
+            "/api/unstable/ddsql-editor/tools/table-names"
+        ));
+        assert!(requires_api_key_fallback(
+            "POST",
+            "/api/unstable/ddsql-editor/tools/table-data"
         ));
     }
 

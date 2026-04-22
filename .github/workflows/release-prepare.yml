@@ -1,0 +1,151 @@
+name: Prepare Release
+
+on:
+  schedule:
+    - cron: '0 0 * * 1-5'  # Mon–Fri at 00:00 UTC
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump type'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Gate: on scheduled runs, skip if no commits since the last tag.
+  # Manual workflow_dispatch runs always proceed.
+  # ---------------------------------------------------------------------------
+  check:
+    name: Check for changes
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Check for changes since last tag
+        id: check
+        run: |
+          CURRENT_TAG=$(git describe --tags --abbrev=0)
+          COMMITS=$(git rev-list "${CURRENT_TAG}..HEAD" --count)
+          echo "Commits since ${CURRENT_TAG}: ${COMMITS}"
+          if [[ "$COMMITS" == "0" && "${{ github.event_name }}" == "schedule" ]]; then
+            echo "No commits since ${CURRENT_TAG} — skipping scheduled release."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Release: bump, commit to main, tag. Triggers release.yml via the tag push.
+  # ---------------------------------------------------------------------------
+  release:
+    name: Bump, Commit, Tag
+    needs: check
+    if: needs.check.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: DataDog/dd-octo-sts-action@96a25462dbcb10ebf0bfd6e2ccc917d2ab235b9a # v1.0.4
+        id: octo-sts
+        with:
+          scope: datadog-labs/pup
+          policy: release
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          token: ${{ steps.octo-sts.outputs.token }}
+
+      - name: Compute next version
+        id: version
+        run: |
+          CURRENT_TAG=$(git describe --tags --abbrev=0)
+          VERSION="${CURRENT_TAG#v}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+          BUMP="${{ inputs.bump || 'patch' }}"
+          case "$BUMP" in
+            major) MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR+1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH+1)) ;;
+          esac
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          NEW_TAG="v${NEW_VERSION}"
+          echo "current-tag=${CURRENT_TAG}" >> "$GITHUB_OUTPUT"
+          echo "new-version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "new-tag=${NEW_TAG}" >> "$GITHUB_OUTPUT"
+          echo "Current: ${CURRENT_TAG}"
+          echo "Next:    ${NEW_TAG} (${BUMP} bump)"
+
+      - name: Preflight check
+        run: |
+          NEW_TAG="${{ steps.version.outputs.new-tag }}"
+          if git tag -l "$NEW_TAG" | grep -q .; then
+            echo "::error::Tag '${NEW_TAG}' already exists."
+            exit 1
+          fi
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: ${{ runner.os }}-cargo-release-prep-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-release-prep-
+
+      - name: Bump Cargo.toml
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.new-version }}"
+          sed -i "s/^version = \"[0-9]*\.[0-9]*\.[0-9]*\"/version = \"${NEW_VERSION}\"/" Cargo.toml
+          CARGO_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          if [[ "$CARGO_VERSION" != "$NEW_VERSION" ]]; then
+            echo "::error::Cargo.toml version update failed (got '${CARGO_VERSION}', expected '${NEW_VERSION}')"
+            exit 1
+          fi
+
+      - name: Refresh Cargo.lock
+        run: cargo check --quiet 2>&1 | grep -v "^$" || true
+
+      - name: Commit to main and tag
+        run: |
+          NEW_TAG="${{ steps.version.outputs.new-tag }}"
+          CURRENT_TAG="${{ steps.version.outputs.current-tag }}"
+          NEW_VERSION="${{ steps.version.outputs.new-version }}"
+
+          git config user.name "dd-octo-sts[bot]"
+          git config user.email "dd-octo-sts[bot]@users.noreply.github.com"
+
+          git add Cargo.toml Cargo.lock
+          git commit -m "$(cat <<EOF
+          chore(release): bump version to ${NEW_TAG}
+
+          - Update Cargo.toml package version ${CURRENT_TAG#v} → ${NEW_VERSION}
+          - Refresh Cargo.lock
+          EOF
+          )"
+
+          git push origin main
+
+          git tag -a "$NEW_TAG" -m "$NEW_TAG"
+          git push origin "$NEW_TAG"
+          echo "Tagged and pushed ${NEW_TAG}"

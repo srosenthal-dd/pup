@@ -1054,16 +1054,23 @@ enum Commands {
     /// DDSQL lets you query metrics, logs, and reference tables using SQL syntax.
     ///
     /// COMMANDS:
-    ///   table        Execute query and return table data (supports -o json/yaml/table/csv)
-    ///   time-series  Execute query and return time series data
+    ///   table         Execute query and return table data (supports -o json/yaml/table/csv)
+    ///   time-series   Execute query and return time series data
+    ///   spec          Print DDSQL reference guidance used by the editor tooling
+    ///   schema        Discover DDSQL tables and columns
     ///
     /// EXAMPLES:
     ///   pup ddsql table --query "SELECT * FROM reference_tables.offices_ips LIMIT 5"
     ///   pup ddsql table --query "SELECT * FROM reference_tables.offices_ips" -o csv > results.csv
+    ///   cat query.sql | pup ddsql table --query - -o table
     ///   pup ddsql time-series --query "SELECT avg(system.cpu.user) FROM metrics GROUP BY host" --from 1h --interval 300000
+    ///   pup ddsql spec
+    ///   pup ddsql schema tables --query ec2 --limit 100
+    ///   pup ddsql schema columns --table-id public.aws.ec2_instance
     ///
     /// AUTHENTICATION:
-    ///   Requires OAuth2 (via 'pup auth login') or API key + Application key.
+    ///   Query commands support OAuth2 (via 'pup auth login') or API key + Application key.
+    ///   Discovery commands (`spec`, `schema ...`) currently require DD_API_KEY + DD_APP_KEY.
     #[command(verbatim_doc_comment)]
     Ddsql {
         #[command(subcommand)]
@@ -3745,7 +3752,11 @@ enum DbmSamplesActions {
 enum DdsqlActions {
     /// Execute DDSQL query and return columnar table data
     Table {
-        #[arg(long, help = "DDSQL query string")]
+        #[arg(
+            long,
+            allow_hyphen_values = true,
+            help = "DDSQL query string, or use --query - to read from stdin"
+        )]
         query: String,
         #[arg(
             long,
@@ -3765,7 +3776,11 @@ enum DdsqlActions {
     /// Execute DDSQL query and return time series data
     #[command(name = "time-series")]
     TimeSeries {
-        #[arg(long, help = "DDSQL query string")]
+        #[arg(
+            long,
+            allow_hyphen_values = true,
+            help = "DDSQL query string, or use --query - to read from stdin"
+        )]
         query: String,
         #[arg(long, default_value = "1h", help = "Start time")]
         from: String,
@@ -3779,6 +3794,46 @@ enum DdsqlActions {
             help = "Maximum number of rows to return"
         )]
         limit: i32,
+    },
+    /// Print DDSQL reference guidance from the editor tooling
+    Spec,
+    /// Discover DDSQL tables and columns
+    Schema {
+        #[command(subcommand)]
+        action: DdsqlSchemaActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum DdsqlSchemaActions {
+    /// List DDSQL tables visible to your org
+    Tables {
+        #[arg(long, help = "Case-insensitive substring filter for table names")]
+        query: Option<String>,
+        #[arg(
+            long,
+            default_value_t = 100,
+            help = "Maximum number of tables to return"
+        )]
+        limit: usize,
+        #[arg(long, default_value_t = 0, help = "Number of tables to skip")]
+        offset: usize,
+    },
+    /// Show columns for a DDSQL table
+    Columns {
+        #[arg(
+            long,
+            help = "Table ID, for example public.aws.ec2_instance or reference_tables.my_table"
+        )]
+        table_id: String,
+        #[arg(
+            long,
+            default_value_t = 100,
+            help = "Maximum number of columns to return"
+        )]
+        limit: usize,
+        #[arg(long, default_value_t = 0, help = "Number of columns to skip")]
+        offset: usize,
     },
 }
 
@@ -4954,11 +5009,14 @@ enum SoftwareCatalogEntityActions {
     /// List catalog entities
     ///
     /// EXAMPLES:
-    ///   pup software-catalog entities list --filter-kind service
+    ///   pup software-catalog entities list --filter shop-
+    ///   pup software-catalog entities list --filter-kind service --filter shop-
     ///   pup software-catalog entities list --filter-owner team-claude
     ///   pup software-catalog entities list --filter-ref service:shop-frontend
     #[command(verbatim_doc_comment)]
     List {
+        #[arg(long, help = "Filter entities by name (substring match)")]
+        filter: Option<String>,
         #[arg(long, help = "Filter entities by kind (e.g. service, datastore)")]
         filter_kind: Option<String>,
         #[arg(long, help = "Filter entities by owner")]
@@ -5558,8 +5616,6 @@ enum CicdFlakyTestActions {
         cursor: Option<String>,
         #[arg(long, default_value_t = 100, help = "Maximum results")]
         limit: i64,
-        #[arg(long, default_value_t = false, help = "Include status history")]
-        include_history: bool,
         #[arg(
             long,
             help = "Sort order (fqn, -fqn, first_flaked, -first_flaked, last_flaked, -last_flaked, failure_rate, -failure_rate, pipelines_failed, -pipelines_failed, pipelines_duration_lost, -pipelines_duration_lost)"
@@ -5995,6 +6051,22 @@ enum FleetActions {
         #[command(subcommand)]
         action: FleetScheduleActions,
     },
+    /// Manage fleet clusters
+    Clusters {
+        #[command(subcommand)]
+        action: FleetClusterActions,
+    },
+    /// Manage fleet tracers
+    Tracers {
+        #[command(subcommand)]
+        action: FleetTracerActions,
+    },
+    /// Manage fleet instrumented pods
+    #[command(name = "instrumented-pods")]
+    InstrumentedPods {
+        #[command(subcommand)]
+        action: FleetInstrumentedPodsActions,
+    },
 }
 
 #[derive(Subcommand)]
@@ -6013,6 +6085,18 @@ enum FleetAgentActions {
     Get { agent_key: String },
     /// List available agent versions
     Versions,
+    /// List tracers for a specific agent
+    Tracers {
+        agent_key: String,
+        #[arg(long)]
+        page_size: Option<i64>,
+        #[arg(long, help = "Page number (0-indexed)")]
+        page_number: Option<i64>,
+        #[arg(long, help = "Sort by attribute (e.g. service, language, hostname)")]
+        sort_attribute: Option<String>,
+        #[arg(long, default_value_t = false, help = "Sort descending")]
+        sort_descending: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -6059,6 +6143,62 @@ enum FleetScheduleActions {
     Delete { schedule_id: String },
     /// Trigger a fleet schedule
     Trigger { schedule_id: String },
+}
+
+#[derive(Subcommand)]
+enum FleetTracerActions {
+    /// List tracers across the fleet.
+    ///
+    /// Returns telemetry-derived service names, language, tracer version, and runtime IDs.
+    /// Note: service names here come from the SDK telemetry pipeline and may differ from
+    /// span-derived names in APM (e.g. pup apm services list).
+    List {
+        #[arg(
+            long,
+            help = "Filter query (e.g. env:prod, hostname:my-host, service:web-api)"
+        )]
+        filter: Option<String>,
+        #[arg(long)]
+        page_size: Option<i64>,
+        #[arg(long, help = "Page number (0-indexed)")]
+        page_number: Option<i64>,
+        #[arg(long, help = "Sort by attribute (e.g. service, language, hostname)")]
+        sort_attribute: Option<String>,
+        #[arg(long, default_value_t = false, help = "Sort descending")]
+        sort_descending: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum FleetClusterActions {
+    /// List Kubernetes clusters in the fleet.
+    ///
+    /// Returns clusters with node counts, agent versions, enabled products, and services.
+    /// Use this to discover cluster names for use with instrumented-pods.
+    List {
+        #[arg(long, help = "Filter query (e.g. cluster_name:production, env:prod)")]
+        filter: Option<String>,
+        #[arg(long)]
+        page_size: Option<i64>,
+        #[arg(long, help = "Page number (0-indexed)")]
+        page_number: Option<i64>,
+        #[arg(long, help = "Sort by attribute (e.g. cluster_name, node_count)")]
+        sort_attribute: Option<String>,
+        #[arg(long, default_value_t = false, help = "Sort descending")]
+        sort_descending: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum FleetInstrumentedPodsActions {
+    /// List instrumented pods in a Kubernetes cluster.
+    ///
+    /// Returns pod groups with namespace, owner, injection annotations, and pod names.
+    /// Use this to verify the Admission Controller targeted pods for SSI injection.
+    List {
+        #[arg(help = "Kubernetes cluster name (required)")]
+        cluster_name: String,
+    },
 }
 
 // ---- Data Deletion ----
@@ -10609,12 +10749,14 @@ async fn main_inner() -> anyhow::Result<()> {
             match action {
                 SoftwareCatalogActions::Entities { action } => match action {
                     SoftwareCatalogEntityActions::List {
+                        filter,
                         filter_kind,
                         filter_owner,
                         filter_ref,
                     } => {
                         commands::software_catalog::entities_list(
                             &cfg,
+                            filter,
                             filter_kind,
                             filter_owner,
                             filter_ref,
@@ -10961,18 +11103,10 @@ async fn main_inner() -> anyhow::Result<()> {
                         query,
                         cursor,
                         limit,
-                        include_history,
                         sort,
                     } => {
-                        commands::cicd::flaky_tests_search(
-                            &cfg,
-                            query,
-                            cursor,
-                            limit,
-                            include_history,
-                            sort,
-                        )
-                        .await?;
+                        commands::cicd::flaky_tests_search(&cfg, query, cursor, limit, sort)
+                            .await?;
                     }
                     CicdFlakyTestActions::Update { file } => {
                         commands::cicd::flaky_tests_update(&cfg, &file).await?;
@@ -11129,6 +11263,23 @@ async fn main_inner() -> anyhow::Result<()> {
                         commands::fleet::agents_get(&cfg, &agent_key).await?;
                     }
                     FleetAgentActions::Versions => commands::fleet::agents_versions(&cfg).await?,
+                    FleetAgentActions::Tracers {
+                        agent_key,
+                        page_size,
+                        page_number,
+                        sort_attribute,
+                        sort_descending,
+                    } => {
+                        commands::fleet::agents_tracers_list(
+                            &cfg,
+                            agent_key,
+                            page_size,
+                            page_number,
+                            sort_attribute,
+                            sort_descending,
+                        )
+                        .await?;
+                    }
                 },
                 FleetActions::Deployments { action } => match action {
                     FleetDeploymentActions::List { page_size } => {
@@ -11163,6 +11314,49 @@ async fn main_inner() -> anyhow::Result<()> {
                     }
                     FleetScheduleActions::Trigger { schedule_id } => {
                         commands::fleet::schedules_trigger(&cfg, &schedule_id).await?;
+                    }
+                },
+                FleetActions::Clusters { action } => match action {
+                    FleetClusterActions::List {
+                        filter,
+                        page_size,
+                        page_number,
+                        sort_attribute,
+                        sort_descending,
+                    } => {
+                        commands::fleet::clusters_list(
+                            &cfg,
+                            filter,
+                            page_size,
+                            page_number,
+                            sort_attribute,
+                            sort_descending,
+                        )
+                        .await?;
+                    }
+                },
+                FleetActions::Tracers { action } => match action {
+                    FleetTracerActions::List {
+                        filter,
+                        page_size,
+                        page_number,
+                        sort_attribute,
+                        sort_descending,
+                    } => {
+                        commands::fleet::tracers_list(
+                            &cfg,
+                            filter,
+                            page_size,
+                            page_number,
+                            sort_attribute,
+                            sort_descending,
+                        )
+                        .await?;
+                    }
+                },
+                FleetActions::InstrumentedPods { action } => match action {
+                    FleetInstrumentedPodsActions::List { cluster_name } => {
+                        commands::fleet::instrumented_pods_list(&cfg, cluster_name).await?;
                     }
                 },
             }
@@ -12287,6 +12481,26 @@ async fn main_inner() -> anyhow::Result<()> {
                 } => {
                     commands::ddsql::time_series(&cfg, &query, &from, &to, interval, limit).await?;
                 }
+                DdsqlActions::Spec => {
+                    commands::ddsql::spec(&cfg).await?;
+                }
+                DdsqlActions::Schema { action } => match action {
+                    DdsqlSchemaActions::Tables {
+                        query,
+                        limit,
+                        offset,
+                    } => {
+                        commands::ddsql::schema_tables(&cfg, query.as_deref(), limit, offset)
+                            .await?;
+                    }
+                    DdsqlSchemaActions::Columns {
+                        table_id,
+                        limit,
+                        offset,
+                    } => {
+                        commands::ddsql::schema_columns(&cfg, &table_id, limit, offset).await?;
+                    }
+                },
             }
         }
         // --- Investigations ---

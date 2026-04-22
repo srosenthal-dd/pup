@@ -50,12 +50,17 @@ pub async fn login(cfg: &Config, scopes: Vec<String>, subdomain: Option<&str>) -
     let existing_creds = with_storage(|store| store.load_client_credentials(site))?;
 
     let creds = match existing_creds {
-        Some(creds) => {
+        Some(creds) if creds.client_name == dcr::DCR_CLIENT_NAME => {
             eprintln!("✓ Using existing client registration");
             creds
         }
-        None => {
-            eprintln!("📝 Registering new OAuth2 client...");
+        other => {
+            if other.is_some() {
+                eprintln!("📝 Re-registering OAuth2 client (name changed)...");
+                with_storage(|store| store.delete_client_credentials(site))?;
+            } else {
+                eprintln!("📝 Registering new OAuth2 client...");
+            }
             let dcr_client = dcr::DcrClient::new(site);
             let creds = dcr_client.register(&redirect_uri, &scope_strs).await?;
             with_storage(|store| store.save_client_credentials(site, &creds))?;

@@ -96,7 +96,9 @@ jobs:
           for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
             (set -o pipefail
              echo "==> Starting ${target}"
-             cargo zigbuild --release --target "${target}" --features vendored-openssl 2>&1 \
+             ZIG_GLOBAL_CACHE_DIR=$(mktemp -d) \
+             ZIG_LOCAL_CACHE_DIR=$(mktemp -d) \
+               cargo zigbuild --release --target "${target}" --features vendored-openssl 2>&1 \
                | tee "/tmp/${target}.log"
             ) &
             PIDS+=($!)

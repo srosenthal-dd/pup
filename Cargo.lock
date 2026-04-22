@@ -821,7 +821,7 @@ checksum = "d7a1e2f27636f116493b8b860f5546edb47c8d8f8ea73e1d2a20be88e28d1fea"
 [[package]]
 name = "datadog-api-client"
 version = "0.29.0"
-source = "git+https://github.com/DataDog/datadog-api-client-rust?rev=8fa08ce098d0218b50be712d064f0c52006d6c19#8fa08ce098d0218b50be712d064f0c52006d6c19"
+source = "git+https://github.com/DataDog/datadog-api-client-rust?rev=d70b186e29175ba7e160fe77091cd8571950c553#d70b186e29175ba7e160fe77091cd8571950c553"
 dependencies = [
  "async-stream",
  "chrono",
@@ -2710,7 +2710,7 @@ dependencies = [
 
 [[package]]
 name = "pup"
-version = "0.49.2"
+version = "0.51.1"
 dependencies = [
  "aes-gcm 0.10.3",
  "anyhow",
@@ -2723,6 +2723,7 @@ dependencies = [
  "datadog-api-client",
  "dirs",
  "futures",
+ "futures-util",
  "getrandom 0.4.2",
  "http",
  "js-sys",

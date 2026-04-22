@@ -1,7 +1,8 @@
 use anyhow::Result;
 use datadog_api_client::datadogV2::api_fleet_automation::{
-    FleetAutomationAPI, GetFleetDeploymentOptionalParams, ListFleetAgentsOptionalParams,
-    ListFleetDeploymentsOptionalParams,
+    FleetAutomationAPI, GetFleetDeploymentOptionalParams, ListFleetAgentTracersOptionalParams,
+    ListFleetAgentsOptionalParams, ListFleetClustersOptionalParams,
+    ListFleetDeploymentsOptionalParams, ListFleetTracersOptionalParams,
 };
 
 use crate::client;
@@ -211,4 +212,122 @@ pub async fn schedules_trigger(cfg: &Config, schedule_id: &str) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("failed to trigger schedule: {e:?}"))?;
     println!("Schedule {schedule_id} triggered.");
     Ok(())
+}
+
+pub async fn tracers_list(
+    cfg: &Config,
+    filter: Option<String>,
+    page_size: Option<i64>,
+    page_number: Option<i64>,
+    sort_attribute: Option<String>,
+    sort_descending: bool,
+) -> Result<()> {
+    let dd_cfg = client::make_dd_config(cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
+        None => FleetAutomationAPI::with_config(dd_cfg),
+    };
+    let mut params = ListFleetTracersOptionalParams::default();
+    if let Some(f) = filter {
+        params = params.filter(f);
+    }
+    if let Some(ps) = page_size {
+        params = params.page_size(ps);
+    }
+    if let Some(pn) = page_number {
+        params = params.page_number(pn);
+    }
+    if let Some(sa) = sort_attribute {
+        params = params.sort_attribute(sa);
+    }
+    if sort_descending {
+        params = params.sort_descending(true);
+    }
+    let resp = api
+        .list_fleet_tracers(params)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to list fleet tracers: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn agents_tracers_list(
+    cfg: &Config,
+    agent_key: String,
+    page_size: Option<i64>,
+    page_number: Option<i64>,
+    sort_attribute: Option<String>,
+    sort_descending: bool,
+) -> Result<()> {
+    let dd_cfg = client::make_dd_config(cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
+        None => FleetAutomationAPI::with_config(dd_cfg),
+    };
+    let mut params = ListFleetAgentTracersOptionalParams::default();
+    if let Some(ps) = page_size {
+        params = params.page_size(ps);
+    }
+    if let Some(pn) = page_number {
+        params = params.page_number(pn);
+    }
+    if let Some(sa) = sort_attribute {
+        params = params.sort_attribute(sa);
+    }
+    if sort_descending {
+        params = params.sort_descending(true);
+    }
+    let resp = api
+        .list_fleet_agent_tracers(agent_key, params)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to list agent tracers: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn clusters_list(
+    cfg: &Config,
+    filter: Option<String>,
+    page_size: Option<i64>,
+    page_number: Option<i64>,
+    sort_attribute: Option<String>,
+    sort_descending: bool,
+) -> Result<()> {
+    let dd_cfg = client::make_dd_config(cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
+        None => FleetAutomationAPI::with_config(dd_cfg),
+    };
+    let mut params = ListFleetClustersOptionalParams::default();
+    if let Some(f) = filter {
+        params = params.filter(f);
+    }
+    if let Some(ps) = page_size {
+        params = params.page_size(ps);
+    }
+    if let Some(pn) = page_number {
+        params = params.page_number(pn);
+    }
+    if let Some(sa) = sort_attribute {
+        params = params.sort_attribute(sa);
+    }
+    if sort_descending {
+        params = params.sort_descending(true);
+    }
+    let resp = api
+        .list_fleet_clusters(params)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to list fleet clusters: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn instrumented_pods_list(cfg: &Config, cluster_name: String) -> Result<()> {
+    let dd_cfg = client::make_dd_config(cfg);
+    let api = match client::make_bearer_client(cfg) {
+        Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
+        None => FleetAutomationAPI::with_config(dd_cfg),
+    };
+    let resp = api
+        .list_fleet_instrumented_pods(cluster_name)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to list instrumented pods: {e:?}"))?;
+    formatter::output(cfg, &resp)
 }
