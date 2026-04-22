@@ -2040,9 +2040,8 @@ enum Commands {
     ///   • List profiles with flexible query + time windows
     ///   • Get profile metadata (info) and automatic analysis
     ///   • Run analytics aggregations (groupBy / compute)
-    ///   • Fetch surfaced insights and interactive field values
+    ///   • Enumerate interactive field values
     ///   • Aggregate flamegraph, breakdown, timeline, and call graph data as JSON
-    ///   • Report service-level profiling utilization
     ///   • Save favorite queries
     ///   • Download raw profile archives
     ///
@@ -8191,8 +8190,8 @@ enum ProfilingActions {
     },
     /// Download a profile archive
     Download {
-        #[arg(help = "Profile ID")]
-        profile_id: String,
+        #[arg(help = "Profile event ID (the `id` field from `pup profiling list`)")]
+        event_id: String,
         #[arg(short = 'o', long, help = "Output path (writes to stdout if omitted)")]
         output: Option<String>,
     },
@@ -8215,17 +8214,6 @@ enum ProfilingActions {
         profile_id: String,
         #[arg(long, help = "Event ID scope (optional)")]
         event_id: Option<String>,
-    },
-    /// List surfaced profiling insights
-    Insights {
-        #[arg(long, default_value = "*", help = "Profile search query")]
-        query: String,
-        #[arg(long, default_value = "1h", help = "Start time")]
-        from: String,
-        #[arg(long, default_value = "now", help = "End time")]
-        to: String,
-        #[arg(long, default_value = "100", help = "Maximum insights to return")]
-        limit: u32,
     },
     /// List profiles matching a query
     List {
@@ -8272,17 +8260,8 @@ enum ProfilingActions {
     Timeline {
         #[arg(help = "Profile ID")]
         profile_id: String,
-    },
-    /// Report per-service profiling utilization
-    Utilization {
-        #[arg(long, default_value = "*", help = "Profile search query")]
-        query: String,
-        #[arg(long, default_value = "1h", help = "Start time")]
-        from: String,
-        #[arg(long, default_value = "now", help = "End time")]
-        to: String,
-        #[arg(long, default_value = "100", help = "Maximum services to return")]
-        limit: u32,
+        #[arg(long, help = "Profile event ID (required)")]
+        event_id: String,
     },
 }
 
@@ -12747,8 +12726,8 @@ async fn main_inner() -> anyhow::Result<()> {
                     commands::profiling::callgraph(&cfg, query, profile_type, from, to, limit)
                         .await?;
                 }
-                ProfilingActions::Download { profile_id, output } => {
-                    commands::profiling::download(&cfg, &profile_id, output).await?;
+                ProfilingActions::Download { event_id, output } => {
+                    commands::profiling::download(&cfg, &event_id, output).await?;
                 }
                 ProfilingActions::Fields {
                     field,
@@ -12764,14 +12743,6 @@ async fn main_inner() -> anyhow::Result<()> {
                     event_id,
                 } => {
                     commands::profiling::info(&cfg, &profile_id, event_id).await?;
-                }
-                ProfilingActions::Insights {
-                    query,
-                    from,
-                    to,
-                    limit,
-                } => {
-                    commands::profiling::insights(&cfg, query, from, to, limit).await?;
                 }
                 ProfilingActions::List {
                     query,
@@ -12794,16 +12765,11 @@ async fn main_inner() -> anyhow::Result<()> {
                     commands::profiling::save_favorite(&cfg, query, from, to, query_id, limit)
                         .await?;
                 }
-                ProfilingActions::Timeline { profile_id } => {
-                    commands::profiling::timeline(&cfg, &profile_id).await?;
-                }
-                ProfilingActions::Utilization {
-                    query,
-                    from,
-                    to,
-                    limit,
+                ProfilingActions::Timeline {
+                    profile_id,
+                    event_id,
                 } => {
-                    commands::profiling::utilization(&cfg, query, from, to, limit).await?;
+                    commands::profiling::timeline(&cfg, &profile_id, &event_id).await?;
                 }
             }
         }

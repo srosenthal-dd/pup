@@ -6242,46 +6242,6 @@ async fn test_profiling_analytics_rejects_empty_group_by() {
 }
 
 #[tokio::test]
-async fn test_profiling_insights_ok() {
-    let _lock = lock_env();
-    let mut s = mockito::Server::new_async().await;
-    let cfg = test_config(&s.url());
-    let mock = s
-        .mock("POST", "/api/unstable/profiles/insights")
-        .with_status(200)
-        .with_header("content-type", "application/json")
-        .with_body(r#"{"data":[]}"#)
-        .create_async()
-        .await;
-    let result = crate::commands::profiling::insights(
-        &cfg,
-        "service:web".into(),
-        "1h".into(),
-        "now".into(),
-        50,
-    )
-    .await;
-    assert!(result.is_ok(), "insights failed: {:?}", result.err());
-    mock.assert_async().await;
-    cleanup_env();
-}
-
-#[tokio::test]
-async fn test_profiling_insights_error() {
-    let _lock = lock_env();
-    let mut s = mockito::Server::new_async().await;
-    let cfg = test_config(&s.url());
-    s.mock("POST", mockito::Matcher::Any)
-        .with_status(500)
-        .create_async()
-        .await;
-    let result =
-        crate::commands::profiling::insights(&cfg, "*".into(), "1h".into(), "now".into(), 50).await;
-    assert!(result.is_err(), "expected error on 500");
-    cleanup_env();
-}
-
-#[tokio::test]
 async fn test_profiling_fields_ok() {
     let _lock = lock_env();
     let mut s = mockito::Server::new_async().await;
@@ -6422,7 +6382,7 @@ async fn test_profiling_timeline_ok() {
         .with_body(r#"{"layers":[]}"#)
         .create_async()
         .await;
-    let result = crate::commands::profiling::timeline(&cfg, "pid").await;
+    let result = crate::commands::profiling::timeline(&cfg, "pid", "eid").await;
     assert!(result.is_ok(), "timeline failed: {:?}", result.err());
     mock.assert_async().await;
     cleanup_env();
@@ -6437,44 +6397,8 @@ async fn test_profiling_timeline_error() {
         .with_status(404)
         .create_async()
         .await;
-    let result = crate::commands::profiling::timeline(&cfg, "missing").await;
+    let result = crate::commands::profiling::timeline(&cfg, "missing", "eid").await;
     assert!(result.is_err(), "expected error on 404");
-    cleanup_env();
-}
-
-#[tokio::test]
-async fn test_profiling_utilization_ok() {
-    let _lock = lock_env();
-    let mut s = mockito::Server::new_async().await;
-    let cfg = test_config(&s.url());
-    let mock = s
-        .mock("POST", "/api/unstable/profiles/service/utilization")
-        .with_status(200)
-        .with_header("content-type", "application/json")
-        .with_body(r#"{"data":[]}"#)
-        .create_async()
-        .await;
-    let result =
-        crate::commands::profiling::utilization(&cfg, "*".into(), "1h".into(), "now".into(), 100)
-            .await;
-    assert!(result.is_ok(), "utilization failed: {:?}", result.err());
-    mock.assert_async().await;
-    cleanup_env();
-}
-
-#[tokio::test]
-async fn test_profiling_utilization_error() {
-    let _lock = lock_env();
-    let mut s = mockito::Server::new_async().await;
-    let cfg = test_config(&s.url());
-    s.mock("POST", mockito::Matcher::Any)
-        .with_status(500)
-        .create_async()
-        .await;
-    let result =
-        crate::commands::profiling::utilization(&cfg, "*".into(), "1h".into(), "now".into(), 100)
-            .await;
-    assert!(result.is_err(), "expected error on 500");
     cleanup_env();
 }
 
@@ -6580,7 +6504,7 @@ async fn test_profiling_download_to_file() {
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     let mock = s
-        .mock("GET", "/api/ui/profiling/profiles/pid/download")
+        .mock("GET", "/api/ui/profiling/profiles/eid/download")
         .with_status(200)
         .with_header("content-type", "application/octet-stream")
         .with_body(b"profile-bytes")
@@ -6588,7 +6512,7 @@ async fn test_profiling_download_to_file() {
         .await;
     let tmp = std::env::temp_dir().join(format!("pup-prof-{}.bin", std::process::id()));
     let tmp_str = tmp.to_string_lossy().to_string();
-    let result = crate::commands::profiling::download(&cfg, "pid", Some(tmp_str.clone())).await;
+    let result = crate::commands::profiling::download(&cfg, "eid", Some(tmp_str.clone())).await;
     assert!(result.is_ok(), "download failed: {:?}", result.err());
     let contents = std::fs::read(&tmp).expect("output file");
     assert_eq!(contents, b"profile-bytes");
@@ -6606,7 +6530,7 @@ async fn test_profiling_download_error() {
         .with_status(404)
         .create_async()
         .await;
-    let result = crate::commands::profiling::download(&cfg, "missing", None).await;
+    let result = crate::commands::profiling::download(&cfg, "missing-eid", None).await;
     assert!(result.is_err(), "expected error on 404");
     cleanup_env();
 }

@@ -154,9 +154,11 @@ pub async fn callgraph(
     formatter::output(cfg, &resp)
 }
 
-pub async fn download(cfg: &Config, profile_id: &str, output: Option<String>) -> Result<()> {
+pub async fn download(cfg: &Config, event_id: &str, output: Option<String>) -> Result<()> {
     use std::io::Write;
-    let url_path = format!("/api/ui/profiling/profiles/{profile_id}/download");
+    // The path segment is named "profiles/<id>", but the ID is the profile event ID
+    // (the `id` field on a `pup profiling list` result), not `attributes.profile-id`.
+    let url_path = format!("/api/ui/profiling/profiles/{event_id}/download");
     let resp = client::raw_request(
         cfg,
         "GET",
@@ -223,21 +225,6 @@ pub async fn info(cfg: &Config, profile_id: &str, event_id: Option<String>) -> R
     formatter::output(cfg, &resp)
 }
 
-pub async fn insights(
-    cfg: &Config,
-    query: String,
-    from: String,
-    to: String,
-    limit: u32,
-) -> Result<()> {
-    let mut body = filter_body(&query, &from, &to)?;
-    body["limit"] = json!(limit);
-    let resp = client::raw_post(cfg, "/api/unstable/profiles/insights", body)
-        .await
-        .map_err(|e| anyhow::anyhow!("failed to list profiling insights: {e:?}"))?;
-    formatter::output(cfg, &resp)
-}
-
 pub async fn list(
     cfg: &Config,
     query: String,
@@ -275,26 +262,16 @@ pub async fn save_favorite(
     formatter::output(cfg, &resp)
 }
 
-pub async fn timeline(cfg: &Config, profile_id: &str) -> Result<()> {
-    let body = json!({ "profileIds": [profile_id] });
+pub async fn timeline(cfg: &Config, profile_id: &str, event_id: &str) -> Result<()> {
+    // TimelineRequest DTO uses kebab-case JSON keys and requires both profile-ids and event-ids.
+    let body = json!({
+        "profile-ids": [profile_id],
+        "event-ids": [event_id],
+        "archivalContext": "",
+    });
     let path = format!("/profiling/api/v1/profiles/{profile_id}/timeline");
     let resp = client::raw_post(cfg, &path, body)
         .await
         .map_err(|e| anyhow::anyhow!("failed to load profile timeline: {e:?}"))?;
-    formatter::output(cfg, &resp)
-}
-
-pub async fn utilization(
-    cfg: &Config,
-    query: String,
-    from: String,
-    to: String,
-    limit: u32,
-) -> Result<()> {
-    let mut body = filter_body(&query, &from, &to)?;
-    body["limit"] = json!(limit);
-    let resp = client::raw_post(cfg, "/api/unstable/profiles/service/utilization", body)
-        .await
-        .map_err(|e| anyhow::anyhow!("failed to get service utilization: {e:?}"))?;
     formatter::output(cfg, &resp)
 }

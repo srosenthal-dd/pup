@@ -1162,10 +1162,6 @@ mod tests {
         ));
         assert!(requires_api_key_fallback(
             "POST",
-            "/api/unstable/profiles/service/utilization"
-        ));
-        assert!(requires_api_key_fallback(
-            "POST",
             "/api/unstable/profiles/save-favorite"
         ));
         // /api/ui/profiling/*
