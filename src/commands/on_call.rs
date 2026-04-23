@@ -20,6 +20,7 @@ use datadog_api_client::datadogV2::model::{
     UserTeamUpdateRequest, UserTeamUserType,
 };
 
+use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
@@ -425,6 +426,18 @@ pub async fn pages_create(cfg: &Config, file: &str) -> Result<()> {
     formatter::output(cfg, &resp)
 }
 
+/// Fetches a single on-call page by ID.
+///
+/// Uses `client::raw_get` because `datadog-api-client` does not yet
+/// expose a `get_on_call_page` binding.
+pub async fn pages_get(cfg: &Config, page_id: &str) -> Result<()> {
+    let path = format!("/api/v2/on-call/pages/{}", util::percent_encode(page_id));
+    let resp = client::raw_get(cfg, &path, &[])
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to get page: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
 #[cfg(test)]
 mod tests {
     use crate::test_support::*;
@@ -767,6 +780,57 @@ mod tests {
             .await;
         let result = super::notification_rules_list(&cfg, "u1").await;
         assert!(result.is_err(), "expected error on 500 response");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_pages_get() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        s.mock("GET", "/api/v2/on-call/pages/12345")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data": {"id": "12345", "type": "pages"}}"#)
+            .create_async()
+            .await;
+        let result = super::pages_get(&cfg, "12345").await;
+        assert!(result.is_ok(), "pages_get failed: {:?}", result.err());
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_pages_get_not_found() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        s.mock("GET", "/api/v2/on-call/pages/missing")
+            .with_status(404)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors": ["page not found"]}"#)
+            .create_async()
+            .await;
+        let result = super::pages_get(&cfg, "missing").await;
+        assert!(result.is_err(), "expected error on 404 response");
+        cleanup_env();
+    }
+
+    // Uses an ID with reserved URL characters ('/' and '?') so the mock's
+    // path-exact matcher only succeeds if `util::percent_encode` is actually
+    // applied. A refactor that drops the encoder would fail this test.
+    #[tokio::test]
+    async fn test_on_call_pages_get_percent_encodes_id() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        s.mock("GET", "/api/v2/on-call/pages/abc%2Fdef%3Fx")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data": {"id": "abc/def?x", "type": "pages"}}"#)
+            .create_async()
+            .await;
+        let result = super::pages_get(&cfg, "abc/def?x").await;
+        assert!(result.is_ok(), "pages_get failed: {:?}", result.err());
         cleanup_env();
     }
 }
