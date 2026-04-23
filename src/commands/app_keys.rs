@@ -185,3 +185,69 @@ pub async fn delete(cfg: &Config, key_id: &str) -> Result<()> {
     println!("Successfully deleted application key {key_id}");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_app_keys_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::list(&cfg, 10, 0, "", "").await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_app_keys_list_all() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::list_all(&cfg, 10, 0, "", "").await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_app_keys_get() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {}}"#).await;
+        let _ = super::get(&cfg, "k1").await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_app_keys_create() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {}}"#).await;
+        let _ = super::create(&cfg, "test-key", "").await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_app_keys_update() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {}}"#).await;
+        let _ = super::update(&cfg, "k1", "new-name", "").await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_app_keys_delete() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{}"#).await;
+        let _ = super::delete(&cfg, "k1").await;
+        cleanup_env();
+    }
+}

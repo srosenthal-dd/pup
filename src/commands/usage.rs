@@ -43,3 +43,19 @@ pub async fn hourly(cfg: &Config, start: String, end: Option<String>) -> Result<
         .map_err(|e| anyhow::anyhow!("failed to get hourly usage: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_usage_summary() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"usage": []}"#).await;
+        let _ = super::summary(&cfg, "2024-01".into(), None).await;
+        cleanup_env();
+    }
+}

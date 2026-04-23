@@ -24,3 +24,19 @@ pub async fn connections_create(cfg: &Config, file: &str) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("failed to create HAMR connection: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_hamr_connections_get() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {}}"#).await;
+        let _ = super::connections_get(&cfg).await;
+        cleanup_env();
+    }
+}

@@ -258,3 +258,189 @@ pub async fn instrumented_pods_list(cfg: &Config, cluster_name: String) -> Resul
         .map_err(|e| anyhow::anyhow!("failed to list instrumented pods: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_fleet_agents_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::agents_list(&cfg, None, None).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_fleet_agents_get() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {}}"#).await;
+        let _ = super::agents_get(&cfg, "a1").await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_fleet_agents_versions() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::agents_versions(&cfg).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_fleet_tracers_list() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let mock = server
+            .mock("GET", "/api/unstable/fleet/tracers")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data":{"id":"status","type":"status","attributes":{"tracers":[]}}}"#)
+            .create_async()
+            .await;
+
+        let result = super::tracers_list(&cfg, None, None, None, None, false).await;
+        assert!(result.is_ok(), "tracers_list failed: {:?}", result.err());
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_fleet_tracers_list_with_filter() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let mock = server
+            .mock("GET", "/api/unstable/fleet/tracers")
+            .match_query(mockito::Matcher::UrlEncoded(
+                "filter".into(),
+                "hostname:my-host".into(),
+            ))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data":{"id":"status","type":"status","attributes":{"tracers":[]}}}"#)
+            .create_async()
+            .await;
+
+        let result = super::tracers_list(
+            &cfg,
+            Some("hostname:my-host".into()),
+            None,
+            None,
+            None,
+            false,
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "tracers_list with filter failed: {:?}",
+            result.err()
+        );
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_fleet_agents_tracers_list() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let mock = server
+            .mock("GET", "/api/unstable/fleet/agents/agent-123/tracers")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data":{"id":"status","type":"status","attributes":{"tracers":[]}}}"#)
+            .create_async()
+            .await;
+
+        let result =
+            super::agents_tracers_list(&cfg, "agent-123".into(), None, None, None, false).await;
+        assert!(
+            result.is_ok(),
+            "agents_tracers_list failed: {:?}",
+            result.err()
+        );
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_fleet_instrumented_pods_list() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let mock = server
+            .mock(
+                "GET",
+                "/api/unstable/fleet/clusters/my-cluster/instrumented_pods",
+            )
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                r#"{"data":{"type":"cluster_name","id":"my-cluster","attributes":{"groups":[]}}}"#,
+            )
+            .create_async()
+            .await;
+
+        let result = super::instrumented_pods_list(&cfg, "my-cluster".into()).await;
+        assert!(
+            result.is_ok(),
+            "instrumented_pods_list failed: {:?}",
+            result.err()
+        );
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_fleet_clusters_list() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let mock = server
+            .mock("GET", "/api/unstable/fleet/clusters")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data":{"type":"status","id":"done","attributes":{"clusters":[]}}}"#)
+            .create_async()
+            .await;
+
+        let result = super::clusters_list(&cfg, None, None, None, None, false).await;
+        assert!(result.is_ok(), "clusters_list failed: {:?}", result.err());
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_fleet_deployments_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::deployments_list(&cfg, None).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_fleet_schedules_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::schedules_list(&cfg).await;
+        cleanup_env();
+    }
+}

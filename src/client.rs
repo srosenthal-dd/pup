@@ -907,6 +907,8 @@ pub async fn raw_delete(cfg: &Config, path: &str) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::*;
+
     use super::*;
     use crate::config::Config;
     use crate::test_utils::ENV_LOCK;
@@ -1259,5 +1261,39 @@ mod tests {
             "GET",
             "/api/ui/profiling/profiles/abc/download"
         ));
+    }
+
+    /// Verifies that raw_request attaches query parameters and returns Ok when the
+    /// server responds 200. Exercises the `!query.is_empty()` branch added to the function.
+    #[tokio::test]
+    async fn test_raw_request_with_query_params_ok() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("GET", "/api/v2/monitors")
+            .match_query(mockito::Matcher::Any)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body("[]")
+            .create_async()
+            .await;
+        let resp = super::raw_request(
+            &cfg,
+            "GET",
+            "/api/v2/monitors",
+            &[("page", "1"), ("page_size", "10")],
+            None,
+            None,
+            "application/json",
+            &[],
+        )
+        .await;
+        assert!(
+            resp.is_ok(),
+            "raw_request with query failed: {:?}",
+            resp.err()
+        );
+        cleanup_env();
     }
 }

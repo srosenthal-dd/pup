@@ -177,3 +177,99 @@ pub async fn gcp_scan_options_delete(cfg: &Config, project_id: &str) -> Result<(
     println!("GCP scan options for project '{project_id}' deleted successfully.");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_agentless_scanning_aws_scan_options_list() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", r#"{"data":[]}"#).await;
+        let result = super::aws_scan_options_list(&cfg).await;
+        assert!(
+            result.is_ok(),
+            "Agentless scanning AWS scan options list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_agentless_scanning_azure_scan_options_list() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", r#"{"data":[]}"#).await;
+        let result = super::azure_scan_options_list(&cfg).await;
+        assert!(
+            result.is_ok(),
+            "Agentless scanning Azure scan options list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_agentless_scanning_gcp_scan_options_list() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", r#"{"data":[]}"#).await;
+        let result = super::gcp_scan_options_list(&cfg).await;
+        assert!(
+            result.is_ok(),
+            "Agentless scanning GCP scan options list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_agentless_scanning_aws_on_demand_list() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", r#"{"data":[]}"#).await;
+        let result = super::aws_on_demand_list(&cfg).await;
+        assert!(
+            result.is_ok(),
+            "Agentless scanning AWS on-demand list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_agentless_scanning_aws_scan_options_list_error() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("GET", mockito::Matcher::Any)
+            .with_status(403)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["Forbidden"]}"#)
+            .create_async()
+            .await;
+        let result = super::aws_scan_options_list(&cfg).await;
+        assert!(
+            result.is_err(),
+            "Agentless scanning AWS scan options list should fail on 403"
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+}

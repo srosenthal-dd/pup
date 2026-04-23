@@ -204,6 +204,8 @@ pub async fn service_language(cfg: &Config, service: &str) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::*;
+
     use super::*;
 
     #[test]
@@ -268,5 +270,57 @@ mod tests {
         assert_eq!(SymdbView::Full.to_string(), "full");
         assert_eq!(SymdbView::Names.to_string(), "names");
         assert_eq!(SymdbView::ProbeLocations.to_string(), "probe-locations");
+    }
+
+    #[tokio::test]
+    async fn test_symdb_search() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(
+            &mut s,
+            r#"{"data": [{"attributes": {"scopes": [{"scope": {"name": "MyClass"}}]}}]}"#,
+        )
+        .await;
+        let _ = super::search(&cfg, "my-service", "MyClass", None, &super::SymdbView::Full).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_symdb_search_names_view() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(
+            &mut s,
+            r#"{"data": [{"attributes": {"scopes": [{"scope": {"name": "MyClass"}}]}}]}"#,
+        )
+        .await;
+        let _ = super::search(
+            &cfg,
+            "my-service",
+            "MyClass",
+            None,
+            &super::SymdbView::Names,
+        )
+        .await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_symdb_search_probe_locations_view() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": [{"attributes": {"scopes": [{"scope": {"name": "MyClass", "scope_type": "METHOD"}, "probe_location": {"type_name": "MyClass", "method_name": "doStuff"}}]}}]}"#).await;
+        let _ = super::search(
+            &cfg,
+            "my-service",
+            "MyClass",
+            None,
+            &super::SymdbView::ProbeLocations,
+        )
+        .await;
+        cleanup_env();
     }
 }

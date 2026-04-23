@@ -573,6 +573,8 @@ pub async fn restriction_policy_delete(cfg: &Config, resource_id: &str) -> Resul
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::*;
+
     use super::*;
 
     #[test]
@@ -606,5 +608,129 @@ mod tests {
         let input = "Line 1\n{% tab title=\"Foo\" %}\nLine 2\n{% /tab %}\nLine 3";
         let result = strip_template_directives(input);
         assert_eq!(result, "Line 1\nLine 2\nLine 3");
+    }
+
+    #[tokio::test]
+    async fn test_security_rules_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::rules_list(&cfg, None, None).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_security_rules_get() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {}}"#).await;
+        let _ = super::rules_get(&cfg, "r1").await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_security_content_packs_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::content_packs_list(&cfg).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_asm_custom_rules_list() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", r#"{"data":[]}"#).await;
+        let result = super::asm_custom_rules_list(&cfg).await;
+        assert!(
+            result.is_ok(),
+            "ASM custom rules list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_asm_custom_rules_list_error() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("GET", mockito::Matcher::Any)
+            .with_status(403)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["Forbidden"]}"#)
+            .create_async()
+            .await;
+        let result = super::asm_custom_rules_list(&cfg).await;
+        assert!(result.is_err(), "expected error for 403 response");
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_asm_exclusions_list() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", r#"{"data":[]}"#).await;
+        let result = super::asm_exclusions_list(&cfg).await;
+        assert!(
+            result.is_ok(),
+            "ASM exclusions list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_restriction_policy_get() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(
+            &mut server,
+            "GET",
+            r#"{"data":{"type":"restriction_policy","id":"dashboard:abc-123","attributes":{"bindings":[]}}}"#,
+        )
+        .await;
+        let result = super::restriction_policy_get(&cfg, "dashboard:abc-123").await;
+        assert!(
+            result.is_ok(),
+            "restriction policy get failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_restriction_policy_get_error() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("GET", mockito::Matcher::Any)
+            .with_status(404)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["Not Found"]}"#)
+            .create_async()
+            .await;
+        let result = super::restriction_policy_get(&cfg, "dashboard:missing").await;
+        assert!(result.is_err(), "expected error for 404 response");
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
     }
 }

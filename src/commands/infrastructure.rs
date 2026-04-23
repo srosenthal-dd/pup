@@ -37,3 +37,19 @@ pub async fn hosts_get(cfg: &Config, hostname: &str) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("failed to get host {hostname}: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_infrastructure_hosts_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"host_list": [], "total_returned": 0}"#).await;
+        let _ = super::hosts_list(&cfg, None, "name".into(), 10).await;
+        cleanup_env();
+    }
+}

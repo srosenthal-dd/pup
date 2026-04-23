@@ -139,3 +139,57 @@ pub async fn workflows_delete(cfg: &Config, handle_id: &str) -> Result<()> {
     println!("MS Teams workflow handle {handle_id} deleted.");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_ms_teams_handles_list() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", r#"{"data":[],"meta":{}}"#).await;
+        let result = super::handles_list(&cfg).await;
+        assert!(
+            result.is_ok(),
+            "ms teams handles list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_ms_teams_handles_list_error() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("GET", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::Any)
+            .with_status(403)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["Forbidden"]}"#)
+            .create_async()
+            .await;
+        let result = super::handles_list(&cfg).await;
+        assert!(result.is_err(), "ms teams handles list should fail on 403");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_ms_teams_workflows_list() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", r#"{"data":[],"meta":{}}"#).await;
+        let result = super::workflows_list(&cfg).await;
+        assert!(
+            result.is_ok(),
+            "ms teams workflows list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+}

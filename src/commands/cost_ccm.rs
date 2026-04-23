@@ -595,6 +595,8 @@ pub async fn commitments_list(
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::*;
+
     use super::*;
     use crate::config::OutputFormat;
 
@@ -803,5 +805,354 @@ mod tests {
             err.to_string().contains("no authentication configured"),
             "expected auth error, got: {err}"
         );
+    }
+
+    #[tokio::test]
+    async fn test_tag_desc_upsert_success() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "PUT", r#"{}"#).await;
+        let result = super::tag_desc_upsert(&cfg, "team", "The team tag", None).await;
+        assert!(result.is_ok(), "tag_desc_upsert failed: {:?}", result.err());
+        cleanup_env();
+    }
+
+    /// Verifies that the optional `version` query parameter is passed through
+    /// correctly after the refactor from path-string embedding to params vec.
+    #[tokio::test]
+    async fn test_custom_costs_upload_with_version_success() {
+        let _lock = lock_env().await;
+        let tmp = std::env::temp_dir().join("pup_test_upload_version.csv");
+        std::fs::write(&tmp, b"cost,amount\nec2,100\n").unwrap();
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "PUT", r#"{}"#).await;
+        let result =
+            super::custom_costs_upload(&cfg, tmp.to_str().unwrap(), Some("v2".into())).await;
+        assert!(
+            result.is_ok(),
+            "custom_costs_upload with version failed: {:?}",
+            result.err()
+        );
+        let _ = std::fs::remove_file(&tmp);
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_profiling_analytics_rejects_empty_group_by() {
+        let _lock = lock_env().await;
+        let s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        // Mock not required: we should fail before hitting the API.
+        let result = crate::commands::profiling::analytics(
+            &cfg,
+            "*".into(),
+            "15m".into(),
+            "now".into(),
+            Some(" , ".into()),
+            None,
+            100,
+        )
+        .await;
+        assert!(
+            result.is_err(),
+            "expected error for empty --group-by tokens"
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_profiling_fields_ok() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        let mock = s
+            .mock("POST", "/api/unstable/profiles/interactive-analytics/field")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data":[]}"#)
+            .create_async()
+            .await;
+        let result = crate::commands::profiling::fields(
+            &cfg,
+            "service".into(),
+            "*".into(),
+            "15m".into(),
+            "now".into(),
+            100,
+        )
+        .await;
+        assert!(result.is_ok(), "fields failed: {:?}", result.err());
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_profiling_fields_error() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        s.mock("POST", mockito::Matcher::Any)
+            .with_status(500)
+            .create_async()
+            .await;
+        let result = crate::commands::profiling::fields(
+            &cfg,
+            "service".into(),
+            "*".into(),
+            "15m".into(),
+            "now".into(),
+            100,
+        )
+        .await;
+        assert!(result.is_err(), "expected error on 500");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_profiling_aggregate_ok() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        let mock = s
+            .mock("POST", "/profiling/api/v1/aggregate")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"flameGraph":[]}"#)
+            .create_async()
+            .await;
+        let result = crate::commands::profiling::aggregate(
+            &cfg,
+            "service:web".into(),
+            "cpu-time".into(),
+            "1h".into(),
+            "now".into(),
+            100,
+            "sum".into(),
+        )
+        .await;
+        assert!(result.is_ok(), "aggregate failed: {:?}", result.err());
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_profiling_aggregate_invalid_time() {
+        let _lock = lock_env().await;
+        let s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        let result = crate::commands::profiling::aggregate(
+            &cfg,
+            "*".into(),
+            "cpu-time".into(),
+            "notatime".into(),
+            "now".into(),
+            100,
+            "sum".into(),
+        )
+        .await;
+        assert!(result.is_err(), "expected parse error on invalid --from");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_profiling_breakdown_ok_no_filter() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        let mock = s
+            .mock("POST", "/profiling/api/v1/profiles/pid/breakdown")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"tree":{}}"#)
+            .create_async()
+            .await;
+        let result = crate::commands::profiling::breakdown(&cfg, "pid", None, None, None).await;
+        assert!(result.is_ok(), "breakdown failed: {:?}", result.err());
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_profiling_breakdown_rejects_partial_filter() {
+        let _lock = lock_env().await;
+        let s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        let result = crate::commands::profiling::breakdown(
+            &cfg,
+            "pid",
+            Some("service:web".into()),
+            Some("1h".into()),
+            None,
+        )
+        .await;
+        assert!(result.is_err(), "expected error for partial filter triple");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_profiling_timeline_ok() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        let mock = s
+            .mock("POST", "/profiling/api/v1/profiles/pid/timeline")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"layers":[]}"#)
+            .create_async()
+            .await;
+        let result = crate::commands::profiling::timeline(&cfg, "pid", "eid").await;
+        assert!(result.is_ok(), "timeline failed: {:?}", result.err());
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_profiling_timeline_error() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        s.mock("POST", mockito::Matcher::Any)
+            .with_status(404)
+            .create_async()
+            .await;
+        let result = crate::commands::profiling::timeline(&cfg, "missing", "eid").await;
+        assert!(result.is_err(), "expected error on 404");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_profiling_callgraph_ok() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        let mock = s
+            .mock("POST", "/api/unstable/profiles/callgraph")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"nodes":[]}"#)
+            .create_async()
+            .await;
+        let result = crate::commands::profiling::callgraph(
+            &cfg,
+            "service:web".into(),
+            "cpu-time".into(),
+            "15m".into(),
+            "now".into(),
+            100,
+        )
+        .await;
+        assert!(result.is_ok(), "callgraph failed: {:?}", result.err());
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_profiling_callgraph_error() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        s.mock("POST", mockito::Matcher::Any)
+            .with_status(500)
+            .create_async()
+            .await;
+        let result = crate::commands::profiling::callgraph(
+            &cfg,
+            "*".into(),
+            "cpu-time".into(),
+            "15m".into(),
+            "now".into(),
+            100,
+        )
+        .await;
+        assert!(result.is_err(), "expected error on 500");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_profiling_save_favorite_ok() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        let mock = s
+            .mock("POST", "/api/unstable/profiles/save-favorite")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"queryId":"abc"}"#)
+            .create_async()
+            .await;
+        let result = crate::commands::profiling::save_favorite(
+            &cfg,
+            "service:web".into(),
+            "15m".into(),
+            "now".into(),
+            "fav-1".into(),
+            100,
+        )
+        .await;
+        assert!(result.is_ok(), "save_favorite failed: {:?}", result.err());
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_profiling_save_favorite_error() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        s.mock("POST", mockito::Matcher::Any)
+            .with_status(500)
+            .create_async()
+            .await;
+        let result = crate::commands::profiling::save_favorite(
+            &cfg,
+            "*".into(),
+            "15m".into(),
+            "now".into(),
+            "fav-1".into(),
+            100,
+        )
+        .await;
+        assert!(result.is_err(), "expected error on 500");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_profiling_download_to_file() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        let mock = s
+            .mock("GET", "/api/ui/profiling/profiles/eid/download")
+            .with_status(200)
+            .with_header("content-type", "application/octet-stream")
+            .with_body(b"profile-bytes")
+            .create_async()
+            .await;
+        let tmp = std::env::temp_dir().join(format!("pup-prof-{}.bin", std::process::id()));
+        let tmp_str = tmp.to_string_lossy().to_string();
+        let result = crate::commands::profiling::download(&cfg, "eid", Some(tmp_str.clone())).await;
+        assert!(result.is_ok(), "download failed: {:?}", result.err());
+        let contents = std::fs::read(&tmp).expect("output file");
+        assert_eq!(contents, b"profile-bytes");
+        let _ = std::fs::remove_file(&tmp);
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_profiling_download_error() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        s.mock("GET", mockito::Matcher::Any)
+            .with_status(404)
+            .create_async()
+            .await;
+        let result = crate::commands::profiling::download(&cfg, "missing-eid", None).await;
+        assert!(result.is_err(), "expected error on 404");
+        cleanup_env();
     }
 }

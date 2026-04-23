@@ -35,3 +35,19 @@ pub async fn commit_summary(cfg: &Config, repo: String, commit: String) -> Resul
         .map_err(|e| anyhow::anyhow!("failed to get commit summary: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_code_coverage_branch_summary() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {}}"#).await;
+        let _ = super::branch_summary(&cfg, "repo".into(), "main".into()).await;
+        cleanup_env();
+    }
+}

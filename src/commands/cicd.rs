@@ -302,3 +302,60 @@ pub async fn flaky_tests_update(cfg: &Config, file: &str) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("failed to update flaky tests: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_cicd_pipelines_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::pipelines_list(&cfg, None, "1h".into(), "now".into(), 10).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_cicd_tests_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::tests_list(&cfg, None, "1h".into(), "now".into(), 10).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_cicd_flaky_tests_search() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::flaky_tests_search(
+            &cfg,
+            Some("@test.service:my-service".into()),
+            None,
+            50,
+            Some("-last_flaked".into()),
+        )
+        .await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_cicd_flaky_tests_search_invalid_sort() {
+        let _lock = lock_env().await;
+        let s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        let result = super::flaky_tests_search(&cfg, None, None, 10, Some("bogus".into())).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid sort value"));
+        cleanup_env();
+    }
+}

@@ -402,3 +402,39 @@ pub async fn multistep_get_subtest_parents(cfg: &Config, public_id: &str) -> Res
         .map_err(|e| anyhow::anyhow!("failed to get multistep subtest parents: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_synthetics_tests_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"tests": []}"#).await;
+        let _ = super::tests_list(&cfg, 10, 0).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_synthetics_tests_get() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{}"#).await;
+        let _ = super::tests_get(&cfg, "pub1").await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_synthetics_locations_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"locations": []}"#).await;
+        let _ = super::locations_list(&cfg).await;
+        cleanup_env();
+    }
+}

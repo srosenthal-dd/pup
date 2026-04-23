@@ -95,3 +95,29 @@ pub async fn flows_list(cfg: &Config) -> Result<()> {
     });
     formatter::output(cfg, &placeholder)
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_network_flows_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::flows_list(&cfg).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_network_devices_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::devices_list(&cfg).await;
+        cleanup_env();
+    }
+}

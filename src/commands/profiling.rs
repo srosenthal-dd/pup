@@ -276,3 +276,222 @@ pub async fn timeline(cfg: &Config, profile_id: &str, event_id: &str) -> Result<
         .map_err(|e| anyhow::anyhow!("failed to load profile timeline: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_profiling_list_ok() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        let mock = s
+            .mock("POST", "/api/unstable/profiles/list")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data":[]}"#)
+            .create_async()
+            .await;
+        let result = super::list(
+            &cfg,
+            "*".into(),
+            "15m".into(),
+            "now".into(),
+            None,
+            "desc".into(),
+            100,
+        )
+        .await;
+        assert!(result.is_ok(), "list failed: {:?}", result.err());
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_profiling_list_error() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        s.mock("POST", "/api/unstable/profiles/list")
+            .with_status(500)
+            .with_body(r#"{"errors":["boom"]}"#)
+            .create_async()
+            .await;
+        let result = super::list(
+            &cfg,
+            "*".into(),
+            "15m".into(),
+            "now".into(),
+            None,
+            "desc".into(),
+            100,
+        )
+        .await;
+        assert!(result.is_err(), "expected error on 500");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_tag_desc_upsert_with_cloud_success() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "PUT", r#"{}"#).await;
+        let result = crate::commands::cost_ccm::tag_desc_upsert(
+            &cfg,
+            "team",
+            "The team tag",
+            Some("aws".into()),
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "tag_desc_upsert with cloud failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_profiling_info_ok() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        let mock = s
+            .mock("GET", "/profiling/api/v1/profiles/abc123/info")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data":{"id":"abc123"}}"#)
+            .create_async()
+            .await;
+        let result = super::info(&cfg, "abc123", None).await;
+        assert!(result.is_ok(), "info failed: {:?}", result.err());
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_profiling_info_with_event_id() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        let mock = s
+            .mock("GET", "/profiling/api/v1/profiles/abc123/info")
+            .match_query(mockito::Matcher::UrlEncoded(
+                "eventId".into(),
+                "evt-1".into(),
+            ))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data":{"id":"abc123"}}"#)
+            .create_async()
+            .await;
+        let result = super::info(&cfg, "abc123", Some("evt-1".into())).await;
+        assert!(result.is_ok(), "info failed: {:?}", result.err());
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_profiling_info_error() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        s.mock("GET", mockito::Matcher::Any)
+            .with_status(404)
+            .with_body(r#"{"errors":["not found"]}"#)
+            .create_async()
+            .await;
+        let result = super::info(&cfg, "missing", None).await;
+        assert!(result.is_err(), "expected error on 404");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_profiling_analysis_ok() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        let mock = s
+            .mock("GET", "/profiling/api/v1/profiles/abc/analysis")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data":{"insights":[]}}"#)
+            .create_async()
+            .await;
+        let result = super::analysis(&cfg, "abc", None).await;
+        assert!(result.is_ok(), "analysis failed: {:?}", result.err());
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_profiling_analysis_error() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        s.mock("GET", mockito::Matcher::Any)
+            .with_status(500)
+            .create_async()
+            .await;
+        let result = super::analysis(&cfg, "abc", None).await;
+        assert!(result.is_err(), "expected error on 500");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_profiling_analytics_ok() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        let mock = s
+            .mock("POST", "/api/unstable/profiles/analytics")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data":[]}"#)
+            .create_async()
+            .await;
+        let result = super::analytics(
+            &cfg,
+            "service:web".into(),
+            "15m".into(),
+            "now".into(),
+            Some("service,env".into()),
+            Some("count".into()),
+            100,
+        )
+        .await;
+        assert!(result.is_ok(), "analytics failed: {:?}", result.err());
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_tag_desc_delete_success() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "DELETE", r#"{}"#).await;
+        let result = crate::commands::cost_ccm::tag_desc_delete(&cfg, "team", None).await;
+        assert!(result.is_ok(), "tag_desc_delete failed: {:?}", result.err());
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_tag_desc_delete_with_cloud_success() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "DELETE", r#"{}"#).await;
+        let result =
+            crate::commands::cost_ccm::tag_desc_delete(&cfg, "team", Some("azure".into())).await;
+        assert!(
+            result.is_ok(),
+            "tag_desc_delete with cloud failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+}

@@ -33,3 +33,19 @@ pub async fn status(cfg: &Config) -> Result<()> {
     });
     formatter::output(cfg, &transformed)
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_misc_ip_ranges() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{}"#).await;
+        let _ = super::ip_ranges(&cfg).await;
+        cleanup_env();
+    }
+}

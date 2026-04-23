@@ -63,6 +63,8 @@ pub async fn samples_search(
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::*;
+
     use super::*;
 
     #[test]
@@ -133,5 +135,52 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(err.to_string(), "--limit must be a positive integer");
+    }
+
+    #[tokio::test]
+    async fn test_dbm_samples_search_uses_documented_payload() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let _mock = server
+            .mock("POST", "/api/v1/logs-analytics/list")
+            .match_query(mockito::Matcher::UrlEncoded(
+                "type".into(),
+                "databasequery".into(),
+            ))
+            .match_body(mockito::Matcher::Regex(
+                r#""list":\{"indexes":\["databasequery"\]"#.to_string(),
+            ))
+            .match_body(mockito::Matcher::Regex(
+                r#""query":"service:db""#.to_string(),
+            ))
+            .match_body(mockito::Matcher::Regex(
+                r#""sorts":\[\{"time":\{"order":"asc"\}\}\]"#.to_string(),
+            ))
+            .match_body(mockito::Matcher::Regex(r#""from":\d{13}"#.to_string()))
+            .match_body(mockito::Matcher::Regex(r#""to":\d{13}"#.to_string()))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data":[]}"#)
+            .create_async()
+            .await;
+
+        let result = super::samples_search(
+            &cfg,
+            "service:db".into(),
+            "1h".into(),
+            "now".into(),
+            10,
+            "asc".into(),
+        )
+        .await;
+
+        assert!(
+            result.is_ok(),
+            "dbm samples search failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
     }
 }

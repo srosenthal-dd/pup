@@ -108,3 +108,79 @@ pub async fn delete(cfg: &Config, monitor_id: i64) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("failed to delete monitor: {:?}", e))?;
     formatter::output(cfg, &resp)
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_monitors_list_empty() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", "[]").await;
+
+        let result = super::list(&cfg, None, None, 10).await;
+        assert!(result.is_ok(), "monitors list failed: {:?}", result.err());
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_monitors_list_with_results() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let body = r#"[{"id": 1, "name": "Test Monitor", "type": "metric alert", "query": "avg(last_5m):avg:system.cpu.user{*} > 90", "message": "CPU high", "tags": [], "options": {}}]"#;
+        let _mock = mock_any(&mut server, "GET", body).await;
+
+        let result = super::list(&cfg, Some("Test".into()), None, 10).await;
+        assert!(
+            result.is_ok(),
+            "monitors list with results failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_monitors_get() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let body = r#"{"id": 12345, "name": "Test Monitor", "type": "metric alert", "query": "avg(last_5m):avg:system.cpu.user{*} > 90", "message": "CPU high", "tags": [], "options": {}}"#;
+        let _mock = mock_any(&mut server, "GET", body).await;
+
+        let result = super::get(&cfg, 12345).await;
+        assert!(result.is_ok(), "monitors get failed: {:?}", result.err());
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_monitors_search() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let body = r#"{"monitors": [], "metadata": {"page": 0, "page_count": 0, "per_page": 30, "total_count": 0}}"#;
+        let _mock = mock_any(&mut server, "GET", body).await;
+
+        let result = super::search(&cfg, Some("cpu".into())).await;
+        assert!(result.is_ok(), "monitors search failed: {:?}", result.err());
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_monitors_delete() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "DELETE", r#"{"deleted_monitor_id": 12345}"#).await;
+
+        let result = super::delete(&cfg, 12345).await;
+        assert!(result.is_ok(), "monitors delete failed: {:?}", result.err());
+        cleanup_env();
+    }
+}

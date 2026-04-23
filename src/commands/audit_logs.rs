@@ -64,3 +64,19 @@ pub async fn search(
         .map_err(|e| anyhow::anyhow!("failed to search audit logs: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_audit_logs_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::list(&cfg, "1h".into(), "now".into(), 10).await;
+        cleanup_env();
+    }
+}

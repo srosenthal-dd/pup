@@ -259,3 +259,61 @@ pub async fn connections_delete(cfg: &Config, connection_id: &str) -> Result<()>
     eprintln!("Action connection {connection_id} deleted.");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_connections_get() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", r#"{}"#).await;
+        let result = super::connections_get(&cfg, "conn-id").await;
+        assert!(result.is_ok(), "connections get failed: {:?}", result.err());
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_connections_delete() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "DELETE", "").await;
+        let result = super::connections_delete(&cfg, "conn-id").await;
+        assert!(
+            result.is_ok(),
+            "connections delete failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_scorecard_rules_delete() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("DELETE", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::Any)
+            .with_status(204)
+            .create_async()
+            .await;
+        let result = crate::commands::scorecards::rules_delete(&cfg, "rule-123").await;
+        assert!(
+            result.is_ok(),
+            "scorecard rules delete failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+}

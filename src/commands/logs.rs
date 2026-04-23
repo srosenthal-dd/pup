@@ -446,6 +446,9 @@ pub async fn restriction_queries_get(cfg: &Config, query_id: &str) -> Result<()>
 
 #[cfg(test)]
 mod tests {
+    use crate::config::{Config, OutputFormat};
+    use crate::test_support::*;
+
     use super::*;
 
     #[test]
@@ -791,5 +794,298 @@ mod tests {
     #[test]
     fn test_split_compute_args_empty() {
         assert!(split_compute_args("").is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_logs_search() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "POST", r#"{"data": [], "meta": {"page": {}}}"#).await;
+
+        let result = super::search(
+            &cfg,
+            "status:error".into(),
+            "1h".into(),
+            "now".into(),
+            10,
+            "-timestamp".into(),
+            None,
+        )
+        .await;
+        assert!(result.is_ok(), "logs search failed: {:?}", result.err());
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_logs_search_with_oauth() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        std::env::set_var("PUP_MOCK_SERVER", server.url());
+
+        let cfg = Config {
+            api_key: None,
+            app_key: None,
+            access_token: Some("token".into()),
+            site: "datadoghq.com".into(),
+            org: None,
+            output_format: OutputFormat::Json,
+            auto_approve: false,
+            agent_mode: false,
+            read_only: false,
+        };
+
+        let _mock = mock_any(&mut server, "POST", r#"{"data": []}"#).await;
+
+        let result = super::search(
+            &cfg,
+            "status:error".into(),
+            "1h".into(),
+            "now".into(),
+            10,
+            "-timestamp".into(),
+            None,
+        )
+        .await;
+        assert!(result.is_ok(), "logs search should work with OAuth");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_logs_aggregate() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "POST", r#"{"data": {"buckets": []}}"#).await;
+
+        let result = super::aggregate(
+            &cfg,
+            super::AggregateArgs {
+                query: "*".into(),
+                from: "1h".into(),
+                to: "now".into(),
+                compute: vec!["count".into()],
+                group_by: vec![],
+                limit: 10,
+                storage: None,
+                sort: "count".into(),
+            },
+        )
+        .await;
+        assert!(result.is_ok(), "logs aggregate failed: {:?}", result.err());
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_logs_aggregate_multiple_computes() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "POST", r#"{"data": {"buckets": []}}"#).await;
+
+        let result = super::aggregate(
+            &cfg,
+            super::AggregateArgs {
+                query: "*".into(),
+                from: "1h".into(),
+                to: "now".into(),
+                compute: super::split_compute_args(
+                    "count,avg(@duration),percentile(@duration, 95)",
+                ),
+                group_by: vec!["service".into(), "status".into()],
+                limit: 10,
+                storage: None,
+                sort: "count".into(),
+            },
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "logs aggregate with multiple computes failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_logs_search_with_flex_storage() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "POST", r#"{"data": [], "meta": {"page": {}}}"#).await;
+
+        let result = super::search(
+            &cfg,
+            "*".into(),
+            "1h".into(),
+            "now".into(),
+            10,
+            "-timestamp".into(),
+            Some("flex".into()),
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "logs search with flex failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_logs_search_with_online_archives_storage() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "POST", r#"{"data": [], "meta": {"page": {}}}"#).await;
+
+        let result = super::search(
+            &cfg,
+            "*".into(),
+            "1h".into(),
+            "now".into(),
+            10,
+            "-timestamp".into(),
+            Some("online-archives".into()),
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "logs search with online-archives failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_logs_search_with_invalid_storage_tier() {
+        let _lock = lock_env().await;
+        let server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let result = super::search(
+            &cfg,
+            "*".into(),
+            "1h".into(),
+            "now".into(),
+            10,
+            "-timestamp".into(),
+            Some("invalid-tier".into()),
+        )
+        .await;
+        assert!(
+            result.is_err(),
+            "logs search with invalid storage tier should fail"
+        );
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("unknown storage tier"),
+            "error should mention unknown storage tier"
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_logs_aggregate_with_flex_storage() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "POST", r#"{"data": {"buckets": []}}"#).await;
+
+        let result = super::aggregate(
+            &cfg,
+            super::AggregateArgs {
+                query: "*".into(),
+                from: "1h".into(),
+                to: "now".into(),
+                compute: vec!["count".into()],
+                group_by: vec![],
+                limit: 10,
+                storage: Some("flex".into()),
+                sort: "count".into(),
+            },
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "logs aggregate with flex failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_logs_archives_list() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", r#"{"data": []}"#).await;
+
+        let result = super::archives_list(&cfg).await;
+        assert!(
+            result.is_ok(),
+            "logs archives list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_logs_custom_destinations_list() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", r#"{"data": []}"#).await;
+
+        let result = super::custom_destinations_list(&cfg).await;
+        assert!(
+            result.is_ok(),
+            "logs custom destinations list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_logs_metrics_list() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", r#"{"data": []}"#).await;
+
+        let result = super::metrics_list(&cfg).await;
+        assert!(
+            result.is_ok(),
+            "logs metrics list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_logs_restriction_queries_list() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        // restriction_queries_list uses raw HTTP (not DD client), so mock specific path
+        let _mock = server
+            .mock("GET", "/api/v2/logs/config/restriction_queries")
+            .match_query(mockito::Matcher::Any)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data": []}"#)
+            .create_async()
+            .await;
+
+        let result = super::restriction_queries_list(&cfg).await;
+        assert!(
+            result.is_ok(),
+            "logs restriction queries list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
     }
 }

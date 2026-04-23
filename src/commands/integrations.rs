@@ -216,3 +216,69 @@ pub async fn list(cfg: &Config) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("failed to list integrations: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_integrations_jira_accounts_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::jira_accounts_list(&cfg).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_integrations_jira_templates_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::jira_templates_list(&cfg).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_integrations_servicenow_instances_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::servicenow_instances_list(&cfg).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_integrations_servicenow_templates_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::servicenow_templates_list(&cfg).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_integrations_slack_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::slack_list(&cfg).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_integrations_webhooks_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::webhooks_list(&cfg).await;
+        cleanup_env();
+    }
+}

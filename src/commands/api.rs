@@ -209,6 +209,8 @@ pub async fn run(
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::*;
+
     use super::*;
 
     #[test]
@@ -310,5 +312,214 @@ mod tests {
     #[test]
     fn test_value_to_query_param_bool() {
         assert_eq!(value_to_query_param(&Value::Bool(true)), "true");
+    }
+
+    #[tokio::test]
+    async fn test_api_get_success() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("GET", "/api/v2/monitors")
+            .match_query(mockito::Matcher::Any)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"[{"id":1,"name":"Test"}]"#)
+            .create_async()
+            .await;
+
+        let result = super::run(
+            &cfg,
+            "v2/monitors",
+            "GET",
+            &[],
+            &[],
+            &[],
+            None,
+            false,
+            false,
+            false,
+        )
+        .await;
+        assert!(result.is_ok(), "api GET failed: {:?}", result.err());
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_api_get_absolute_path() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("GET", "/api/v2/monitors")
+            .match_query(mockito::Matcher::Any)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"[]"#)
+            .create_async()
+            .await;
+
+        let result = super::run(
+            &cfg,
+            "/api/v2/monitors",
+            "GET",
+            &[],
+            &[],
+            &[],
+            None,
+            false,
+            false,
+            false,
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "api GET absolute path failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_api_post_with_fields() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("POST", "/api/v2/tags/hosts/myhost")
+            .match_query(mockito::Matcher::Any)
+            .with_status(201)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"tags":[]}"#)
+            .create_async()
+            .await;
+
+        let result = super::run(
+            &cfg,
+            "v2/tags/hosts/myhost",
+            "POST",
+            &[],
+            &["host=myhost".to_string()],
+            &["source=web".to_string()],
+            None,
+            false,
+            false,
+            false,
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "api POST with fields failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_api_raw_error_response() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("GET", "/api/v2/monitors")
+            .match_query(mockito::Matcher::Any)
+            .with_status(403)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["Forbidden"]}"#)
+            .create_async()
+            .await;
+
+        let result = super::run(
+            &cfg,
+            "v2/monitors",
+            "GET",
+            &[],
+            &[],
+            &[],
+            None,
+            false,
+            false,
+            false,
+        )
+        .await;
+        assert!(result.is_err(), "api GET should fail on 403");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_api_silent_flag() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("GET", "/api/v2/monitors")
+            .match_query(mockito::Matcher::Any)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"[{"id":1}]"#)
+            .create_async()
+            .await;
+
+        let result = super::run(
+            &cfg,
+            "v2/monitors",
+            "GET",
+            &[],
+            &[],
+            &[],
+            None,
+            false,
+            true, // silent
+            false,
+        )
+        .await;
+        assert!(result.is_ok(), "api GET silent failed: {:?}", result.err());
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_api_bad_method() {
+        let _lock = lock_env().await;
+        let server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let result = super::run(
+            &cfg,
+            "v2/monitors",
+            "INVALID METHOD WITH SPACES",
+            &[],
+            &[],
+            &[],
+            None,
+            false,
+            false,
+            false,
+        )
+        .await;
+        assert!(result.is_err(), "expected error for invalid HTTP method");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_api_bad_field_format() {
+        let _lock = lock_env().await;
+        let server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let result = super::run(
+            &cfg,
+            "v2/monitors",
+            "GET",
+            &[],
+            &["notakeyvalue".to_string()], // missing '='
+            &[],
+            None,
+            false,
+            false,
+            false,
+        )
+        .await;
+        assert!(result.is_err(), "expected error for malformed field");
+        cleanup_env();
     }
 }

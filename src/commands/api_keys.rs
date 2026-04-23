@@ -48,3 +48,39 @@ pub async fn delete(cfg: &Config, key_id: &str) -> Result<()> {
     println!("Successfully deleted API key {key_id}");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_api_keys_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::list(&cfg).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_api_keys_get() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {}}"#).await;
+        let _ = super::get(&cfg, "k1").await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_api_keys_delete() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{}"#).await;
+        let _ = super::delete(&cfg, "k1").await;
+        cleanup_env();
+    }
+}

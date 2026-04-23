@@ -517,6 +517,8 @@ pub async fn third_party_list(cfg: &Config, search: Option<&str>, active: bool) 
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::*;
+
     use super::*;
 
     fn make_provider(
@@ -710,5 +712,65 @@ mod tests {
         assert!(output.contains("Amazon S3"));
         assert!(output.contains("active"));
         assert!(output.contains('█'));
+    }
+
+    #[tokio::test]
+    async fn test_status_pages_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::pages_list(&cfg).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_status_pages_get() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {}}"#).await;
+        let _ = super::pages_get(&cfg, "p1").await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_status_pages_delete() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{}"#).await;
+        let _ = super::pages_delete(&cfg, "p1").await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_status_pages_components_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::components_list(&cfg, "p1").await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_status_pages_degradations_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::degradations_list(&cfg).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_status_pages_third_party_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::third_party_list(&cfg, None, false).await;
+        cleanup_env();
     }
 }
