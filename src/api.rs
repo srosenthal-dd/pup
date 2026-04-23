@@ -64,6 +64,7 @@ pub async fn delete(cfg: &Config, path: &str) -> Result<serde_json::Value> {
 }
 
 /// Perform a DELETE request with a JSON body.
+#[allow(dead_code)]
 pub async fn delete_with_body(
     cfg: &Config,
     path: &str,
