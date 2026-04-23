@@ -24,6 +24,55 @@ use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
+fn is_uuid(s: &str) -> bool {
+    uuid::Uuid::parse_str(s).is_ok()
+}
+
+/// Resolve a team identifier that may be either a UUID or a team handle.
+///
+/// If `input` parses as a UUID it is returned as-is (fast path, no API call).
+/// Otherwise, `ListTeams` is called with `filter[keyword]=<input>` and a single
+/// page of size 100. The returned teams are filtered locally for exact
+/// `attributes.handle == input` match; exactly one match returns `Ok(id)`.
+///
+/// Errors out (no silent inference):
+///   - no team matches the keyword at all,
+///   - substring matches exist but none has an exact handle,
+///   - more than one team has an exact handle (defensive; API-side invariant).
+///
+/// Note: the 100-result ceiling is deliberate; we do not loop-paginate.
+/// Handle collisions past page 1 will surface as "no exact match" rather than
+/// hiding a real team; callers can still pass the UUID directly.
+pub(crate) async fn resolve_team_id(cfg: &Config, input: &str) -> Result<String> {
+    if is_uuid(input) {
+        return Ok(input.to_string());
+    }
+
+    let api = crate::make_api!(TeamsAPI, cfg);
+    let params = ListTeamsOptionalParams::default()
+        .filter_keyword(input.to_string())
+        .page_size(100);
+    let resp = api
+        .list_teams(params)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to resolve team handle '{input}': {e:?}"))?;
+
+    let teams = resp.data.unwrap_or_default();
+    let total = teams.len();
+    let exact: Vec<&datadog_api_client::datadogV2::model::Team> = teams
+        .iter()
+        .filter(|t| t.attributes.handle == input)
+        .collect();
+
+    match exact.len() {
+        1 => Ok(exact[0].id.clone()),
+        0 if total == 0 => Err(anyhow::anyhow!("no team with handle '{input}'")),
+        _ => Err(anyhow::anyhow!(
+            "no exact handle match for '{input}' ({total} candidates matched substring)"
+        )),
+    }
+}
+
 pub async fn teams_list(cfg: &Config) -> Result<()> {
     let api = crate::make_api!(TeamsAPI, cfg);
     let resp = api
@@ -34,20 +83,23 @@ pub async fn teams_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn teams_get(cfg: &Config, team_id: &str) -> Result<()> {
+    let resolved = resolve_team_id(cfg, team_id).await?;
     let api = crate::make_api!(TeamsAPI, cfg);
     let resp = api
-        .get_team(team_id.to_string())
+        .get_team(resolved)
         .await
         .map_err(|e| anyhow::anyhow!("failed to get team: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
 
 pub async fn teams_delete(cfg: &Config, team_id: &str) -> Result<()> {
+    let resolved = resolve_team_id(cfg, team_id).await?;
     let api = crate::make_api!(TeamsAPI, cfg);
-    api.delete_team(team_id.to_string())
+    let msg = format!("Team '{resolved}' deleted successfully.");
+    api.delete_team(resolved)
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete team: {e:?}"))?;
-    println!("Team '{team_id}' deleted successfully.");
+    println!("{msg}");
     Ok(())
 }
 
@@ -64,22 +116,24 @@ pub async fn teams_create(cfg: &Config, name: &str, handle: &str) -> Result<()> 
 }
 
 pub async fn teams_update(cfg: &Config, team_id: &str, name: &str, handle: &str) -> Result<()> {
+    let resolved = resolve_team_id(cfg, team_id).await?;
     let api = crate::make_api!(TeamsAPI, cfg);
     let attrs = TeamUpdateAttributes::new(handle.to_string(), name.to_string());
     let data = TeamUpdate::new(attrs, TeamType::TEAM);
     let body = TeamUpdateRequest::new(data);
     let resp = api
-        .update_team(team_id.to_string(), body)
+        .update_team(resolved, body)
         .await
         .map_err(|e| anyhow::anyhow!("failed to update team: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
 
 pub async fn memberships_list(cfg: &Config, team_id: &str, page_size: i64) -> Result<()> {
+    let resolved = resolve_team_id(cfg, team_id).await?;
     let api = crate::make_api!(TeamsAPI, cfg);
     let params = GetTeamMembershipsOptionalParams::default().page_size(page_size);
     let resp = api
-        .get_team_memberships(team_id.to_string(), params)
+        .get_team_memberships(resolved, params)
         .await
         .map_err(|e| anyhow::anyhow!("failed to list memberships: {e:?}"))?;
     formatter::output(cfg, &resp)
@@ -91,6 +145,7 @@ pub async fn memberships_add(
     user_id: &str,
     role: Option<String>,
 ) -> Result<()> {
+    let resolved = resolve_team_id(cfg, team_id).await?;
     let api = crate::make_api!(TeamsAPI, cfg);
     let mut attrs = UserTeamAttributes::new();
     if let Some(r) = role {
@@ -109,7 +164,7 @@ pub async fn memberships_add(
         .relationships(relationships);
     let body = UserTeamRequest::new(data);
     let resp = api
-        .create_team_membership(team_id.to_string(), body)
+        .create_team_membership(resolved, body)
         .await
         .map_err(|e| anyhow::anyhow!("failed to add membership: {e:?}"))?;
     formatter::output(cfg, &resp)
@@ -121,6 +176,7 @@ pub async fn memberships_update(
     user_id: &str,
     role: &str,
 ) -> Result<()> {
+    let resolved = resolve_team_id(cfg, team_id).await?;
     let api = crate::make_api!(TeamsAPI, cfg);
     let team_role = match role.to_lowercase().as_str() {
         "admin" => UserTeamRole::ADMIN,
@@ -130,18 +186,20 @@ pub async fn memberships_update(
     let data = UserTeamUpdate::new(UserTeamType::TEAM_MEMBERSHIPS).attributes(attrs);
     let body = UserTeamUpdateRequest::new(data);
     let resp = api
-        .update_team_membership(team_id.to_string(), user_id.to_string(), body)
+        .update_team_membership(resolved, user_id.to_string(), body)
         .await
         .map_err(|e| anyhow::anyhow!("failed to update membership: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
 
 pub async fn memberships_remove(cfg: &Config, team_id: &str, user_id: &str) -> Result<()> {
+    let resolved = resolve_team_id(cfg, team_id).await?;
     let api = crate::make_api!(TeamsAPI, cfg);
-    api.delete_team_membership(team_id.to_string(), user_id.to_string())
+    let msg = format!("Membership for user {user_id} removed from team {resolved}.");
+    api.delete_team_membership(resolved, user_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to remove membership: {e:?}"))?;
-    println!("Membership for user {user_id} removed from team {team_id}.");
+    println!("{msg}");
     Ok(())
 }
 
@@ -365,4 +423,36 @@ pub async fn pages_create(cfg: &Config, file: &str) -> Result<()> {
         .await
         .map_err(|e| anyhow::anyhow!("failed to create page: {e:?}"))?;
     formatter::output(cfg, &resp)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_uuid_accepts_canonical() {
+        assert!(is_uuid("00000000-0000-0000-0000-000000000000"));
+        assert!(is_uuid("abcdef01-2345-6789-abcd-ef0123456789"));
+        // Uppercase hex is also valid.
+        assert!(is_uuid("ABCDEF01-2345-6789-ABCD-EF0123456789"));
+    }
+
+    #[test]
+    fn test_is_uuid_rejects_handle() {
+        assert!(!is_uuid("example-team"));
+        assert!(!is_uuid("team-handle-with-dashes"));
+        assert!(!is_uuid(""));
+    }
+
+    #[test]
+    fn test_is_uuid_rejects_wrong_length() {
+        // Too short (last segment is 11 hex chars).
+        assert!(!is_uuid("00000000-0000-0000-0000-00000000000"));
+        // Too long (last segment is 13 hex chars).
+        assert!(!is_uuid("00000000-0000-0000-0000-0000000000000"));
+        // Non-hex character ('g').
+        assert!(!is_uuid("g0000000-0000-0000-0000-000000000000"));
+        // Missing dashes.
+        assert!(!is_uuid("000000000000000000000000000000000000"));
+    }
 }
