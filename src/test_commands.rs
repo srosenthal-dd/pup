@@ -1857,8 +1857,7 @@ async fn test_on_call_teams_get_by_handle() {
     let _lock = lock_env();
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
-    // `resolve_team_id` first calls ListTeams (GET /api/v2/team) with a
-    // keyword filter; we return one team whose handle exactly matches.
+    // ListTeams keyword-filter response with one exactly-matching handle.
     let list_body = r#"{
         "data": [
             {

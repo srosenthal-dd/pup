@@ -19,20 +19,13 @@ use datadog_api_client::datadogV2::model::{
     UserTeamRelationships, UserTeamRequest, UserTeamRole, UserTeamType, UserTeamUpdate,
     UserTeamUpdateRequest, UserTeamUserType,
 };
-use regex::Regex;
 
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
-/// Returns true if `s` is a canonical UUID (8-4-4-4-12 lowercase/uppercase hex).
 fn is_uuid(s: &str) -> bool {
-    // Keep the regex simple and exact; accept upper- or lower-case hex.
-    let re = Regex::new(
-        r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
-    )
-    .unwrap();
-    re.is_match(s)
+    uuid::Uuid::parse_str(s).is_ok()
 }
 
 /// Resolve a team identifier that may be either a UUID or a team handle.
@@ -74,11 +67,8 @@ pub(crate) async fn resolve_team_id(cfg: &Config, input: &str) -> Result<String>
     match exact.len() {
         1 => Ok(exact[0].id.clone()),
         0 if total == 0 => Err(anyhow::anyhow!("no team with handle '{input}'")),
-        0 => Err(anyhow::anyhow!(
+        _ => Err(anyhow::anyhow!(
             "no exact handle match for '{input}' ({total} candidates matched substring)"
-        )),
-        n => Err(anyhow::anyhow!(
-            "no exact handle match for '{input}' ({n} candidates matched substring)"
         )),
     }
 }
@@ -105,10 +95,11 @@ pub async fn teams_get(cfg: &Config, team_id: &str) -> Result<()> {
 pub async fn teams_delete(cfg: &Config, team_id: &str) -> Result<()> {
     let resolved = resolve_team_id(cfg, team_id).await?;
     let api = crate::make_api!(TeamsAPI, cfg);
-    api.delete_team(resolved.clone())
+    let msg = format!("Team '{resolved}' deleted successfully.");
+    api.delete_team(resolved)
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete team: {e:?}"))?;
-    println!("Team '{resolved}' deleted successfully.");
+    println!("{msg}");
     Ok(())
 }
 
@@ -204,10 +195,11 @@ pub async fn memberships_update(
 pub async fn memberships_remove(cfg: &Config, team_id: &str, user_id: &str) -> Result<()> {
     let resolved = resolve_team_id(cfg, team_id).await?;
     let api = crate::make_api!(TeamsAPI, cfg);
-    api.delete_team_membership(resolved.clone(), user_id.to_string())
+    let msg = format!("Membership for user {user_id} removed from team {resolved}.");
+    api.delete_team_membership(resolved, user_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to remove membership: {e:?}"))?;
-    println!("Membership for user {user_id} removed from team {resolved}.");
+    println!("{msg}");
     Ok(())
 }
 
