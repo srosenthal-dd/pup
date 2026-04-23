@@ -28,6 +28,60 @@ cargo test
 cargo run -- <command>
 ```
 
+### 3. (Optional) Speed up local builds with sccache + S3
+
+[sccache](https://github.com/mozilla/sccache) can cache `rustc` outputs to an
+S3 bucket and is shared across branches, worktrees, and clean checkouts. This
+is opt-in; it is not wired into CI.
+
+**Install:**
+
+```bash
+# macOS
+brew install sccache
+
+# cargo (any platform)
+cargo install sccache --locked
+```
+
+**Configure** (edit the placeholders, then add to your shell rc):
+
+```bash
+# --- AWS credentials ---
+# Provide via any method sccache/AWS SDK supports: `aws sso login`, a profile
+# in ~/.aws/credentials, or static keys. Example with a profile:
+export AWS_PROFILE=REPLACE_ME
+# Or static keys (not recommended):
+# export AWS_ACCESS_KEY_ID=...
+# export AWS_SECRET_ACCESS_KEY=...
+
+# --- sccache S3 backend ---
+export SCCACHE_BUCKET=REPLACE_ME-bucket-name
+export SCCACHE_REGION=REPLACE_ME-aws-region   # e.g. us-east-1
+export SCCACHE_S3_KEY_PREFIX=pup               # keeps this repo's entries scoped
+# export SCCACHE_S3_SERVER_SIDE_ENCRYPTION=true  # if the bucket requires SSE
+
+# --- Hook sccache into cargo ---
+export RUSTC_WRAPPER=sccache
+```
+
+**Verify:**
+
+```bash
+sccache --start-server
+cargo clean && cargo build     # first build populates the cache
+cargo clean && cargo build     # second build should hit the cache
+sccache --show-stats           # inspect hit/miss counters
+```
+
+**Notes:**
+- The bucket must exist and the caller's IAM principal needs `s3:GetObject`,
+  `s3:PutObject`, and `s3:ListBucket` on it.
+- Do **not** set `RUSTC_WRAPPER` in `.cargo/config.toml` — keep this opt-in so
+  contributors without S3 access are not forced through sccache.
+- Proc-macro crates and build scripts are not cached by sccache; a full clean
+  build will still do real work for those.
+
 ## Development Workflow
 
 ### 1. Create a branch
