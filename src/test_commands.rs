@@ -9,14 +9,15 @@
 
 use crate::config::{Config, OutputFormat};
 use clap::CommandFactory;
-use std::sync::Mutex;
+use tokio::sync::Mutex;
 
-/// Global mutex to serialize tests that modify process-wide env vars.
-/// Uses unwrap_or_else to recover from poisoned state (previous test panicked).
-static ENV_MUTEX: Mutex<()> = Mutex::new(());
+/// Global async mutex to serialize tests that modify process-wide env vars.
+/// Uses `tokio::sync::Mutex` so the guard can be held across `.await` points
+/// without tripping `clippy::await_holding_lock`.
+static ENV_MUTEX: Mutex<()> = Mutex::const_new(());
 
-fn lock_env() -> std::sync::MutexGuard<'static, ()> {
-    ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner())
+async fn lock_env() -> tokio::sync::MutexGuard<'static, ()> {
+    ENV_MUTEX.lock().await
 }
 
 fn test_config(mock_url: &str) -> Config {
@@ -67,7 +68,7 @@ async fn mock_any(server: &mut mockito::Server, method: &str, body: &str) -> moc
 
 #[tokio::test]
 async fn test_monitors_list_empty() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(&mut server, "GET", "[]").await;
@@ -79,7 +80,7 @@ async fn test_monitors_list_empty() {
 
 #[tokio::test]
 async fn test_monitors_list_with_results() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -97,7 +98,7 @@ async fn test_monitors_list_with_results() {
 
 #[tokio::test]
 async fn test_monitors_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -111,7 +112,7 @@ async fn test_monitors_get() {
 
 #[tokio::test]
 async fn test_monitors_search() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -125,7 +126,7 @@ async fn test_monitors_search() {
 
 #[tokio::test]
 async fn test_monitors_delete() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(&mut server, "DELETE", r#"{"deleted_monitor_id": 12345}"#).await;
@@ -141,7 +142,7 @@ async fn test_monitors_delete() {
 
 #[tokio::test]
 async fn test_dashboards_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(&mut server, "GET", r#"{"dashboards": []}"#).await;
@@ -153,7 +154,7 @@ async fn test_dashboards_list() {
 
 #[tokio::test]
 async fn test_dashboards_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(
@@ -170,7 +171,7 @@ async fn test_dashboards_get() {
 
 #[tokio::test]
 async fn test_dashboards_delete() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(
@@ -195,7 +196,7 @@ async fn test_dashboards_delete() {
 
 #[tokio::test]
 async fn test_slos_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let mock = server
@@ -214,7 +215,7 @@ async fn test_slos_list() {
 
 #[tokio::test]
 async fn test_slos_list_with_query() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let mock = server
@@ -249,7 +250,7 @@ async fn test_slos_list_with_query() {
 
 #[tokio::test]
 async fn test_slos_list_with_tags_query() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let mock = server
@@ -278,7 +279,7 @@ async fn test_slos_list_with_tags_query() {
 
 #[tokio::test]
 async fn test_slos_list_with_limit_and_offset() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let mock = server
@@ -305,7 +306,7 @@ async fn test_slos_list_with_limit_and_offset() {
 
 #[tokio::test]
 async fn test_slos_list_with_metrics_query() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let mock = server
@@ -340,7 +341,7 @@ async fn test_slos_list_with_metrics_query() {
 
 #[tokio::test]
 async fn test_slos_list_api_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let mock = server
@@ -371,7 +372,7 @@ async fn test_slos_list_api_error() {
 
 #[tokio::test]
 async fn test_slos_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(
@@ -388,7 +389,7 @@ async fn test_slos_get() {
 
 #[tokio::test]
 async fn test_slos_delete() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(&mut server, "DELETE", r#"{"data": []}"#).await;
@@ -404,7 +405,7 @@ async fn test_slos_delete() {
 
 #[tokio::test]
 async fn test_tags_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(&mut server, "GET", r#"{"tags": {}}"#).await;
@@ -416,7 +417,7 @@ async fn test_tags_list() {
 
 #[tokio::test]
 async fn test_tags_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(
@@ -433,7 +434,7 @@ async fn test_tags_get() {
 
 #[tokio::test]
 async fn test_tags_add() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(
@@ -450,7 +451,7 @@ async fn test_tags_add() {
 
 #[tokio::test]
 async fn test_tags_update() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(
@@ -467,7 +468,7 @@ async fn test_tags_update() {
 
 #[tokio::test]
 async fn test_tags_delete() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -490,7 +491,7 @@ async fn test_tags_delete() {
 
 #[tokio::test]
 async fn test_events_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(&mut server, "GET", r#"{"events": []}"#).await;
@@ -503,7 +504,7 @@ async fn test_events_list() {
 
 #[tokio::test]
 async fn test_events_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(
@@ -524,7 +525,7 @@ async fn test_events_get() {
 
 #[tokio::test]
 async fn test_logs_search() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(&mut server, "POST", r#"{"data": [], "meta": {"page": {}}}"#).await;
@@ -545,9 +546,9 @@ async fn test_logs_search() {
 
 #[tokio::test]
 async fn test_logs_search_with_oauth() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
-    std::env::set_var("PUP_MOCK_SERVER", &server.url());
+    std::env::set_var("PUP_MOCK_SERVER", server.url());
 
     let cfg = Config {
         api_key: None,
@@ -579,7 +580,7 @@ async fn test_logs_search_with_oauth() {
 
 #[tokio::test]
 async fn test_logs_aggregate() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(&mut server, "POST", r#"{"data": {"buckets": []}}"#).await;
@@ -604,7 +605,7 @@ async fn test_logs_aggregate() {
 
 #[tokio::test]
 async fn test_logs_aggregate_multiple_computes() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(&mut server, "POST", r#"{"data": {"buckets": []}}"#).await;
@@ -635,7 +636,7 @@ async fn test_logs_aggregate_multiple_computes() {
 
 #[tokio::test]
 async fn test_logs_search_with_flex_storage() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(&mut server, "POST", r#"{"data": [], "meta": {"page": {}}}"#).await;
@@ -660,7 +661,7 @@ async fn test_logs_search_with_flex_storage() {
 
 #[tokio::test]
 async fn test_logs_search_with_online_archives_storage() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(&mut server, "POST", r#"{"data": [], "meta": {"page": {}}}"#).await;
@@ -685,7 +686,7 @@ async fn test_logs_search_with_online_archives_storage() {
 
 #[tokio::test]
 async fn test_logs_search_with_invalid_storage_tier() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -715,7 +716,7 @@ async fn test_logs_search_with_invalid_storage_tier() {
 
 #[tokio::test]
 async fn test_logs_aggregate_with_flex_storage() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(&mut server, "POST", r#"{"data": {"buckets": []}}"#).await;
@@ -744,7 +745,7 @@ async fn test_logs_aggregate_with_flex_storage() {
 
 #[tokio::test]
 async fn test_logs_archives_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(&mut server, "GET", r#"{"data": []}"#).await;
@@ -760,7 +761,7 @@ async fn test_logs_archives_list() {
 
 #[tokio::test]
 async fn test_logs_custom_destinations_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(&mut server, "GET", r#"{"data": []}"#).await;
@@ -776,7 +777,7 @@ async fn test_logs_custom_destinations_list() {
 
 #[tokio::test]
 async fn test_logs_metrics_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(&mut server, "GET", r#"{"data": []}"#).await;
@@ -792,7 +793,7 @@ async fn test_logs_metrics_list() {
 
 #[tokio::test]
 async fn test_logs_restriction_queries_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -821,7 +822,7 @@ async fn test_logs_restriction_queries_list() {
 
 #[tokio::test]
 async fn test_metrics_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(
@@ -838,7 +839,7 @@ async fn test_metrics_list() {
 
 #[tokio::test]
 async fn test_metrics_query() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(
@@ -861,7 +862,7 @@ async fn test_metrics_query() {
 
 #[tokio::test]
 async fn test_metrics_metadata_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(
@@ -886,7 +887,7 @@ async fn test_metrics_metadata_get() {
 
 #[tokio::test]
 async fn test_events_search() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(&mut server, "POST", r#"{"data": [], "meta": {"page": {}}}"#).await;
@@ -900,9 +901,9 @@ async fn test_events_search() {
 
 #[tokio::test]
 async fn test_events_search_requires_api_keys() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let server = mockito::Server::new_async().await;
-    std::env::set_var("PUP_MOCK_SERVER", &server.url());
+    std::env::set_var("PUP_MOCK_SERVER", server.url());
 
     let cfg = Config {
         api_key: None,
@@ -930,9 +931,9 @@ async fn test_events_search_requires_api_keys() {
 
 #[tokio::test]
 async fn test_api_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
-    std::env::set_var("PUP_MOCK_SERVER", &server.url());
+    std::env::set_var("PUP_MOCK_SERVER", server.url());
 
     let cfg = Config {
         api_key: Some("test-key".into()),
@@ -964,9 +965,9 @@ async fn test_api_get() {
 
 #[tokio::test]
 async fn test_api_get_with_query() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
-    std::env::set_var("PUP_MOCK_SERVER", &server.url());
+    std::env::set_var("PUP_MOCK_SERVER", server.url());
 
     let cfg = Config {
         api_key: Some("test-key".into()),
@@ -1002,9 +1003,9 @@ async fn test_api_get_with_query() {
 
 #[tokio::test]
 async fn test_api_post() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
-    std::env::set_var("PUP_MOCK_SERVER", &server.url());
+    std::env::set_var("PUP_MOCK_SERVER", server.url());
 
     let cfg = Config {
         api_key: Some("test-key".into()),
@@ -1035,9 +1036,9 @@ async fn test_api_post() {
 
 #[tokio::test]
 async fn test_api_put() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
-    std::env::set_var("PUP_MOCK_SERVER", &server.url());
+    std::env::set_var("PUP_MOCK_SERVER", server.url());
 
     let cfg = Config {
         api_key: Some("test-key".into()),
@@ -1068,9 +1069,9 @@ async fn test_api_put() {
 
 #[tokio::test]
 async fn test_api_patch() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
-    std::env::set_var("PUP_MOCK_SERVER", &server.url());
+    std::env::set_var("PUP_MOCK_SERVER", server.url());
 
     let cfg = Config {
         api_key: Some("test-key".into()),
@@ -1101,9 +1102,9 @@ async fn test_api_patch() {
 
 #[tokio::test]
 async fn test_api_delete() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
-    std::env::set_var("PUP_MOCK_SERVER", &server.url());
+    std::env::set_var("PUP_MOCK_SERVER", server.url());
 
     let cfg = Config {
         api_key: Some("test-key".into()),
@@ -1133,9 +1134,9 @@ async fn test_api_delete() {
 
 #[tokio::test]
 async fn test_api_error_response() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
-    std::env::set_var("PUP_MOCK_SERVER", &server.url());
+    std::env::set_var("PUP_MOCK_SERVER", server.url());
 
     let cfg = Config {
         api_key: Some("test-key".into()),
@@ -1166,9 +1167,9 @@ async fn test_api_error_response() {
 
 #[tokio::test]
 async fn test_api_bearer_auth() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
-    std::env::set_var("PUP_MOCK_SERVER", &server.url());
+    std::env::set_var("PUP_MOCK_SERVER", server.url());
 
     let cfg = Config {
         api_key: None,
@@ -1199,7 +1200,7 @@ async fn test_api_bearer_auth() {
 
 #[tokio::test]
 async fn test_api_no_auth() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
 
     let cfg = Config {
         api_key: None,
@@ -1224,9 +1225,9 @@ async fn test_api_no_auth() {
 
 #[tokio::test]
 async fn test_api_empty_response() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
-    std::env::set_var("PUP_MOCK_SERVER", &server.url());
+    std::env::set_var("PUP_MOCK_SERVER", server.url());
 
     let cfg = Config {
         api_key: Some("test-key".into()),
@@ -1257,9 +1258,9 @@ async fn test_api_empty_response() {
 
 #[tokio::test]
 async fn test_api_server_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
-    std::env::set_var("PUP_MOCK_SERVER", &server.url());
+    std::env::set_var("PUP_MOCK_SERVER", server.url());
 
     let cfg = Config {
         api_key: Some("test-key".into()),
@@ -1315,7 +1316,7 @@ async fn mock_all(s: &mut mockito::Server, body: &str) {
 // --- RUM ---
 #[tokio::test]
 async fn test_rum_apps_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1324,7 +1325,7 @@ async fn test_rum_apps_list() {
 }
 #[tokio::test]
 async fn test_rum_apps_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": {"id": "abc", "type": "rum_browser"}}"#).await;
@@ -1333,7 +1334,7 @@ async fn test_rum_apps_get() {
 }
 #[tokio::test]
 async fn test_rum_apps_delete() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{}"#).await;
@@ -1342,7 +1343,7 @@ async fn test_rum_apps_delete() {
 }
 #[tokio::test]
 async fn test_rum_metrics_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1351,7 +1352,7 @@ async fn test_rum_metrics_list() {
 }
 #[tokio::test]
 async fn test_rum_metrics_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": {}}"#).await;
@@ -1360,7 +1361,7 @@ async fn test_rum_metrics_get() {
 }
 #[tokio::test]
 async fn test_rum_metrics_delete() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{}"#).await;
@@ -1369,7 +1370,7 @@ async fn test_rum_metrics_delete() {
 }
 #[tokio::test]
 async fn test_rum_retention_filters_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1378,7 +1379,7 @@ async fn test_rum_retention_filters_list() {
 }
 #[tokio::test]
 async fn test_rum_events_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1387,7 +1388,7 @@ async fn test_rum_events_list() {
 }
 #[tokio::test]
 async fn test_rum_playlists_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1398,7 +1399,7 @@ async fn test_rum_playlists_list() {
 // --- Status Pages ---
 #[tokio::test]
 async fn test_status_pages_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1407,7 +1408,7 @@ async fn test_status_pages_list() {
 }
 #[tokio::test]
 async fn test_status_pages_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": {}}"#).await;
@@ -1416,7 +1417,7 @@ async fn test_status_pages_get() {
 }
 #[tokio::test]
 async fn test_status_pages_delete() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{}"#).await;
@@ -1425,7 +1426,7 @@ async fn test_status_pages_delete() {
 }
 #[tokio::test]
 async fn test_status_pages_components_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1434,7 +1435,7 @@ async fn test_status_pages_components_list() {
 }
 #[tokio::test]
 async fn test_status_pages_degradations_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1443,7 +1444,7 @@ async fn test_status_pages_degradations_list() {
 }
 #[tokio::test]
 async fn test_status_pages_third_party_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1454,7 +1455,7 @@ async fn test_status_pages_third_party_list() {
 // --- Cases ---
 #[tokio::test]
 async fn test_cases_search() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1463,7 +1464,7 @@ async fn test_cases_search() {
 }
 #[tokio::test]
 async fn test_cases_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": {}}"#).await;
@@ -1472,7 +1473,7 @@ async fn test_cases_get() {
 }
 #[tokio::test]
 async fn test_cases_projects_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1481,7 +1482,7 @@ async fn test_cases_projects_list() {
 }
 #[tokio::test]
 async fn test_cases_projects_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": {}}"#).await;
@@ -1490,7 +1491,7 @@ async fn test_cases_projects_get() {
 }
 #[tokio::test]
 async fn test_cases_projects_delete() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{}"#).await;
@@ -1501,7 +1502,7 @@ async fn test_cases_projects_delete() {
 // --- Integrations ---
 #[tokio::test]
 async fn test_integrations_jira_accounts_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1510,7 +1511,7 @@ async fn test_integrations_jira_accounts_list() {
 }
 #[tokio::test]
 async fn test_integrations_jira_templates_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1519,7 +1520,7 @@ async fn test_integrations_jira_templates_list() {
 }
 #[tokio::test]
 async fn test_integrations_servicenow_instances_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1528,7 +1529,7 @@ async fn test_integrations_servicenow_instances_list() {
 }
 #[tokio::test]
 async fn test_integrations_servicenow_templates_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1537,7 +1538,7 @@ async fn test_integrations_servicenow_templates_list() {
 }
 #[tokio::test]
 async fn test_integrations_slack_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1546,7 +1547,7 @@ async fn test_integrations_slack_list() {
 }
 #[tokio::test]
 async fn test_integrations_webhooks_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1557,7 +1558,7 @@ async fn test_integrations_webhooks_list() {
 // --- CI/CD ---
 #[tokio::test]
 async fn test_cicd_pipelines_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1566,7 +1567,7 @@ async fn test_cicd_pipelines_list() {
 }
 #[tokio::test]
 async fn test_cicd_tests_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1575,7 +1576,7 @@ async fn test_cicd_tests_list() {
 }
 #[tokio::test]
 async fn test_cicd_flaky_tests_search() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1592,7 +1593,7 @@ async fn test_cicd_flaky_tests_search() {
 
 #[tokio::test]
 async fn test_cicd_flaky_tests_search_invalid_sort() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     let result =
@@ -1608,7 +1609,7 @@ async fn test_cicd_flaky_tests_search_invalid_sort() {
 // --- Fleet ---
 #[tokio::test]
 async fn test_fleet_agents_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1617,7 +1618,7 @@ async fn test_fleet_agents_list() {
 }
 #[tokio::test]
 async fn test_fleet_agents_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": {}}"#).await;
@@ -1626,7 +1627,7 @@ async fn test_fleet_agents_get() {
 }
 #[tokio::test]
 async fn test_fleet_agents_versions() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1635,7 +1636,7 @@ async fn test_fleet_agents_versions() {
 }
 #[tokio::test]
 async fn test_fleet_tracers_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -1654,7 +1655,7 @@ async fn test_fleet_tracers_list() {
 }
 #[tokio::test]
 async fn test_fleet_tracers_list_with_filter() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -1689,7 +1690,7 @@ async fn test_fleet_tracers_list_with_filter() {
 }
 #[tokio::test]
 async fn test_fleet_agents_tracers_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -1720,7 +1721,7 @@ async fn test_fleet_agents_tracers_list() {
 }
 #[tokio::test]
 async fn test_fleet_instrumented_pods_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -1748,7 +1749,7 @@ async fn test_fleet_instrumented_pods_list() {
 }
 #[tokio::test]
 async fn test_fleet_clusters_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -1767,7 +1768,7 @@ async fn test_fleet_clusters_list() {
 }
 #[tokio::test]
 async fn test_fleet_deployments_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1776,7 +1777,7 @@ async fn test_fleet_deployments_list() {
 }
 #[tokio::test]
 async fn test_fleet_schedules_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1787,7 +1788,7 @@ async fn test_fleet_schedules_list() {
 // --- Incidents ---
 #[tokio::test]
 async fn test_incidents_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1796,7 +1797,7 @@ async fn test_incidents_list() {
 }
 #[tokio::test]
 async fn test_incidents_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": {}}"#).await;
@@ -1805,7 +1806,7 @@ async fn test_incidents_get() {
 }
 #[tokio::test]
 async fn test_incidents_settings_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": {}}"#).await;
@@ -1814,7 +1815,7 @@ async fn test_incidents_settings_get() {
 }
 #[tokio::test]
 async fn test_incidents_handles_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1823,7 +1824,7 @@ async fn test_incidents_handles_list() {
 }
 #[tokio::test]
 async fn test_incidents_postmortem_templates_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1834,7 +1835,7 @@ async fn test_incidents_postmortem_templates_list() {
 // --- On-Call ---
 #[tokio::test]
 async fn test_on_call_teams_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1843,7 +1844,7 @@ async fn test_on_call_teams_list() {
 }
 #[tokio::test]
 async fn test_on_call_teams_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": {}}"#).await;
@@ -1852,7 +1853,7 @@ async fn test_on_call_teams_get() {
 }
 #[tokio::test]
 async fn test_on_call_teams_delete() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{}"#).await;
@@ -1863,7 +1864,7 @@ async fn test_on_call_teams_delete() {
 // --- On-Call Escalation Policies ---
 #[tokio::test]
 async fn test_on_call_escalation_policies_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": {"type": "policies"}}"#).await;
@@ -1877,7 +1878,7 @@ async fn test_on_call_escalation_policies_get() {
 }
 #[tokio::test]
 async fn test_on_call_escalation_policies_delete() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{}"#).await;
@@ -1891,7 +1892,7 @@ async fn test_on_call_escalation_policies_delete() {
 }
 #[tokio::test]
 async fn test_on_call_escalation_policies_get_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     s.mock("GET", mockito::Matcher::Any)
@@ -1909,7 +1910,7 @@ async fn test_on_call_escalation_policies_get_error() {
 // --- On-Call Schedules ---
 #[tokio::test]
 async fn test_on_call_schedules_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": {"type": "schedules"}}"#).await;
@@ -1919,7 +1920,7 @@ async fn test_on_call_schedules_get() {
 }
 #[tokio::test]
 async fn test_on_call_schedules_delete() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{}"#).await;
@@ -1933,7 +1934,7 @@ async fn test_on_call_schedules_delete() {
 }
 #[tokio::test]
 async fn test_on_call_schedules_get_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     s.mock("GET", mockito::Matcher::Any)
@@ -1951,7 +1952,7 @@ async fn test_on_call_schedules_get_error() {
 // --- On-Call Notification Channels ---
 #[tokio::test]
 async fn test_on_call_notification_channels_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -1965,7 +1966,7 @@ async fn test_on_call_notification_channels_list() {
 }
 #[tokio::test]
 async fn test_on_call_notification_channels_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": {"type": "notification_channels"}}"#).await;
@@ -1979,7 +1980,7 @@ async fn test_on_call_notification_channels_get() {
 }
 #[tokio::test]
 async fn test_on_call_notification_channels_delete() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{}"#).await;
@@ -1993,7 +1994,7 @@ async fn test_on_call_notification_channels_delete() {
 }
 #[tokio::test]
 async fn test_on_call_notification_channels_list_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     s.mock("GET", mockito::Matcher::Any)
@@ -2011,7 +2012,7 @@ async fn test_on_call_notification_channels_list_error() {
 // --- On-Call Notification Rules ---
 #[tokio::test]
 async fn test_on_call_notification_rules_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -2025,7 +2026,7 @@ async fn test_on_call_notification_rules_list() {
 }
 #[tokio::test]
 async fn test_on_call_notification_rules_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": {"type": "notification_rules"}}"#).await;
@@ -2039,7 +2040,7 @@ async fn test_on_call_notification_rules_get() {
 }
 #[tokio::test]
 async fn test_on_call_notification_rules_delete() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{}"#).await;
@@ -2053,7 +2054,7 @@ async fn test_on_call_notification_rules_delete() {
 }
 #[tokio::test]
 async fn test_on_call_notification_rules_list_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     s.mock("GET", mockito::Matcher::Any)
@@ -2071,7 +2072,7 @@ async fn test_on_call_notification_rules_list_error() {
 // --- Security ---
 #[tokio::test]
 async fn test_security_rules_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -2080,7 +2081,7 @@ async fn test_security_rules_list() {
 }
 #[tokio::test]
 async fn test_security_rules_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": {}}"#).await;
@@ -2089,7 +2090,7 @@ async fn test_security_rules_get() {
 }
 #[tokio::test]
 async fn test_security_content_packs_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -2100,7 +2101,7 @@ async fn test_security_content_packs_list() {
 // --- Synthetics ---
 #[tokio::test]
 async fn test_synthetics_tests_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"tests": []}"#).await;
@@ -2109,7 +2110,7 @@ async fn test_synthetics_tests_list() {
 }
 #[tokio::test]
 async fn test_synthetics_tests_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{}"#).await;
@@ -2118,7 +2119,7 @@ async fn test_synthetics_tests_get() {
 }
 #[tokio::test]
 async fn test_synthetics_locations_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"locations": []}"#).await;
@@ -2129,7 +2130,7 @@ async fn test_synthetics_locations_list() {
 // --- App Keys ---
 #[tokio::test]
 async fn test_app_keys_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -2138,7 +2139,7 @@ async fn test_app_keys_list() {
 }
 #[tokio::test]
 async fn test_app_keys_list_all() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -2147,7 +2148,7 @@ async fn test_app_keys_list_all() {
 }
 #[tokio::test]
 async fn test_app_keys_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": {}}"#).await;
@@ -2156,7 +2157,7 @@ async fn test_app_keys_get() {
 }
 #[tokio::test]
 async fn test_app_keys_create() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": {}}"#).await;
@@ -2165,7 +2166,7 @@ async fn test_app_keys_create() {
 }
 #[tokio::test]
 async fn test_app_keys_update() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": {}}"#).await;
@@ -2174,7 +2175,7 @@ async fn test_app_keys_update() {
 }
 #[tokio::test]
 async fn test_app_keys_delete() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{}"#).await;
@@ -2185,7 +2186,7 @@ async fn test_app_keys_delete() {
 // --- API Keys ---
 #[tokio::test]
 async fn test_api_keys_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -2194,7 +2195,7 @@ async fn test_api_keys_list() {
 }
 #[tokio::test]
 async fn test_api_keys_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": {}}"#).await;
@@ -2203,7 +2204,7 @@ async fn test_api_keys_get() {
 }
 #[tokio::test]
 async fn test_api_keys_delete() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{}"#).await;
@@ -2214,7 +2215,7 @@ async fn test_api_keys_delete() {
 // --- Audit Logs ---
 #[tokio::test]
 async fn test_audit_logs_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -2225,7 +2226,7 @@ async fn test_audit_logs_list() {
 // --- Users ---
 #[tokio::test]
 async fn test_users_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -2234,7 +2235,7 @@ async fn test_users_list() {
 }
 #[tokio::test]
 async fn test_users_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": {}}"#).await;
@@ -2243,7 +2244,7 @@ async fn test_users_get() {
 }
 #[tokio::test]
 async fn test_users_roles_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -2254,7 +2255,7 @@ async fn test_users_roles_list() {
 // --- Usage ---
 #[tokio::test]
 async fn test_usage_summary() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"usage": []}"#).await;
@@ -2265,7 +2266,7 @@ async fn test_usage_summary() {
 // --- Infrastructure ---
 #[tokio::test]
 async fn test_infrastructure_hosts_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"host_list": [], "total_returned": 0}"#).await;
@@ -2276,7 +2277,7 @@ async fn test_infrastructure_hosts_list() {
 // --- Notebooks ---
 #[tokio::test]
 async fn test_notebooks_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -2287,7 +2288,7 @@ async fn test_notebooks_list() {
 // --- Downtime ---
 #[tokio::test]
 async fn test_downtime_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -2296,7 +2297,7 @@ async fn test_downtime_list() {
 }
 #[tokio::test]
 async fn test_downtime_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": {}}"#).await;
@@ -2307,7 +2308,7 @@ async fn test_downtime_get() {
 // --- Cost ---
 #[tokio::test]
 async fn test_cost_projected() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -2318,7 +2319,7 @@ async fn test_cost_projected() {
 // --- Error Tracking ---
 #[tokio::test]
 async fn test_error_tracking_issues_search() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -2330,7 +2331,7 @@ async fn test_error_tracking_issues_search() {
 
 #[tokio::test]
 async fn test_error_tracking_issues_search_persona() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -2347,7 +2348,7 @@ async fn test_error_tracking_issues_search_persona() {
 
 #[tokio::test]
 async fn test_error_tracking_issues_search_track_case_insensitive() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -2388,7 +2389,7 @@ fn test_error_tracking_clap_neither_provided() {
 // --- Cloud ---
 #[tokio::test]
 async fn test_cloud_aws_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -2397,7 +2398,7 @@ async fn test_cloud_aws_list() {
 }
 #[tokio::test]
 async fn test_cloud_gcp_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -2406,7 +2407,7 @@ async fn test_cloud_gcp_list() {
 }
 #[tokio::test]
 async fn test_cloud_azure_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -2417,7 +2418,7 @@ async fn test_cloud_azure_list() {
 // --- Organizations ---
 #[tokio::test]
 async fn test_organizations_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"orgs": []}"#).await;
@@ -2428,7 +2429,7 @@ async fn test_organizations_list() {
 // --- Service Catalog ---
 #[tokio::test]
 async fn test_service_catalog_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -2437,7 +2438,7 @@ async fn test_service_catalog_list() {
 }
 #[tokio::test]
 async fn test_service_catalog_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": {}}"#).await;
@@ -2448,7 +2449,7 @@ async fn test_service_catalog_get() {
 // --- Misc ---
 #[tokio::test]
 async fn test_misc_ip_ranges() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{}"#).await;
@@ -2459,7 +2460,7 @@ async fn test_misc_ip_ranges() {
 // --- Data Governance ---
 #[tokio::test]
 async fn test_data_governance_scanner_rules_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -2470,7 +2471,7 @@ async fn test_data_governance_scanner_rules_list() {
 // --- Investigations ---
 #[tokio::test]
 async fn test_investigations_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -2479,7 +2480,7 @@ async fn test_investigations_list() {
 }
 #[tokio::test]
 async fn test_investigations_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": {}}"#).await;
@@ -2490,7 +2491,7 @@ async fn test_investigations_get() {
 // --- Network ---
 #[tokio::test]
 async fn test_network_flows_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -2499,7 +2500,7 @@ async fn test_network_flows_list() {
 }
 #[tokio::test]
 async fn test_network_devices_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -2510,7 +2511,7 @@ async fn test_network_devices_list() {
 // --- Code Coverage ---
 #[tokio::test]
 async fn test_code_coverage_branch_summary() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": {}}"#).await;
@@ -2522,7 +2523,7 @@ async fn test_code_coverage_branch_summary() {
 // --- HAMR ---
 #[tokio::test]
 async fn test_hamr_connections_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": {}}"#).await;
@@ -2533,7 +2534,7 @@ async fn test_hamr_connections_get() {
 // --- Static Analysis ---
 #[tokio::test]
 async fn test_static_analysis_custom_rulesets_get_existing() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(
@@ -2546,7 +2547,7 @@ async fn test_static_analysis_custom_rulesets_get_existing() {
 }
 #[tokio::test]
 async fn test_static_analysis_custom_rules_get_existing() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": {"id": "rule", "type": "custom-rule"}}"#).await;
@@ -2557,7 +2558,7 @@ async fn test_static_analysis_custom_rules_get_existing() {
 // --- APM ---
 #[tokio::test]
 async fn test_apm_services_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": []}"#).await;
@@ -2567,7 +2568,7 @@ async fn test_apm_services_list() {
 }
 #[tokio::test]
 async fn test_apm_troubleshooting_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -2594,7 +2595,7 @@ async fn test_apm_troubleshooting_list() {
 }
 #[tokio::test]
 async fn test_apm_troubleshooting_list_with_timeframe() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -2623,7 +2624,7 @@ async fn test_apm_troubleshooting_list_with_timeframe() {
 
 #[tokio::test]
 async fn test_apm_service_config_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -2652,7 +2653,7 @@ async fn test_apm_service_config_get() {
 
 #[tokio::test]
 async fn test_apm_service_config_get_with_filters() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -2687,7 +2688,7 @@ async fn test_apm_service_config_get_with_filters() {
 
 #[tokio::test]
 async fn test_apm_service_library_config_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -2722,7 +2723,7 @@ async fn test_apm_service_library_config_get() {
 
 #[tokio::test]
 async fn test_apm_service_library_config_get_with_filters() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -2877,7 +2878,7 @@ async fn mock_post(
 
 #[tokio::test]
 async fn test_dbm_samples_search_uses_documented_payload() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -2922,39 +2923,6 @@ async fn test_dbm_samples_search_uses_documented_payload() {
     cleanup_env();
 }
 
-// Helper: create a mock for a specific GET path
-async fn mock_get(
-    server: &mut mockito::Server,
-    path: &str,
-    status: usize,
-    body: &str,
-) -> mockito::Mock {
-    server
-        .mock("GET", path)
-        .match_query(mockito::Matcher::Any)
-        .with_status(status)
-        .with_header("content-type", "application/json")
-        .with_body(body)
-        .create_async()
-        .await
-}
-
-// Helper: create a mock for a specific PATCH path
-async fn mock_patch(
-    server: &mut mockito::Server,
-    path: &str,
-    status: usize,
-    body: &str,
-) -> mockito::Mock {
-    server
-        .mock("PATCH", path)
-        .with_status(status)
-        .with_header("content-type", "application/json")
-        .with_body(body)
-        .create_async()
-        .await
-}
-
 // Helper: write a temp JSON file and return its path
 fn write_temp_json(name: &str, content: &str) -> std::path::PathBuf {
     let path = std::env::temp_dir().join(name);
@@ -2970,7 +2938,7 @@ fn write_temp_json(name: &str, content: &str) -> std::path::PathBuf {
 
 #[tokio::test]
 async fn test_llm_obs_projects_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -2987,7 +2955,7 @@ async fn test_llm_obs_projects_list() {
 
 #[tokio::test]
 async fn test_llm_obs_projects_list_404() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -3012,7 +2980,7 @@ async fn test_llm_obs_projects_list_404() {
 
 #[tokio::test]
 async fn test_llm_obs_projects_list_no_auth() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let cfg = Config {
         api_key: None,
@@ -3036,7 +3004,7 @@ async fn test_llm_obs_projects_list_no_auth() {
 #[tokio::test]
 async fn test_llm_obs_projects_list_missing_nullable_fields() {
     // raw HTTP should succeed even with minimal response missing optional/nullable fields
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -3061,7 +3029,7 @@ async fn test_llm_obs_projects_list_missing_nullable_fields() {
 
 #[tokio::test]
 async fn test_llm_obs_projects_create() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -3082,7 +3050,7 @@ async fn test_llm_obs_projects_create() {
 
 #[tokio::test]
 async fn test_llm_obs_projects_create_500() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -3114,7 +3082,7 @@ async fn test_llm_obs_projects_create_500() {
 
 #[tokio::test]
 async fn test_llm_obs_experiments_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -3135,7 +3103,7 @@ async fn test_llm_obs_experiments_list() {
 
 #[tokio::test]
 async fn test_llm_obs_experiments_list_with_filters() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -3171,7 +3139,7 @@ async fn test_llm_obs_experiments_list_with_filters() {
 
 #[tokio::test]
 async fn test_llm_obs_experiments_list_401() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -3198,7 +3166,7 @@ async fn test_llm_obs_experiments_list_401() {
 
 #[tokio::test]
 async fn test_llm_obs_experiments_create() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -3223,7 +3191,7 @@ async fn test_llm_obs_experiments_create() {
 
 #[tokio::test]
 async fn test_llm_obs_experiments_create_422() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -3255,7 +3223,7 @@ async fn test_llm_obs_experiments_create_422() {
 
 #[tokio::test]
 async fn test_llm_obs_experiments_update() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -3281,7 +3249,7 @@ async fn test_llm_obs_experiments_update() {
 
 #[tokio::test]
 async fn test_llm_obs_experiments_update_404() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -3314,7 +3282,7 @@ async fn test_llm_obs_experiments_update_404() {
 
 #[tokio::test]
 async fn test_llm_obs_experiments_delete() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -3338,7 +3306,7 @@ async fn test_llm_obs_experiments_delete() {
 
 #[tokio::test]
 async fn test_llm_obs_experiments_delete_500() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -3370,7 +3338,7 @@ async fn test_llm_obs_experiments_delete_500() {
 
 #[tokio::test]
 async fn test_llm_obs_datasets_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -3393,7 +3361,7 @@ async fn test_llm_obs_datasets_list() {
 
 #[tokio::test]
 async fn test_llm_obs_datasets_list_403() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -3420,7 +3388,7 @@ async fn test_llm_obs_datasets_list_403() {
 
 #[tokio::test]
 async fn test_llm_obs_datasets_create() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -3442,7 +3410,7 @@ async fn test_llm_obs_datasets_create() {
 
 #[tokio::test]
 async fn test_llm_obs_datasets_create_no_auth() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let tmp = write_temp_json(
         "pup_test_ds_create_noauth.json",
@@ -3473,7 +3441,7 @@ async fn test_llm_obs_datasets_create_no_auth() {
 
 #[tokio::test]
 async fn test_llm_obs_experiments_summary() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -3497,7 +3465,7 @@ async fn test_llm_obs_experiments_summary() {
 
 #[tokio::test]
 async fn test_llm_obs_experiments_summary_404() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -3517,7 +3485,7 @@ async fn test_llm_obs_experiments_summary_404() {
 
 #[tokio::test]
 async fn test_llm_obs_experiments_summary_500() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -3537,7 +3505,7 @@ async fn test_llm_obs_experiments_summary_500() {
 
 #[tokio::test]
 async fn test_llm_obs_experiments_summary_no_auth() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let cfg = Config {
         api_key: None,
         app_key: None,
@@ -3561,7 +3529,7 @@ async fn test_llm_obs_experiments_summary_no_auth() {
 
 #[tokio::test]
 async fn test_llm_obs_experiments_events_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -3588,7 +3556,7 @@ async fn test_llm_obs_experiments_events_list() {
 
 #[tokio::test]
 async fn test_llm_obs_experiments_events_list_with_filters() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -3624,7 +3592,7 @@ async fn test_llm_obs_experiments_events_list_with_filters() {
 
 #[tokio::test]
 async fn test_llm_obs_experiments_events_list_401() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -3651,7 +3619,7 @@ async fn test_llm_obs_experiments_events_list_401() {
 
 #[tokio::test]
 async fn test_llm_obs_experiments_events_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -3675,7 +3643,7 @@ async fn test_llm_obs_experiments_events_get() {
 
 #[tokio::test]
 async fn test_llm_obs_experiments_events_get_404() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -3696,7 +3664,7 @@ async fn test_llm_obs_experiments_events_get_404() {
 
 #[tokio::test]
 async fn test_llm_obs_experiments_events_get_no_auth() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let cfg = Config {
         api_key: None,
         app_key: None,
@@ -3720,7 +3688,7 @@ async fn test_llm_obs_experiments_events_get_no_auth() {
 
 #[tokio::test]
 async fn test_llm_obs_experiments_metric_values() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -3746,7 +3714,7 @@ async fn test_llm_obs_experiments_metric_values() {
 
 #[tokio::test]
 async fn test_llm_obs_experiments_metric_values_segmented() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -3777,7 +3745,7 @@ async fn test_llm_obs_experiments_metric_values_segmented() {
 
 #[tokio::test]
 async fn test_llm_obs_experiments_metric_values_500() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -3803,7 +3771,7 @@ async fn test_llm_obs_experiments_metric_values_500() {
 
 #[tokio::test]
 async fn test_llm_obs_experiments_dimension_values() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -3827,7 +3795,7 @@ async fn test_llm_obs_experiments_dimension_values() {
 
 #[tokio::test]
 async fn test_llm_obs_experiments_dimension_values_403() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -3851,7 +3819,7 @@ async fn test_llm_obs_experiments_dimension_values_403() {
 
 #[tokio::test]
 async fn test_llm_obs_spans_search() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -3885,7 +3853,7 @@ async fn test_llm_obs_spans_search() {
 
 #[tokio::test]
 async fn test_llm_obs_spans_search_from_is_numeric_string() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -3923,7 +3891,7 @@ async fn test_llm_obs_spans_search_from_is_numeric_string() {
 
 #[tokio::test]
 async fn test_llm_obs_spans_search_invalid_from_returns_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -3949,7 +3917,7 @@ async fn test_llm_obs_spans_search_invalid_from_returns_error() {
 
 #[tokio::test]
 async fn test_llm_obs_spans_search_empty_results() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -3987,7 +3955,7 @@ async fn test_llm_obs_spans_search_empty_results() {
 
 #[tokio::test]
 async fn test_llm_obs_spans_search_500() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -4021,7 +3989,7 @@ async fn test_llm_obs_spans_search_500() {
 
 #[tokio::test]
 async fn test_llm_obs_spans_search_no_auth() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let cfg = Config {
         api_key: None,
         app_key: None,
@@ -4219,7 +4187,7 @@ fn test_ddsql_table_query_requires_explicit_value() {
 
 #[tokio::test]
 async fn test_debugger_probes_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"[{"id": "probe-1", "type": "LOG_PROBE"}]"#).await;
@@ -4229,7 +4197,7 @@ async fn test_debugger_probes_list() {
 
 #[tokio::test]
 async fn test_debugger_probes_list_with_service() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"[{"id": "probe-1", "type": "LOG_PROBE"}]"#).await;
@@ -4239,7 +4207,7 @@ async fn test_debugger_probes_list_with_service() {
 
 #[tokio::test]
 async fn test_debugger_probes_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"id": "probe-1", "type": "LOG_PROBE"}"#).await;
@@ -4249,7 +4217,7 @@ async fn test_debugger_probes_get() {
 
 #[tokio::test]
 async fn test_debugger_probes_create() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": {"id": "probe-new"}}"#).await;
@@ -4274,7 +4242,7 @@ async fn test_debugger_probes_create() {
 
 #[tokio::test]
 async fn test_debugger_probes_delete() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#""#).await;
@@ -4286,7 +4254,7 @@ async fn test_debugger_probes_delete() {
 
 #[tokio::test]
 async fn test_symdb_search() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(
@@ -4307,7 +4275,7 @@ async fn test_symdb_search() {
 
 #[tokio::test]
 async fn test_symdb_search_names_view() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(
@@ -4328,7 +4296,7 @@ async fn test_symdb_search_names_view() {
 
 #[tokio::test]
 async fn test_symdb_search_probe_locations_view() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": [{"attributes": {"scopes": [{"scope": {"name": "MyClass", "scope_type": "METHOD"}, "probe_location": {"type_name": "MyClass", "method_name": "doStuff"}}]}}]}"#).await;
@@ -4362,7 +4330,7 @@ fn test_symdb_view_display() {
 
 #[tokio::test]
 async fn test_software_catalog_entities_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4380,7 +4348,7 @@ async fn test_software_catalog_entities_list() {
 
 #[tokio::test]
 async fn test_software_catalog_entities_list_with_filters() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4404,7 +4372,7 @@ async fn test_software_catalog_entities_list_with_filters() {
 
 #[tokio::test]
 async fn test_software_catalog_kinds_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4421,7 +4389,7 @@ async fn test_software_catalog_kinds_list() {
 
 #[tokio::test]
 async fn test_software_catalog_relations_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4438,7 +4406,7 @@ async fn test_software_catalog_relations_list() {
 
 #[tokio::test]
 async fn test_software_catalog_entities_list_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4466,7 +4434,7 @@ async fn test_software_catalog_entities_list_error() {
 
 #[tokio::test]
 async fn test_incident_teams_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4487,7 +4455,7 @@ async fn test_incident_teams_list() {
 
 #[tokio::test]
 async fn test_incident_services_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4504,7 +4472,7 @@ async fn test_incident_services_list() {
 
 #[tokio::test]
 async fn test_incident_services_list_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4528,7 +4496,7 @@ async fn test_incident_services_list_error() {
 
 #[tokio::test]
 async fn test_ms_teams_handles_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(&mut server, "GET", r#"{"data":[],"meta":{}}"#).await;
@@ -4543,7 +4511,7 @@ async fn test_ms_teams_handles_list() {
 
 #[tokio::test]
 async fn test_ms_teams_handles_list_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = server
@@ -4561,7 +4529,7 @@ async fn test_ms_teams_handles_list_error() {
 
 #[tokio::test]
 async fn test_ms_teams_workflows_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(&mut server, "GET", r#"{"data":[],"meta":{}}"#).await;
@@ -4580,7 +4548,7 @@ async fn test_ms_teams_workflows_list() {
 
 #[tokio::test]
 async fn test_csm_threats_agent_policies_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4597,7 +4565,7 @@ async fn test_csm_threats_agent_policies_list() {
 
 #[tokio::test]
 async fn test_csm_threats_agent_rules_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4614,7 +4582,7 @@ async fn test_csm_threats_agent_rules_list() {
 
 #[tokio::test]
 async fn test_csm_threats_agent_rules_list_with_policy() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4632,7 +4600,7 @@ async fn test_csm_threats_agent_rules_list_with_policy() {
 
 #[tokio::test]
 async fn test_csm_threats_agent_policies_list_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4654,7 +4622,7 @@ async fn test_csm_threats_agent_policies_list_error() {
 
 #[tokio::test]
 async fn test_csm_threats_backend_rules_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4671,7 +4639,7 @@ async fn test_csm_threats_backend_rules_list() {
 
 #[tokio::test]
 async fn test_csm_threats_backend_rules_list_with_query() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4689,7 +4657,7 @@ async fn test_csm_threats_backend_rules_list_with_query() {
 
 #[tokio::test]
 async fn test_csm_threats_backend_rules_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4706,7 +4674,7 @@ async fn test_csm_threats_backend_rules_get() {
 
 #[tokio::test]
 async fn test_csm_threats_backend_rules_delete() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4727,7 +4695,7 @@ async fn test_csm_threats_backend_rules_delete() {
 
 #[tokio::test]
 async fn test_csm_threats_backend_rules_list_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4750,7 +4718,7 @@ async fn test_csm_threats_backend_rules_list_error() {
 
 #[tokio::test]
 async fn test_agentless_scanning_aws_scan_options_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4767,7 +4735,7 @@ async fn test_agentless_scanning_aws_scan_options_list() {
 
 #[tokio::test]
 async fn test_agentless_scanning_azure_scan_options_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4784,7 +4752,7 @@ async fn test_agentless_scanning_azure_scan_options_list() {
 
 #[tokio::test]
 async fn test_agentless_scanning_gcp_scan_options_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4801,7 +4769,7 @@ async fn test_agentless_scanning_gcp_scan_options_list() {
 
 #[tokio::test]
 async fn test_agentless_scanning_aws_on_demand_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4818,7 +4786,7 @@ async fn test_agentless_scanning_aws_on_demand_list() {
 
 #[tokio::test]
 async fn test_agentless_scanning_aws_scan_options_list_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4844,7 +4812,7 @@ async fn test_agentless_scanning_aws_scan_options_list_error() {
 
 #[tokio::test]
 async fn test_authn_mappings_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4861,7 +4829,7 @@ async fn test_authn_mappings_list() {
 
 #[tokio::test]
 async fn test_authn_mappings_list_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4880,7 +4848,7 @@ async fn test_authn_mappings_list_error() {
 
 #[tokio::test]
 async fn test_authn_mappings_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4906,7 +4874,7 @@ async fn test_authn_mappings_get() {
 
 #[tokio::test]
 async fn test_asm_custom_rules_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4923,7 +4891,7 @@ async fn test_asm_custom_rules_list() {
 
 #[tokio::test]
 async fn test_asm_custom_rules_list_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4946,7 +4914,7 @@ async fn test_asm_custom_rules_list_error() {
 
 #[tokio::test]
 async fn test_asm_exclusions_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4967,7 +4935,7 @@ async fn test_asm_exclusions_list() {
 
 #[tokio::test]
 async fn test_restriction_policy_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -4989,7 +4957,7 @@ async fn test_restriction_policy_get() {
 
 #[tokio::test]
 async fn test_restriction_policy_get_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5012,7 +4980,7 @@ async fn test_restriction_policy_get_error() {
 
 #[tokio::test]
 async fn test_processes_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5030,7 +4998,7 @@ async fn test_processes_list() {
 
 #[tokio::test]
 async fn test_processes_list_with_search() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5056,7 +5024,7 @@ async fn test_processes_list_with_search() {
 
 #[tokio::test]
 async fn test_logs_restriction_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5078,7 +5046,7 @@ async fn test_logs_restriction_list() {
 
 #[tokio::test]
 async fn test_logs_restriction_delete_missing_id() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5104,7 +5072,7 @@ async fn test_logs_restriction_delete_missing_id() {
 
 #[tokio::test]
 async fn test_service_account_app_keys_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5121,7 +5089,7 @@ async fn test_service_account_app_keys_list() {
 
 #[tokio::test]
 async fn test_service_account_app_keys_delete_missing() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5145,7 +5113,7 @@ async fn test_service_account_app_keys_delete_missing() {
 
 #[tokio::test]
 async fn test_service_accounts_create() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5163,7 +5131,7 @@ async fn test_service_accounts_create() {
 
 #[tokio::test]
 async fn test_service_account_app_keys_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5185,7 +5153,7 @@ async fn test_service_account_app_keys_get() {
 
 #[tokio::test]
 async fn test_service_account_app_keys_get_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5205,7 +5173,7 @@ async fn test_service_account_app_keys_get_error() {
 
 #[tokio::test]
 async fn test_service_account_app_keys_create() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5229,7 +5197,7 @@ async fn test_service_account_app_keys_create() {
 
 #[tokio::test]
 async fn test_service_account_app_keys_update() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5261,7 +5229,7 @@ async fn test_service_account_app_keys_update() {
 
 #[tokio::test]
 async fn test_spans_metrics_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5278,7 +5246,7 @@ async fn test_spans_metrics_list() {
 
 #[tokio::test]
 async fn test_spans_metrics_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5300,7 +5268,7 @@ async fn test_spans_metrics_get() {
 
 #[tokio::test]
 async fn test_spans_metrics_delete() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5318,7 +5286,7 @@ async fn test_spans_metrics_delete() {
 #[tokio::test]
 async fn test_spans_metrics_get_path() {
     // Verify the GET request hits the correct API path for a named metric.
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5343,7 +5311,7 @@ async fn test_spans_metrics_get_path() {
 #[tokio::test]
 async fn test_spans_metrics_list_error() {
     // Verify that a 403 response causes metrics_list to return an error.
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5366,7 +5334,7 @@ async fn test_spans_metrics_list_error() {
 
 #[tokio::test]
 async fn test_datasets_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5379,7 +5347,7 @@ async fn test_datasets_list() {
 
 #[tokio::test]
 async fn test_datasets_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5392,7 +5360,7 @@ async fn test_datasets_get() {
 
 #[tokio::test]
 async fn test_datasets_delete() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5409,7 +5377,7 @@ async fn test_datasets_delete() {
 
 #[tokio::test]
 async fn test_data_deletion_requests_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5426,7 +5394,7 @@ async fn test_data_deletion_requests_list() {
 
 #[tokio::test]
 async fn test_data_deletion_requests_list_with_filters() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5464,7 +5432,7 @@ async fn test_data_deletion_requests_list_with_filters() {
 
 #[tokio::test]
 async fn test_connections_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5477,7 +5445,7 @@ async fn test_connections_get() {
 
 #[tokio::test]
 async fn test_connections_delete() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5492,26 +5460,9 @@ async fn test_connections_delete() {
     std::env::remove_var("DD_TOKEN_STORAGE");
 }
 
-async fn test_scorecard_outcomes_list_with_data() {
-    let _lock = lock_env();
-    std::env::set_var("DD_TOKEN_STORAGE", "file");
-    let mut server = mockito::Server::new_async().await;
-    let cfg = test_config(&server.url());
-    let body = r#"{"data":[{"id":"outcome-1","type":"outcome","attributes":{"state":"pass","service-name":"my-service"}}]}"#;
-    let _mock = mock_any(&mut server, "GET", body).await;
-    let result = crate::commands::scorecards::outcomes_list(&cfg).await;
-    assert!(
-        result.is_ok(),
-        "scorecard outcomes list with data failed: {:?}",
-        result.err()
-    );
-    cleanup_env();
-    std::env::remove_var("DD_TOKEN_STORAGE");
-}
-
 #[tokio::test]
 async fn test_scorecard_rules_delete() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5537,7 +5488,7 @@ async fn test_scorecard_rules_delete() {
 
 #[tokio::test]
 async fn test_static_analysis_custom_rulesets_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5555,7 +5506,7 @@ async fn test_static_analysis_custom_rulesets_get() {
 
 #[tokio::test]
 async fn test_static_analysis_custom_rulesets_get_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5578,7 +5529,7 @@ async fn test_static_analysis_custom_rulesets_get_error() {
 
 #[tokio::test]
 async fn test_static_analysis_custom_rules_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5603,7 +5554,7 @@ async fn test_static_analysis_custom_rules_get() {
 
 #[tokio::test]
 async fn test_static_analysis_custom_rule_revisions_list() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5622,7 +5573,7 @@ async fn test_static_analysis_custom_rule_revisions_list() {
 
 #[tokio::test]
 async fn test_static_analysis_custom_rules_delete() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5649,7 +5600,7 @@ async fn test_static_analysis_custom_rules_delete() {
 
 #[tokio::test]
 async fn test_scorecard_rules_create_missing_file() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5661,7 +5612,7 @@ async fn test_scorecard_rules_create_missing_file() {
 
 #[tokio::test]
 async fn test_scorecard_outcomes_batch_create_missing_file() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5677,7 +5628,7 @@ async fn test_scorecard_outcomes_batch_create_missing_file() {
 
 #[tokio::test]
 async fn test_scorecard_rules_create_api_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5704,7 +5655,7 @@ async fn test_scorecard_rules_create_api_error() {
 
 #[tokio::test]
 async fn test_static_analysis_custom_rules_create_missing_file() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5724,7 +5675,7 @@ async fn test_static_analysis_custom_rules_create_missing_file() {
 
 #[tokio::test]
 async fn test_static_analysis_custom_rules_list_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5752,7 +5703,7 @@ async fn test_static_analysis_custom_rules_list_error() {
 
 #[tokio::test]
 async fn test_api_get_success() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = server
@@ -5783,7 +5734,7 @@ async fn test_api_get_success() {
 
 #[tokio::test]
 async fn test_api_get_absolute_path() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = server
@@ -5818,7 +5769,7 @@ async fn test_api_get_absolute_path() {
 
 #[tokio::test]
 async fn test_api_post_with_fields() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = server
@@ -5853,7 +5804,7 @@ async fn test_api_post_with_fields() {
 
 #[tokio::test]
 async fn test_api_raw_error_response() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = server
@@ -5884,7 +5835,7 @@ async fn test_api_raw_error_response() {
 
 #[tokio::test]
 async fn test_api_silent_flag() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = server
@@ -5915,7 +5866,7 @@ async fn test_api_silent_flag() {
 
 #[tokio::test]
 async fn test_api_bad_method() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -5938,7 +5889,7 @@ async fn test_api_bad_method() {
 
 #[tokio::test]
 async fn test_api_bad_field_format() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
 
@@ -5961,7 +5912,7 @@ async fn test_api_bad_field_format() {
 
 #[tokio::test]
 async fn test_flaky_tests_management_policies_get() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -5987,7 +5938,7 @@ async fn test_flaky_tests_management_policies_get() {
 
 #[tokio::test]
 async fn test_flaky_tests_management_policies_update() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -6013,7 +5964,7 @@ async fn test_flaky_tests_management_policies_update() {
 
 #[tokio::test]
 async fn test_flaky_tests_management_policies_get_missing_file() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -6032,7 +5983,7 @@ async fn test_flaky_tests_management_policies_get_missing_file() {
 
 #[tokio::test]
 async fn test_flaky_tests_management_policies_update_missing_file() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     std::env::set_var("DD_TOKEN_STORAGE", "file");
     let server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
@@ -6057,7 +6008,7 @@ async fn test_flaky_tests_management_policies_update_missing_file() {
 /// server responds 200. Exercises the `!query.is_empty()` branch added to the function.
 #[tokio::test]
 async fn test_raw_request_with_query_params_ok() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = server
@@ -6093,7 +6044,7 @@ async fn test_raw_request_with_query_params_ok() {
 
 #[tokio::test]
 async fn test_tag_desc_upsert_success() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(&mut server, "PUT", r#"{}"#).await;
@@ -6109,7 +6060,7 @@ async fn test_tag_desc_upsert_success() {
 
 #[tokio::test]
 async fn test_profiling_list_ok() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     let mock = s
@@ -6136,7 +6087,7 @@ async fn test_profiling_list_ok() {
 
 #[tokio::test]
 async fn test_profiling_list_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     s.mock("POST", "/api/unstable/profiles/list")
@@ -6160,7 +6111,7 @@ async fn test_profiling_list_error() {
 
 #[tokio::test]
 async fn test_tag_desc_upsert_with_cloud_success() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(&mut server, "PUT", r#"{}"#).await;
@@ -6181,7 +6132,7 @@ async fn test_tag_desc_upsert_with_cloud_success() {
 
 #[tokio::test]
 async fn test_profiling_info_ok() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     let mock = s
@@ -6199,7 +6150,7 @@ async fn test_profiling_info_ok() {
 
 #[tokio::test]
 async fn test_profiling_info_with_event_id() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     let mock = s
@@ -6221,7 +6172,7 @@ async fn test_profiling_info_with_event_id() {
 
 #[tokio::test]
 async fn test_profiling_info_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     s.mock("GET", mockito::Matcher::Any)
@@ -6236,7 +6187,7 @@ async fn test_profiling_info_error() {
 
 #[tokio::test]
 async fn test_profiling_analysis_ok() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     let mock = s
@@ -6254,7 +6205,7 @@ async fn test_profiling_analysis_ok() {
 
 #[tokio::test]
 async fn test_profiling_analysis_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     s.mock("GET", mockito::Matcher::Any)
@@ -6268,7 +6219,7 @@ async fn test_profiling_analysis_error() {
 
 #[tokio::test]
 async fn test_profiling_analytics_ok() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     let mock = s
@@ -6295,7 +6246,7 @@ async fn test_profiling_analytics_ok() {
 
 #[tokio::test]
 async fn test_tag_desc_delete_success() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(&mut server, "DELETE", r#"{}"#).await;
@@ -6306,7 +6257,7 @@ async fn test_tag_desc_delete_success() {
 
 #[tokio::test]
 async fn test_tag_desc_delete_with_cloud_success() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut server = mockito::Server::new_async().await;
     let cfg = test_config(&server.url());
     let _mock = mock_any(&mut server, "DELETE", r#"{}"#).await;
@@ -6328,7 +6279,7 @@ async fn test_tag_desc_delete_with_cloud_success() {
 /// correctly after the refactor from path-string embedding to params vec.
 #[tokio::test]
 async fn test_custom_costs_upload_with_version_success() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let tmp = std::env::temp_dir().join("pup_test_upload_version.csv");
     std::fs::write(&tmp, b"cost,amount\nec2,100\n").unwrap();
     let mut server = mockito::Server::new_async().await;
@@ -6351,8 +6302,8 @@ async fn test_custom_costs_upload_with_version_success() {
 
 #[tokio::test]
 async fn test_profiling_analytics_rejects_empty_group_by() {
-    let _lock = lock_env();
-    let mut s = mockito::Server::new_async().await;
+    let _lock = lock_env().await;
+    let s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     // Mock not required: we should fail before hitting the API.
     let result = crate::commands::profiling::analytics(
@@ -6374,7 +6325,7 @@ async fn test_profiling_analytics_rejects_empty_group_by() {
 
 #[tokio::test]
 async fn test_profiling_fields_ok() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     let mock = s
@@ -6400,7 +6351,7 @@ async fn test_profiling_fields_ok() {
 
 #[tokio::test]
 async fn test_profiling_fields_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     s.mock("POST", mockito::Matcher::Any)
@@ -6422,7 +6373,7 @@ async fn test_profiling_fields_error() {
 
 #[tokio::test]
 async fn test_profiling_aggregate_ok() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     let mock = s
@@ -6449,7 +6400,7 @@ async fn test_profiling_aggregate_ok() {
 
 #[tokio::test]
 async fn test_profiling_aggregate_invalid_time() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     let result = crate::commands::profiling::aggregate(
@@ -6468,7 +6419,7 @@ async fn test_profiling_aggregate_invalid_time() {
 
 #[tokio::test]
 async fn test_profiling_breakdown_ok_no_filter() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     let mock = s
@@ -6486,7 +6437,7 @@ async fn test_profiling_breakdown_ok_no_filter() {
 
 #[tokio::test]
 async fn test_profiling_breakdown_rejects_partial_filter() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     let result = crate::commands::profiling::breakdown(
@@ -6503,7 +6454,7 @@ async fn test_profiling_breakdown_rejects_partial_filter() {
 
 #[tokio::test]
 async fn test_profiling_timeline_ok() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     let mock = s
@@ -6521,7 +6472,7 @@ async fn test_profiling_timeline_ok() {
 
 #[tokio::test]
 async fn test_profiling_timeline_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     s.mock("POST", mockito::Matcher::Any)
@@ -6535,7 +6486,7 @@ async fn test_profiling_timeline_error() {
 
 #[tokio::test]
 async fn test_profiling_callgraph_ok() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     let mock = s
@@ -6561,7 +6512,7 @@ async fn test_profiling_callgraph_ok() {
 
 #[tokio::test]
 async fn test_profiling_callgraph_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     s.mock("POST", mockito::Matcher::Any)
@@ -6583,7 +6534,7 @@ async fn test_profiling_callgraph_error() {
 
 #[tokio::test]
 async fn test_profiling_save_favorite_ok() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     let mock = s
@@ -6609,7 +6560,7 @@ async fn test_profiling_save_favorite_ok() {
 
 #[tokio::test]
 async fn test_profiling_save_favorite_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     s.mock("POST", mockito::Matcher::Any)
@@ -6631,7 +6582,7 @@ async fn test_profiling_save_favorite_error() {
 
 #[tokio::test]
 async fn test_profiling_download_to_file() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     let mock = s
@@ -6654,7 +6605,7 @@ async fn test_profiling_download_to_file() {
 
 #[tokio::test]
 async fn test_profiling_download_error() {
-    let _lock = lock_env();
+    let _lock = lock_env().await;
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     s.mock("GET", mockito::Matcher::Any)

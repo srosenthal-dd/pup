@@ -486,7 +486,7 @@ mod tests {
     #[test]
     fn test_format_cell_number() {
         assert_eq!(format_cell(Some(&serde_json::json!(42))), "42");
-        assert_eq!(format_cell(Some(&serde_json::json!(3.14))), "3.14");
+        assert_eq!(format_cell(Some(&serde_json::json!(1.25))), "1.25");
     }
 
     #[test]
