@@ -30,14 +30,11 @@ pub async fn projected(cfg: &Config) -> Result<()> {
 pub async fn by_org(cfg: &Config, start_month: String, end_month: Option<String>) -> Result<()> {
     let api = make_usage_api(cfg);
 
-    let start_dt =
-        chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&start_month)?)
-            .unwrap();
+    let start_dt = util::parse_time_to_datetime(&start_month)?;
 
     let mut params = GetCostByOrgOptionalParams::default();
     if let Some(e) = end_month {
-        let end_dt =
-            chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&e)?).unwrap();
+        let end_dt = util::parse_time_to_datetime(&e)?;
         params = params.end_month(end_dt);
     }
 
@@ -51,8 +48,7 @@ pub async fn by_org(cfg: &Config, start_month: String, end_month: Option<String>
 pub async fn attribution(cfg: &Config, start: String, fields: Option<String>) -> Result<()> {
     let api = make_usage_api(cfg);
 
-    let start_dt =
-        chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&start)?).unwrap();
+    let start_dt = util::parse_time_to_datetime(&start)?;
 
     let fields_str = fields.unwrap_or_else(|| "*".to_string());
     let params = GetMonthlyCostAttributionOptionalParams::default();

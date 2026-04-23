@@ -91,10 +91,8 @@ pub async fn events_list(
         None => RUMAPI::with_config(dd_cfg),
     };
 
-    let from_dt =
-        chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&from)?).unwrap();
-    let to_dt =
-        chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&to)?).unwrap();
+    let from_dt = util::parse_time_to_datetime(&from)?;
+    let to_dt = util::parse_time_to_datetime(&to)?;
 
     let mut params = ListRUMEventsOptionalParams::default()
         .filter_from(from_dt)
