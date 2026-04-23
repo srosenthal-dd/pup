@@ -63,7 +63,7 @@ pub async fn services_resources(
     let from_ts = util::parse_time_to_unix(&from)?;
     let to_ts = util::parse_time_to_unix(&to)?;
     let path = format!(
-        "/api/ui/apm/resources?service={service}&operation={operation}&env={env}&start={from_ts}&end={to_ts}"
+        "/api/ui/apm/resources?service={service}&operation={operation}&env={env}&from={from_ts}&to={to_ts}"
     );
     let data = client::raw_get(cfg, &path, &[]).await?;
     formatter::output(cfg, &data)
@@ -158,6 +158,45 @@ mod tests {
         let cfg = test_config(&s.url());
         mock_all(&mut s, r#"{"data": []}"#).await;
         let _ = super::services_list(&cfg, "prod".into(), "1h".into(), "now".into()).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_apm_services_resources_uses_from_to() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let mock = server
+            .mock("GET", "/api/ui/apm/resources")
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded("service".into(), "web".into()),
+                mockito::Matcher::UrlEncoded("operation".into(), "http.request".into()),
+                mockito::Matcher::UrlEncoded("env".into(), "prod".into()),
+                mockito::Matcher::Regex("from=".into()),
+                mockito::Matcher::Regex("to=".into()),
+            ]))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data": []}"#)
+            .create_async()
+            .await;
+
+        let result = super::services_resources(
+            &cfg,
+            "web".into(),
+            "http.request".into(),
+            "prod".into(),
+            "1h".into(),
+            "now".into(),
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "services_resources failed: {:?}",
+            result.err()
+        );
+        mock.assert_async().await;
         cleanup_env();
     }
 
