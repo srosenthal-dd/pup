@@ -1847,7 +1847,75 @@ async fn test_on_call_teams_get() {
     let mut s = mockito::Server::new_async().await;
     let cfg = test_config(&s.url());
     mock_all(&mut s, r#"{"data": {}}"#).await;
-    let _ = crate::commands::on_call::teams_get(&cfg, "t1").await;
+    // Canonical UUID input takes the fast path in `resolve_team_id`, so
+    // only the `get_team` endpoint needs a mock response.
+    let _ = crate::commands::on_call::teams_get(&cfg, "00000000-0000-0000-0000-000000000000").await;
+    cleanup_env();
+}
+#[tokio::test]
+async fn test_on_call_teams_get_by_handle() {
+    let _lock = lock_env();
+    let mut s = mockito::Server::new_async().await;
+    let cfg = test_config(&s.url());
+    // `resolve_team_id` first calls ListTeams (GET /api/v2/team) with a
+    // keyword filter; we return one team whose handle exactly matches.
+    let list_body = r#"{
+        "data": [
+            {
+                "id": "00000000-0000-0000-0000-000000000000",
+                "type": "team",
+                "attributes": {
+                    "name": "Example Team",
+                    "handle": "example-team",
+                    "description": null,
+                    "avatar": null,
+                    "banner": null,
+                    "visible_modules": null,
+                    "hidden_modules": null,
+                    "created_at": null,
+                    "modified_at": null,
+                    "summary": null,
+                    "link_count": 0,
+                    "user_count": 0,
+                    "team_links": null
+                }
+            }
+        ]
+    }"#;
+    let get_body = r#"{
+        "data": {
+            "id": "00000000-0000-0000-0000-000000000000",
+            "type": "team",
+            "attributes": {
+                "name": "Example Team",
+                "handle": "example-team"
+            }
+        }
+    }"#;
+    // `mockito` picks the first matching mock; `Matcher::Any` on the path
+    // means both GETs resolve here. We register two GET mocks; each mock
+    // is consumed once by default, so ListTeams hits the first, GetTeam
+    // the second.
+    s.mock("GET", mockito::Matcher::Any)
+        .match_query(mockito::Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(list_body)
+        .create_async()
+        .await;
+    s.mock("GET", mockito::Matcher::Any)
+        .match_query(mockito::Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(get_body)
+        .create_async()
+        .await;
+    let result = crate::commands::on_call::teams_get(&cfg, "example-team").await;
+    assert!(
+        result.is_ok(),
+        "teams_get by handle failed: {:?}",
+        result.err()
+    );
     cleanup_env();
 }
 #[tokio::test]
