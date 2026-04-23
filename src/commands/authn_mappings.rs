@@ -60,3 +60,67 @@ pub async fn delete(cfg: &Config, mapping_id: &str) -> Result<()> {
     println!("AuthN mapping '{mapping_id}' deleted.");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_authn_mappings_list() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", r#"{"data":[]}"#).await;
+        let result = super::list(&cfg).await;
+        assert!(
+            result.is_ok(),
+            "authn mappings list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_authn_mappings_list_error() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("GET", mockito::Matcher::Any)
+            .with_status(403)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["Forbidden"]}"#)
+            .create_async()
+            .await;
+        let result = super::list(&cfg).await;
+        assert!(result.is_err(), "expected error for 403 response");
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_authn_mappings_get() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(
+            &mut server,
+            "GET",
+            r#"{"data":{"type":"authn_mappings","id":"abc-123","attributes":{}}}"#,
+        )
+        .await;
+        let result = super::get(&cfg, "abc-123").await;
+        assert!(
+            result.is_ok(),
+            "authn mappings get failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+}

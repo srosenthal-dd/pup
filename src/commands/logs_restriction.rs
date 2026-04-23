@@ -84,3 +84,53 @@ pub async fn roles_add(cfg: &Config, query_id: &str, file: &str) -> Result<()> {
     println!("Role added to restriction query '{query_id}'.");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_logs_restriction_list() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(
+            &mut server,
+            "GET",
+            r#"{"data":[],"meta":{"page":{"total_count":0}}}"#,
+        )
+        .await;
+        let result = super::list(&cfg).await;
+        assert!(
+            result.is_ok(),
+            "logs_restriction list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_logs_restriction_delete_missing_id() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("DELETE", mockito::Matcher::Any)
+            .with_status(404)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["Not Found"]}"#)
+            .create_async()
+            .await;
+        let result = super::delete(&cfg, "nonexistent-id").await;
+        assert!(
+            result.is_err(),
+            "expected error for missing restriction query"
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+}

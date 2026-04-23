@@ -427,6 +427,8 @@ pub async fn pages_create(cfg: &Config, file: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::*;
+
     use super::*;
 
     #[test]
@@ -454,5 +456,317 @@ mod tests {
         assert!(!is_uuid("g0000000-0000-0000-0000-000000000000"));
         // Missing dashes.
         assert!(!is_uuid("000000000000000000000000000000000000"));
+    }
+
+    #[tokio::test]
+    async fn test_on_call_teams_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::teams_list(&cfg).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_teams_get() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {}}"#).await;
+        // Canonical UUID input takes the fast path in `resolve_team_id`, so
+        // only the `get_team` endpoint needs a mock response.
+        let _ = super::teams_get(&cfg, "00000000-0000-0000-0000-000000000000").await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_teams_get_by_handle() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        // ListTeams keyword-filter response with one exactly-matching handle.
+        let list_body = r#"{
+            "data": [
+                {
+                    "id": "00000000-0000-0000-0000-000000000000",
+                    "type": "team",
+                    "attributes": {
+                        "name": "Example Team",
+                        "handle": "example-team",
+                        "description": null,
+                        "avatar": null,
+                        "banner": null,
+                        "visible_modules": null,
+                        "hidden_modules": null,
+                        "created_at": null,
+                        "modified_at": null,
+                        "summary": null,
+                        "link_count": 0,
+                        "user_count": 0,
+                        "team_links": null
+                    }
+                }
+            ]
+        }"#;
+        let get_body = r#"{
+            "data": {
+                "id": "00000000-0000-0000-0000-000000000000",
+                "type": "team",
+                "attributes": {
+                    "name": "Example Team",
+                    "handle": "example-team"
+                }
+            }
+        }"#;
+        // `mockito` picks the first matching mock; `Matcher::Any` on the path
+        // means both GETs resolve here. We register two GET mocks; each mock
+        // is consumed once by default, so ListTeams hits the first, GetTeam
+        // the second.
+        s.mock("GET", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::Any)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(list_body)
+            .create_async()
+            .await;
+        s.mock("GET", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::Any)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(get_body)
+            .create_async()
+            .await;
+        let result = super::teams_get(&cfg, "example-team").await;
+        assert!(
+            result.is_ok(),
+            "teams_get by handle failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_teams_delete() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{}"#).await;
+        let _ = super::teams_delete(&cfg, "t1").await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_escalation_policies_get() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {"type": "policies"}}"#).await;
+        let result = super::escalation_policies_get(&cfg, "p1").await;
+        assert!(
+            result.is_ok(),
+            "escalation policies get failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_escalation_policies_delete() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{}"#).await;
+        let result = super::escalation_policies_delete(&cfg, "p1").await;
+        assert!(
+            result.is_ok(),
+            "escalation policies delete failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_escalation_policies_get_error() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        s.mock("GET", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::Any)
+            .with_status(500)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors": ["internal error"]}"#)
+            .create_async()
+            .await;
+        let result = super::escalation_policies_get(&cfg, "p1").await;
+        assert!(result.is_err(), "expected error on 500 response");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_schedules_get() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {"type": "schedules"}}"#).await;
+        let result = super::schedules_get(&cfg, "s1").await;
+        assert!(result.is_ok(), "schedules get failed: {:?}", result.err());
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_schedules_delete() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{}"#).await;
+        let result = super::schedules_delete(&cfg, "s1").await;
+        assert!(
+            result.is_ok(),
+            "schedules delete failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_schedules_get_error() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        s.mock("GET", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::Any)
+            .with_status(500)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors": ["internal error"]}"#)
+            .create_async()
+            .await;
+        let result = super::schedules_get(&cfg, "s1").await;
+        assert!(result.is_err(), "expected error on 500 response");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_notification_channels_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let result = super::notification_channels_list(&cfg, "u1").await;
+        assert!(
+            result.is_ok(),
+            "notification channels list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_notification_channels_get() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {"type": "notification_channels"}}"#).await;
+        let result = super::notification_channels_get(&cfg, "u1", "c1").await;
+        assert!(
+            result.is_ok(),
+            "notification channels get failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_notification_channels_delete() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{}"#).await;
+        let result = super::notification_channels_delete(&cfg, "u1", "c1").await;
+        assert!(
+            result.is_ok(),
+            "notification channels delete failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_notification_channels_list_error() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        s.mock("GET", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::Any)
+            .with_status(500)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors": ["internal error"]}"#)
+            .create_async()
+            .await;
+        let result = super::notification_channels_list(&cfg, "u1").await;
+        assert!(result.is_err(), "expected error on 500 response");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_notification_rules_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let result = super::notification_rules_list(&cfg, "u1").await;
+        assert!(
+            result.is_ok(),
+            "notification rules list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_notification_rules_get() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {"type": "notification_rules"}}"#).await;
+        let result = super::notification_rules_get(&cfg, "u1", "r1").await;
+        assert!(
+            result.is_ok(),
+            "notification rules get failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_notification_rules_delete() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{}"#).await;
+        let result = super::notification_rules_delete(&cfg, "u1", "r1").await;
+        assert!(
+            result.is_ok(),
+            "notification rules delete failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_notification_rules_list_error() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        s.mock("GET", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::Any)
+            .with_status(500)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors": ["internal error"]}"#)
+            .create_async()
+            .await;
+        let result = super::notification_rules_list(&cfg, "u1").await;
+        assert!(result.is_err(), "expected error on 500 response");
+        cleanup_env();
     }
 }

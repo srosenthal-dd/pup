@@ -144,6 +144,8 @@ pub async fn tags_list(cfg: &Config, metric_name: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::*;
+
     use super::matches_glob;
 
     #[test]
@@ -183,5 +185,66 @@ mod tests {
     fn test_glob_exact_with_dot() {
         assert!(matches_glob("system.cpu.user", "system.cpu.user"));
         assert!(!matches_glob("system.cpu.idle", "system.cpu.user"));
+    }
+
+    #[tokio::test]
+    async fn test_metrics_list() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(
+            &mut server,
+            "GET",
+            r#"{"metrics": [], "from": "2024-01-01T00:00:00Z"}"#,
+        )
+        .await;
+
+        let result = super::list(&cfg, None, "1h".into()).await;
+        assert!(result.is_ok(), "metrics list failed: {:?}", result.err());
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_metrics_query() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(
+            &mut server,
+            "GET",
+            r#"{"status": "ok", "res_type": "time_series", "series": [], "from_date": 0, "to_date": 0, "query": "avg:system.cpu.user{*}"}"#,
+        )
+        .await;
+
+        let result = super::query(
+            &cfg,
+            "avg:system.cpu.user{*}".into(),
+            "1h".into(),
+            "now".into(),
+        )
+        .await;
+        assert!(result.is_ok(), "metrics query failed: {:?}", result.err());
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_metrics_metadata_get() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(
+            &mut server,
+            "GET",
+            r#"{"type": "gauge", "description": "CPU usage", "unit": "percent"}"#,
+        )
+        .await;
+
+        let result = super::metadata_get(&cfg, "system.cpu.user").await;
+        assert!(
+            result.is_ok(),
+            "metrics metadata get failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
     }
 }

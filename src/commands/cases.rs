@@ -360,3 +360,59 @@ pub async fn projects_update(cfg: &Config, project_id: &str, file: &str) -> Resu
         .map_err(|e| anyhow::anyhow!("failed to update project: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_cases_search() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::search(&cfg, None, 10).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_cases_get() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {}}"#).await;
+        let _ = super::get(&cfg, "case1").await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_cases_projects_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::projects_list(&cfg).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_cases_projects_get() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {}}"#).await;
+        let _ = super::projects_get(&cfg, "proj1").await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_cases_projects_delete() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{}"#).await;
+        let _ = super::projects_delete(&cfg, "proj1").await;
+        cleanup_env();
+    }
+}

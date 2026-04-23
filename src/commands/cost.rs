@@ -178,3 +178,19 @@ pub async fn gcp_config_delete(cfg: &Config, id: i64) -> Result<()> {
     eprintln!("GCP usage cost config {id} deleted.");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_cost_projected() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::projected(&cfg).await;
+        cleanup_env();
+    }
+}

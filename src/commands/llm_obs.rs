@@ -352,3 +352,1039 @@ pub async fn spans_search(
         .map_err(|e| anyhow::anyhow!("failed to search spans: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::config::{Config, OutputFormat};
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_llm_obs_projects_list() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        // Raw HTTP path: response can have any shape; missing nullable fields are tolerated.
+        let body = r#"{"data":[{"id":"proj-1","type":"projects","attributes":{"name":"my-project","description":null,"created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z"}}]}"#;
+        let _mock = mock_any(&mut server, "GET", body).await;
+
+        let result = super::projects_list(&cfg).await;
+        assert!(result.is_ok(), "projects_list failed: {:?}", result.err());
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_projects_list_404() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("GET", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::Any)
+            .with_status(404)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["not found"]}"#)
+            .create_async()
+            .await;
+
+        let result = super::projects_list(&cfg).await;
+        assert!(
+            result.is_err(),
+            "expected error but got ok: {:?}",
+            result.ok()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_projects_list_no_auth() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let cfg = Config {
+            api_key: None,
+            app_key: None,
+            access_token: None,
+            site: "datadoghq.com".into(),
+            org: None,
+            output_format: OutputFormat::Json,
+            auto_approve: false,
+            agent_mode: false,
+            read_only: false,
+        };
+        let result = super::projects_list(&cfg).await;
+        assert!(result.is_err(), "should fail without auth");
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_projects_list_missing_nullable_fields() {
+        // raw HTTP should succeed even with minimal response missing optional/nullable fields
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        // response missing description/config/metadata fields
+        let _mock = mock_any(
+            &mut server,
+            "GET",
+            r#"{"data":[{"id":"p1","type":"llm_obs_projects"}]}"#,
+        )
+        .await;
+        let result = super::projects_list(&cfg).await;
+        assert!(
+            result.is_ok(),
+            "should tolerate missing nullable fields: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_projects_create() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let tmp = write_temp_json(
+            "pup_test_proj_create.json",
+            r#"{"data":{"type":"projects","attributes":{"name":"test"}}}"#,
+        );
+        let body = r#"{"data":{"id":"proj-1","type":"projects","attributes":{"name":"test","description":null,"created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z"}}}"#;
+        let _mock = mock_any(&mut server, "POST", body).await;
+
+        let result = super::projects_create(&cfg, tmp.to_str().unwrap()).await;
+        assert!(result.is_ok(), "projects_create failed: {:?}", result.err());
+        let _ = std::fs::remove_file(tmp);
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_projects_create_500() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let tmp = write_temp_json(
+            "pup_test_proj_create_500.json",
+            r#"{"data":{"type":"projects","attributes":{"name":"test"}}}"#,
+        );
+        let _mock = server
+            .mock("POST", mockito::Matcher::Any)
+            .with_status(500)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["server error"]}"#)
+            .create_async()
+            .await;
+
+        let result = super::projects_create(&cfg, tmp.to_str().unwrap()).await;
+        assert!(
+            result.is_err(),
+            "expected error but got ok: {:?}",
+            result.ok()
+        );
+        let _ = std::fs::remove_file(tmp);
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_experiments_list() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        // Raw HTTP path: response can have any shape; nullable fields are tolerated.
+        let body = r#"{"data":[{"id":"exp-1","type":"experiments","attributes":{"name":"test-exp","config":null,"description":null,"metadata":null,"created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z","dataset_id":"ds-1","project_id":"proj-1","status":"active"}}]}"#;
+        let _mock = mock_any(&mut server, "GET", body).await;
+
+        let result = super::experiments_list(&cfg, None, None).await;
+        assert!(
+            result.is_ok(),
+            "experiments_list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_experiments_list_with_filters() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let body = r#"{"data":[]}"#;
+        // Strict query param check: verify filter[project_id] and filter[dataset_id] are sent.
+        let _mock = server
+            .mock("GET", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded("filter[project_id]".into(), "proj-1".into()),
+                mockito::Matcher::UrlEncoded("filter[dataset_id]".into(), "ds-1".into()),
+            ]))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(body)
+            .create_async()
+            .await;
+
+        let result =
+            super::experiments_list(&cfg, Some("proj-1".into()), Some("ds-1".into())).await;
+        assert!(
+            result.is_ok(),
+            "experiments_list with filters failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_experiments_list_401() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("GET", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::Any)
+            .with_status(401)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["Unauthorized"]}"#)
+            .create_async()
+            .await;
+
+        let result = super::experiments_list(&cfg, None, None).await;
+        assert!(
+            result.is_err(),
+            "expected error but got ok: {:?}",
+            result.ok()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_experiments_create() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let tmp = write_temp_json(
+            "pup_test_exp_create.json",
+            r#"{"data":{"type":"experiments","attributes":{"name":"test-exp","dataset_id":"ds-1","project_id":"proj-1"}}}"#,
+        );
+        let body = r#"{"data":{"id":"exp-1","type":"experiments","attributes":{"name":"test-exp","config":null,"description":null,"metadata":null,"created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z","dataset_id":"ds-1","project_id":"proj-1","status":"active"}}}"#;
+        let _mock = mock_any(&mut server, "POST", body).await;
+
+        let result = super::experiments_create(&cfg, tmp.to_str().unwrap()).await;
+        assert!(
+            result.is_ok(),
+            "experiments_create failed: {:?}",
+            result.err()
+        );
+        let _ = std::fs::remove_file(tmp);
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_experiments_create_422() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let tmp = write_temp_json(
+            "pup_test_exp_create_422.json",
+            r#"{"data":{"type":"experiments","attributes":{"name":"x","dataset_id":"ds-1","project_id":"proj-1"}}}"#,
+        );
+        let _mock = server
+            .mock("POST", mockito::Matcher::Any)
+            .with_status(422)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["invalid request body"]}"#)
+            .create_async()
+            .await;
+
+        let result = super::experiments_create(&cfg, tmp.to_str().unwrap()).await;
+        assert!(
+            result.is_err(),
+            "expected error but got ok: {:?}",
+            result.ok()
+        );
+        let _ = std::fs::remove_file(tmp);
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_experiments_update() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let tmp = write_temp_json(
+            "pup_test_exp_update.json",
+            r#"{"data":{"type":"experiments","id":"exp-1","attributes":{"name":"updated"}}}"#,
+        );
+        let body = r#"{"data":{"id":"exp-1","type":"experiments","attributes":{"name":"updated","config":null,"description":null,"metadata":null,"created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z","dataset_id":"ds-1","project_id":"proj-1","status":"active"}}}"#;
+        let _mock = mock_any(&mut server, "PATCH", body).await;
+
+        let result = super::experiments_update(&cfg, "exp-1", tmp.to_str().unwrap()).await;
+        assert!(
+            result.is_ok(),
+            "experiments_update failed: {:?}",
+            result.err()
+        );
+        let _ = std::fs::remove_file(tmp);
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_experiments_update_404() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let tmp = write_temp_json(
+            "pup_test_exp_update_404.json",
+            r#"{"data":{"type":"experiments","id":"missing","attributes":{"name":"x"}}}"#,
+        );
+        let _mock = server
+            .mock("PATCH", mockito::Matcher::Any)
+            .with_status(404)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["not found"]}"#)
+            .create_async()
+            .await;
+
+        let result = super::experiments_update(&cfg, "missing", tmp.to_str().unwrap()).await;
+        assert!(
+            result.is_err(),
+            "expected error but got ok: {:?}",
+            result.ok()
+        );
+        let _ = std::fs::remove_file(tmp);
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_experiments_delete() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let tmp = write_temp_json(
+            "pup_test_exp_delete.json",
+            r#"{"data":{"type":"experiments","attributes":{"experiment_ids":["exp-1"]}}}"#,
+        );
+        let _mock = mock_any(&mut server, "POST", r#"{}"#).await;
+
+        let result = super::experiments_delete(&cfg, tmp.to_str().unwrap()).await;
+        assert!(
+            result.is_ok(),
+            "experiments_delete failed: {:?}",
+            result.err()
+        );
+        let _ = std::fs::remove_file(tmp);
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_experiments_delete_500() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let tmp = write_temp_json(
+            "pup_test_exp_delete_500.json",
+            r#"{"data":{"type":"experiments","attributes":{"experiment_ids":["exp-1"]}}}"#,
+        );
+        let _mock = server
+            .mock("POST", mockito::Matcher::Any)
+            .with_status(500)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["server error"]}"#)
+            .create_async()
+            .await;
+
+        let result = super::experiments_delete(&cfg, tmp.to_str().unwrap()).await;
+        assert!(
+            result.is_err(),
+            "expected error but got ok: {:?}",
+            result.ok()
+        );
+        let _ = std::fs::remove_file(tmp);
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_datasets_list() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        // Raw HTTP path: verify the correct project-scoped path is called.
+        let body = r#"{"data":[{"id":"ds-1","type":"datasets","attributes":{"name":"my-dataset","description":null,"metadata":null,"created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z","current_version":1}}]}"#;
+        let _mock = server
+            .mock("GET", "/api/v2/llm-obs/v1/proj-1/datasets")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(body)
+            .create_async()
+            .await;
+
+        let result = super::datasets_list(&cfg, "proj-1").await;
+        assert!(result.is_ok(), "datasets_list failed: {:?}", result.err());
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_datasets_list_403() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("GET", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::Any)
+            .with_status(403)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["Forbidden"]}"#)
+            .create_async()
+            .await;
+
+        let result = super::datasets_list(&cfg, "proj-1").await;
+        assert!(
+            result.is_err(),
+            "expected error but got ok: {:?}",
+            result.ok()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_datasets_create() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let tmp = write_temp_json(
+            "pup_test_ds_create.json",
+            r#"{"data":{"type":"datasets","attributes":{"name":"test-dataset"}}}"#,
+        );
+        let body = r#"{"data":{"id":"ds-1","type":"datasets","attributes":{"name":"test-dataset","description":null,"metadata":null,"created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z","current_version":1}}}"#;
+        let _mock = mock_any(&mut server, "POST", body).await;
+
+        let result = super::datasets_create(&cfg, "proj-1", tmp.to_str().unwrap()).await;
+        assert!(result.is_ok(), "datasets_create failed: {:?}", result.err());
+        let _ = std::fs::remove_file(tmp);
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_datasets_create_no_auth() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let tmp = write_temp_json(
+            "pup_test_ds_create_noauth.json",
+            r#"{"data":{"type":"datasets","attributes":{"name":"x"}}}"#,
+        );
+        let cfg = Config {
+            api_key: None,
+            app_key: None,
+            access_token: None,
+            site: "datadoghq.com".into(),
+            org: None,
+            output_format: OutputFormat::Json,
+            auto_approve: false,
+            agent_mode: false,
+            read_only: false,
+        };
+        let result = super::datasets_create(&cfg, "proj-1", tmp.to_str().unwrap()).await;
+        assert!(result.is_err(), "should fail without auth");
+        let _ = std::fs::remove_file(tmp);
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_experiments_summary() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let body = r#"{"status":"success","data":{"experiment_id":"exp-1","total_events":3,"error_count":0,"evals":{},"available_dimensions":["env","ml_app"]}}"#;
+        let _mock = mock_post(
+            &mut server,
+            "/api/unstable/llm-obs-mcp/v1/experiment/summary",
+            200,
+            body,
+        )
+        .await;
+
+        let result = super::experiments_summary(&cfg, "exp-1").await;
+        assert!(
+            result.is_ok(),
+            "experiments_summary failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_experiments_summary_404() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let _mock = mock_post(
+            &mut server,
+            "/api/unstable/llm-obs-mcp/v1/experiment/summary",
+            404,
+            r#"{"errors":["experiment not found"]}"#,
+        )
+        .await;
+
+        let result = super::experiments_summary(&cfg, "does-not-exist").await;
+        assert!(result.is_err(), "should fail on 404");
+        assert!(result.unwrap_err().to_string().contains("404"));
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_experiments_summary_500() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let _mock = mock_post(
+            &mut server,
+            "/api/unstable/llm-obs-mcp/v1/experiment/summary",
+            500,
+            r#"{"errors":["internal server error"]}"#,
+        )
+        .await;
+
+        let result = super::experiments_summary(&cfg, "exp-1").await;
+        assert!(result.is_err(), "should fail on 500");
+        assert!(result.unwrap_err().to_string().contains("500"));
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_experiments_summary_no_auth() {
+        let _lock = lock_env().await;
+        let cfg = Config {
+            api_key: None,
+            app_key: None,
+            access_token: None,
+            site: "datadoghq.com".into(),
+            org: None,
+            output_format: OutputFormat::Json,
+            auto_approve: false,
+            agent_mode: false,
+            read_only: false,
+        };
+
+        let result = super::experiments_summary(&cfg, "exp-1").await;
+        assert!(result.is_err(), "should fail without auth");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_experiments_events_list() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let body = r#"{"status":"success","data":{"events":[{"id":"evt-1","status":"ok","duration_ms":100.0,"metrics":{}}],"total_matching":1,"returned":1,"offset":0}}"#;
+        let _mock = mock_post(
+            &mut server,
+            "/api/unstable/llm-obs-mcp/v1/experiment/events",
+            200,
+            body,
+        )
+        .await;
+
+        let result =
+            super::experiments_events_list(&cfg, "exp-1", 20, 0, None, None, None, None, "desc")
+                .await;
+        assert!(
+            result.is_ok(),
+            "experiments_events_list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_experiments_events_list_with_filters() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let body = r#"{"status":"success","data":{"events":[],"total_matching":0,"returned":0,"offset":0}}"#;
+        let _mock = mock_post(
+            &mut server,
+            "/api/unstable/llm-obs-mcp/v1/experiment/events",
+            200,
+            body,
+        )
+        .await;
+
+        let result = super::experiments_events_list(
+            &cfg,
+            "exp-1",
+            5,
+            10,
+            Some("env".into()),
+            Some("prod".into()),
+            Some("score".into()),
+            Some("accuracy".into()),
+            "asc",
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "experiments_events_list with filters failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_experiments_events_list_401() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let _mock = mock_post(
+            &mut server,
+            "/api/unstable/llm-obs-mcp/v1/experiment/events",
+            401,
+            r#"{"errors":["Forbidden"]}"#,
+        )
+        .await;
+
+        let result =
+            super::experiments_events_list(&cfg, "exp-1", 20, 0, None, None, None, None, "desc")
+                .await;
+        assert!(result.is_err(), "should fail on 401");
+        assert!(result.unwrap_err().to_string().contains("401"));
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_experiments_events_get() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let body = r#"{"status":"success","data":{"id":"evt-1","status":"ok","duration_ms":100.0,"input":{"prompt":"hello"},"output":{"response":"world"},"metrics":{},"dimensions":{}}}"#;
+        let _mock = mock_post(
+            &mut server,
+            "/api/unstable/llm-obs-mcp/v1/experiment/event",
+            200,
+            body,
+        )
+        .await;
+
+        let result = super::experiments_events_get(&cfg, "exp-1", "evt-1").await;
+        assert!(
+            result.is_ok(),
+            "experiments_events_get failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_experiments_events_get_404() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let _mock = mock_post(
+            &mut server,
+            "/api/unstable/llm-obs-mcp/v1/experiment/event",
+            404,
+            r#"{"errors":["event not found"]}"#,
+        )
+        .await;
+
+        let result = super::experiments_events_get(&cfg, "exp-1", "missing-evt").await;
+        assert!(result.is_err(), "should fail on 404");
+        assert!(result.unwrap_err().to_string().contains("404"));
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_experiments_events_get_no_auth() {
+        let _lock = lock_env().await;
+        let cfg = Config {
+            api_key: None,
+            app_key: None,
+            access_token: None,
+            site: "datadoghq.com".into(),
+            org: None,
+            output_format: OutputFormat::Json,
+            auto_approve: false,
+            agent_mode: false,
+            read_only: false,
+        };
+
+        let result = super::experiments_events_get(&cfg, "exp-1", "evt-1").await;
+        assert!(result.is_err(), "should fail without auth");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_experiments_metric_values() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let body = r#"{"status":"success","data":{"metric_label":"accuracy","metric_type":"score","overall":{"count":10,"mean":0.85,"min_value":0.5,"max_value":1.0,"p50":0.9,"p90":0.95,"p95":0.98},"total_events":10}}"#;
+        let _mock = mock_post(
+            &mut server,
+            "/api/unstable/llm-obs-mcp/v1/experiment/metric-values",
+            200,
+            body,
+        )
+        .await;
+
+        let result = super::experiments_metric_values(&cfg, "exp-1", "accuracy", None, None).await;
+        assert!(
+            result.is_ok(),
+            "experiments_metric_values failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_experiments_metric_values_segmented() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let body = r#"{"status":"success","data":{"metric_label":"accuracy","metric_type":"score","overall":{"count":5,"mean":0.9},"segments":[{"dimension_value":"prod","stats":{"count":5,"mean":0.9}}],"total_events":5}}"#;
+        let _mock = mock_post(
+            &mut server,
+            "/api/unstable/llm-obs-mcp/v1/experiment/metric-values",
+            200,
+            body,
+        )
+        .await;
+
+        let result = super::experiments_metric_values(
+            &cfg,
+            "exp-1",
+            "accuracy",
+            Some("env".into()),
+            Some("prod".into()),
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "experiments_metric_values segmented failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_experiments_metric_values_500() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let _mock = mock_post(
+            &mut server,
+            "/api/unstable/llm-obs-mcp/v1/experiment/metric-values",
+            500,
+            r#"{"errors":["internal server error"]}"#,
+        )
+        .await;
+
+        let result = super::experiments_metric_values(&cfg, "exp-1", "accuracy", None, None).await;
+        assert!(result.is_err(), "should fail on 500");
+        assert!(result.unwrap_err().to_string().contains("500"));
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_experiments_dimension_values() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let body = r#"{"status":"success","data":{"dimension":"env","unique_count":2,"values":[{"value":"prod","count":8},{"value":"staging","count":2}]}}"#;
+        let _mock = mock_post(
+            &mut server,
+            "/api/unstable/llm-obs-mcp/v1/experiment/dimension-values",
+            200,
+            body,
+        )
+        .await;
+
+        let result = super::experiments_dimension_values(&cfg, "exp-1", "env").await;
+        assert!(
+            result.is_ok(),
+            "experiments_dimension_values failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_experiments_dimension_values_403() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let _mock = mock_post(
+            &mut server,
+            "/api/unstable/llm-obs-mcp/v1/experiment/dimension-values",
+            403,
+            r#"{"errors":["Forbidden"]}"#,
+        )
+        .await;
+
+        let result = super::experiments_dimension_values(&cfg, "exp-1", "env").await;
+        assert!(result.is_err(), "should fail on 403");
+        assert!(result.unwrap_err().to_string().contains("403"));
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_spans_search() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let body = r#"{"status":"success","data":{"spans":[{"span_id":"s-1","trace_id":"t-1","name":"llm-call","span_kind":"llm","ml_app":"my-app","status":"ok","duration_ms":42.0,"start_ms":1000000,"tags":[]}]}}"#;
+        let _mock = mock_post(
+            &mut server,
+            "/api/unstable/llm-obs-mcp/v1/trace/search-spans",
+            200,
+            body,
+        )
+        .await;
+
+        let result = super::spans_search(
+            &cfg,
+            Some("llm-call".into()),
+            None,
+            None,
+            None,
+            None,
+            Some("my-app".into()),
+            false,
+            "1h".into(),
+            "now".into(),
+            10,
+            None,
+        )
+        .await;
+        assert!(result.is_ok(), "spans_search failed: {:?}", result.err());
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_spans_search_from_is_numeric_string() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let resp = r#"{"status":"success","data":{"spans":[]}}"#;
+        let _mock = server
+            .mock("POST", "/api/unstable/llm-obs-mcp/v1/trace/search-spans")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(resp)
+            // Assert both from and to are 13-digit epoch ms strings, not relative strings
+            .match_body(mockito::Matcher::Regex(r#""from":"\d{13}""#.to_string()))
+            .match_body(mockito::Matcher::Regex(r#""to":"\d{13}""#.to_string()))
+            .create_async()
+            .await;
+
+        let result = super::spans_search(
+            &cfg,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            false,
+            "4h".into(),
+            "now".into(),
+            5,
+            None,
+        )
+        .await;
+        assert!(result.is_ok(), "spans_search failed: {:?}", result.err());
+        _mock.assert();
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_spans_search_invalid_from_returns_error() {
+        let _lock = lock_env().await;
+        let server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        // No mock needed — should error before any network call
+        let result = super::spans_search(
+            &cfg,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            false,
+            "not-a-valid-time".into(),
+            "now".into(),
+            5,
+            None,
+        )
+        .await;
+        assert!(result.is_err(), "expected error for invalid --from value");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_spans_search_empty_results() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let body = r#"{"status":"success","data":{"spans":[]}}"#;
+        let _mock = mock_post(
+            &mut server,
+            "/api/unstable/llm-obs-mcp/v1/trace/search-spans",
+            200,
+            body,
+        )
+        .await;
+
+        let result = super::spans_search(
+            &cfg,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            false,
+            "1h".into(),
+            "now".into(),
+            20,
+            None,
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "spans_search empty failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_spans_search_500() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let _mock = mock_post(
+            &mut server,
+            "/api/unstable/llm-obs-mcp/v1/trace/search-spans",
+            500,
+            r#"{"errors":["internal server error"]}"#,
+        )
+        .await;
+
+        let result = super::spans_search(
+            &cfg,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            false,
+            "1h".into(),
+            "now".into(),
+            20,
+            None,
+        )
+        .await;
+        assert!(result.is_err(), "should fail on 500");
+        assert!(result.unwrap_err().to_string().contains("500"));
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_spans_search_no_auth() {
+        let _lock = lock_env().await;
+        let cfg = Config {
+            api_key: None,
+            app_key: None,
+            access_token: None,
+            site: "datadoghq.com".into(),
+            org: None,
+            output_format: OutputFormat::Json,
+            auto_approve: false,
+            agent_mode: false,
+            read_only: false,
+        };
+
+        let result = super::spans_search(
+            &cfg,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            false,
+            "1h".into(),
+            "now".into(),
+            20,
+            None,
+        )
+        .await;
+        assert!(result.is_err(), "should fail without auth");
+        cleanup_env();
+    }
+}

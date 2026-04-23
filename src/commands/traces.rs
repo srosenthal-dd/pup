@@ -281,6 +281,8 @@ pub async fn aggregate(
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
+    use crate::test_support::*;
+
     use super::*;
     use datadog_api_client::datadogV2::model::SpansAggregationFunction;
 
@@ -396,5 +398,106 @@ mod tests {
         assert!(validate_sort("garbage").is_err());
         assert!(validate_sort("").is_err());
         assert!(validate_sort("asc").is_err());
+    }
+
+    #[tokio::test]
+    async fn test_spans_metrics_list() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", r#"{"data":[]}"#).await;
+        let result = super::metrics_list(&cfg).await;
+        assert!(
+            result.is_ok(),
+            "spans metrics list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_spans_metrics_get() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(
+            &mut server,
+            "GET",
+            r#"{"data":{"id":"test.metric","type":"spans_metrics","attributes":{}}}"#,
+        )
+        .await;
+        let result = super::metrics_get(&cfg, "test.metric").await;
+        assert!(
+            result.is_ok(),
+            "spans metrics get failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_spans_metrics_delete() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "DELETE", "").await;
+        let result = super::metrics_delete(&cfg, "test.metric").await;
+        assert!(
+            result.is_ok(),
+            "spans metrics delete failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_spans_metrics_get_path() {
+        // Verify the GET request hits the correct API path for a named metric.
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let mock = server
+            .mock("GET", "/api/v2/apm/config/metrics/my.metric")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data":{"id":"my.metric","type":"spans_metrics","attributes":{}}}"#)
+            .create_async()
+            .await;
+        let result = super::metrics_get(&cfg, "my.metric").await;
+        assert!(
+            result.is_ok(),
+            "spans metrics get (path check) failed: {:?}",
+            result.err()
+        );
+        mock.assert_async().await;
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_spans_metrics_list_error() {
+        // Verify that a 403 response causes metrics_list to return an error.
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("GET", mockito::Matcher::Any)
+            .with_status(403)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["Forbidden"]}"#)
+            .create_async()
+            .await;
+        let result = super::metrics_list(&cfg).await;
+        assert!(result.is_err(), "spans metrics list should fail on 403");
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
     }
 }

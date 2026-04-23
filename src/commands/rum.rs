@@ -441,3 +441,99 @@ pub fn split_rum_compute_args(input: &str) -> Vec<String> {
     }
     result
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_rum_apps_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::apps_list(&cfg).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_rum_apps_get() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {"id": "abc", "type": "rum_browser"}}"#).await;
+        let _ = super::apps_get(&cfg, "abc").await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_rum_apps_delete() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{}"#).await;
+        let _ = super::apps_delete(&cfg, "abc").await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_rum_metrics_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::metrics_list(&cfg).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_rum_metrics_get() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {}}"#).await;
+        let _ = super::metrics_get(&cfg, "m1").await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_rum_metrics_delete() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{}"#).await;
+        let _ = super::metrics_delete(&cfg, "m1").await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_rum_retention_filters_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::retention_filters_list(&cfg, "app1").await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_rum_events_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::events_list(&cfg, None, "1h".into(), "now".into(), 10).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_rum_playlists_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::playlists_list(&cfg).await;
+        cleanup_env();
+    }
+}

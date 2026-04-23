@@ -20,6 +20,9 @@ mod version;
 #[cfg(test)]
 mod test_commands;
 
+#[cfg(test)]
+mod test_support;
+
 /// Shared test utilities — only compiled in test builds.
 #[cfg(test)]
 pub(crate) mod test_utils {

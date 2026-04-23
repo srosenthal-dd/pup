@@ -59,3 +59,48 @@ pub async fn delete(cfg: &Config, dataset_id: &str) -> Result<()> {
     eprintln!("Dataset {dataset_id} deleted.");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_datasets_list() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", r#"{"data":[]}"#).await;
+        let result = super::list(&cfg).await;
+        assert!(result.is_ok(), "datasets list failed: {:?}", result.err());
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_datasets_get() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", r#"{}"#).await;
+        let result = super::get(&cfg, "test-id").await;
+        assert!(result.is_ok(), "datasets get failed: {:?}", result.err());
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_datasets_delete() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "DELETE", "").await;
+        let result = super::delete(&cfg, "test-id").await;
+        assert!(result.is_ok(), "datasets delete failed: {:?}", result.err());
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+}

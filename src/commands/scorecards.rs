@@ -133,3 +133,59 @@ pub async fn campaigns_delete(cfg: &Config, campaign_id: &str) -> Result<()> {
     println!("Scorecard campaign '{campaign_id}' deleted successfully.");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_scorecard_rules_create_missing_file() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let result = super::rules_create(&cfg, "/nonexistent/file.json").await;
+        assert!(result.is_err(), "rules_create should fail for missing file");
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_scorecard_outcomes_batch_create_missing_file() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let result = super::outcomes_batch_create(&cfg, "/nonexistent/file.json").await;
+        assert!(
+            result.is_err(),
+            "outcomes_batch_create should fail for missing file"
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_scorecard_rules_create_api_error() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("POST", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::Any)
+            .with_status(422)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["unprocessable entity"]}"#)
+            .create_async()
+            .await;
+        let tmp = std::env::temp_dir().join("test_scorecard_rule.json");
+        std::fs::write(&tmp, r#"{"data":{}}"#).unwrap();
+        let result = super::rules_create(&cfg, tmp.to_str().unwrap()).await;
+        let _ = std::fs::remove_file(&tmp);
+        assert!(result.is_err(), "rules_create should fail on 422 response");
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+}

@@ -145,3 +145,204 @@ pub async fn service_library_config_get(
     let data = client::raw_get(cfg, "/api/unstable/apm/service-library-config", &query).await?;
     formatter::output(cfg, &data)
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_apm_services_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::services_list(&cfg, "prod".into(), "1h".into(), "now".into()).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_apm_troubleshooting_list() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let mock = server
+            .mock("GET", "/api/unstable/apm/instrumentation-errors")
+            .match_query(mockito::Matcher::UrlEncoded(
+                "hostname".into(),
+                "my-host".into(),
+            ))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data": []}"#)
+            .create_async()
+            .await;
+
+        let result = super::troubleshooting_list(&cfg, "my-host".into(), None).await;
+        assert!(
+            result.is_ok(),
+            "troubleshooting list failed: {:?}",
+            result.err()
+        );
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_apm_troubleshooting_list_with_timeframe() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let mock = server
+            .mock("GET", "/api/unstable/apm/instrumentation-errors")
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded("hostname".into(), "my-host".into()),
+                mockito::Matcher::UrlEncoded("timeframe".into(), "4h".into()),
+            ]))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data": []}"#)
+            .create_async()
+            .await;
+
+        let result = super::troubleshooting_list(&cfg, "my-host".into(), Some("4h".into())).await;
+        assert!(
+            result.is_ok(),
+            "troubleshooting list with timeframe failed: {:?}",
+            result.err()
+        );
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_apm_service_config_get() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let mock = server
+            .mock("GET", "/api/unstable/apm/service-config")
+            .match_query(mockito::Matcher::UrlEncoded(
+                "service_name".into(),
+                "my-service".into(),
+            ))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"service_name":"my-service","service_configs":[]}"#)
+            .create_async()
+            .await;
+
+        let result = super::service_config_get(&cfg, "my-service".into(), None, None).await;
+        assert!(
+            result.is_ok(),
+            "service_config_get failed: {:?}",
+            result.err()
+        );
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_apm_service_config_get_with_filters() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let mock = server
+            .mock("GET", "/api/unstable/apm/service-config")
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded("service_name".into(), "my-service".into()),
+                mockito::Matcher::UrlEncoded("env".into(), "prod".into()),
+                mockito::Matcher::UrlEncoded("service_instance_ids".into(), "id-1,id-2".into()),
+            ]))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"service_name":"my-service","service_configs":[]}"#)
+            .create_async()
+            .await;
+
+        let result = super::service_config_get(
+            &cfg,
+            "my-service".into(),
+            Some("prod".into()),
+            Some("id-1,id-2".into()),
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "service_config_get with filters failed: {:?}",
+            result.err()
+        );
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_apm_service_library_config_get() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let mock = server
+            .mock("GET", "/api/unstable/apm/service-library-config")
+            .match_query(mockito::Matcher::UrlEncoded(
+                "service_name".into(),
+                "my-service".into(),
+            ))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"service_name":"my-service","configs":[]}"#)
+            .create_async()
+            .await;
+
+        let result =
+            super::service_library_config_get(&cfg, "my-service".into(), None, None, false).await;
+        assert!(
+            result.is_ok(),
+            "service_library_config_get failed: {:?}",
+            result.err()
+        );
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_apm_service_library_config_get_with_filters() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let mock = server
+            .mock("GET", "/api/unstable/apm/service-library-config")
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded("service_name".into(), "my-service".into()),
+                mockito::Matcher::UrlEncoded("env".into(), "prod".into()),
+                mockito::Matcher::UrlEncoded("language_name".into(), "python".into()),
+                mockito::Matcher::UrlEncoded("is_mixed".into(), "true".into()),
+            ]))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"service_name":"my-service","is_mixed":true,"configs":[]}"#)
+            .create_async()
+            .await;
+
+        let result = super::service_library_config_get(
+            &cfg,
+            "my-service".into(),
+            Some("prod".into()),
+            Some("python".into()),
+            true,
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "service_library_config_get with filters failed: {:?}",
+            result.err()
+        );
+        mock.assert_async().await;
+        cleanup_env();
+    }
+}
