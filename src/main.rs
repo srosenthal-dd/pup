@@ -340,10 +340,10 @@ enum Commands {
     ///   pup app-builder get <app-id>
     ///
     ///   # Create an app from file
-    ///   pup app-builder create --body @app.json
+    ///   pup app-builder create --file app.json
     ///
     ///   # Update an app
-    ///   pup app-builder update <app-id> --body @updated.json
+    ///   pup app-builder update <app-id> --file updated.json
     ///
     ///   # Delete an app
     ///   pup app-builder delete <app-id>
@@ -1880,13 +1880,10 @@ enum Commands {
     ///   pup notebooks get notebook-id
     ///
     ///   # Create a notebook from file
-    ///   pup notebooks create --body @notebook.json
-    ///
-    ///   # Create from stdin
-    ///   cat notebook.json | pup notebooks create --body -
+    ///   pup notebooks create --file notebook.json
     ///
     ///   # Update a notebook
-    ///   pup notebooks update 12345 --body @updated.json
+    ///   pup notebooks update 12345 --file updated.json
     ///
     ///   # Delete a notebook
     ///   pup notebooks delete 12345
@@ -5119,11 +5116,7 @@ enum AppBuilderActions {
     },
     /// Create a new App Builder application
     Create {
-        #[arg(
-            long,
-            name = "body",
-            help = "JSON body (@filepath or - for stdin) (required)"
-        )]
+        #[arg(long, help = "JSON file with app data (required)")]
         file: String,
     },
     /// Update an App Builder application
@@ -5131,11 +5124,7 @@ enum AppBuilderActions {
         /// App ID (UUID)
         #[arg(name = "app-id")]
         app_id: String,
-        #[arg(
-            long,
-            name = "body",
-            help = "JSON body (@filepath or - for stdin) (required)"
-        )]
+        #[arg(long, help = "JSON file with app data (required)")]
         file: String,
     },
     /// Delete an App Builder application (DESTRUCTIVE)
@@ -5277,21 +5266,13 @@ enum NotebookActions {
     Get { notebook_id: i64 },
     /// Create a new notebook
     Create {
-        #[arg(
-            long,
-            name = "body",
-            help = "JSON body (@filepath or - for stdin) (required)"
-        )]
+        #[arg(long, help = "JSON file with notebook data (required)")]
         file: String,
     },
     /// Update a notebook
     Update {
         notebook_id: i64,
-        #[arg(
-            long,
-            name = "body",
-            help = "JSON body (@filepath or - for stdin) (required)"
-        )]
+        #[arg(long, help = "JSON file with notebook data (required)")]
         file: String,
     },
     /// Delete a notebook
