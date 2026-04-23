@@ -16,13 +16,11 @@ pub async fn summary(cfg: &Config, start: String, end: Option<String>) -> Result
         None => UsageMeteringAPI::with_config(dd_cfg),
     };
 
-    let start_dt =
-        chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&start)?).unwrap();
+    let start_dt = util::parse_time_to_datetime(&start)?;
 
     let mut params = GetUsageSummaryOptionalParams::default();
     if let Some(e) = end {
-        let end_dt =
-            chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&e)?).unwrap();
+        let end_dt = util::parse_time_to_datetime(&e)?;
         params = params.end_month(end_dt);
     }
 
@@ -40,13 +38,11 @@ pub async fn hourly(cfg: &Config, start: String, end: Option<String>) -> Result<
         None => UsageMeteringAPI::with_config(dd_cfg),
     };
 
-    let start_dt =
-        chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&start)?).unwrap();
+    let start_dt = util::parse_time_to_datetime(&start)?;
 
     let mut params = GetHourlyUsageAttributionOptionalParams::default();
     if let Some(e) = end {
-        let end_dt =
-            chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&e)?).unwrap();
+        let end_dt = util::parse_time_to_datetime(&e)?;
         params = params.end_hr(end_dt);
     }
 

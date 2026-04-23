@@ -87,6 +87,16 @@ pub fn parse_time_to_unix(input: &str) -> Result<i64> {
     Ok(parse_time_to_unix_millis(input)? / 1000)
 }
 
+/// Parses a time string into a `chrono::DateTime<Utc>`.
+///
+/// Returns an `anyhow` error if the input cannot be parsed or if the resulting
+/// timestamp falls outside chrono's representable range.
+pub fn parse_time_to_datetime(input: &str) -> Result<chrono::DateTime<Utc>> {
+    let ms = parse_time_to_unix_millis(input)?;
+    chrono::DateTime::from_timestamp_millis(ms)
+        .ok_or_else(|| anyhow::anyhow!("timestamp out of valid range: {input:?}"))
+}
+
 /// Parses a human-readable duration string into milliseconds.
 ///
 /// Unlike `parse_time_to_unix_millis`, this does **not** subtract from the
@@ -227,6 +237,43 @@ mod tests {
     fn test_invalid() {
         assert!(parse_time_to_unix_millis("invalid").is_err());
         assert!(parse_time_to_unix_millis("").is_err());
+    }
+
+    #[test]
+    fn test_parse_time_to_datetime_relative() {
+        let dt = parse_time_to_datetime("1h").unwrap();
+        let expected = Utc::now().timestamp() - 3600;
+        assert!((dt.timestamp() - expected).abs() < 2);
+    }
+
+    #[test]
+    fn test_parse_time_to_datetime_long_form() {
+        let dt = parse_time_to_datetime("2hours").unwrap();
+        let expected = Utc::now().timestamp() - 7200;
+        assert!((dt.timestamp() - expected).abs() < 2);
+    }
+
+    #[test]
+    fn test_parse_time_to_datetime_unix_millis() {
+        let dt = parse_time_to_datetime("1700000000000").unwrap();
+        assert_eq!(dt.timestamp_millis(), 1700000000000);
+    }
+
+    #[test]
+    fn test_parse_time_to_datetime_rfc3339() {
+        let dt = parse_time_to_datetime("2024-01-01T00:00:00Z").unwrap();
+        assert_eq!(dt.timestamp_millis(), 1704067200000);
+    }
+
+    #[test]
+    fn test_parse_time_to_datetime_invalid_input() {
+        let err = parse_time_to_datetime("not-a-time").unwrap_err();
+        assert!(err.to_string().contains("unable to parse time"));
+    }
+
+    #[test]
+    fn test_parse_time_to_datetime_empty() {
+        assert!(parse_time_to_datetime("").is_err());
     }
 
     #[test]
