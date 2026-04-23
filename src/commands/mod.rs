@@ -26,6 +26,7 @@ pub mod csm_threats;
 pub mod dashboards;
 pub mod data_deletion;
 pub mod data_governance;
+pub mod data_streams;
 pub mod datasets;
 pub mod dbm;
 pub mod ddsql;

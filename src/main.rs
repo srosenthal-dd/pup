@@ -2673,6 +2673,34 @@ enum Commands {
         #[command(subcommand)]
         action: WorkflowActions,
     },
+    /// [Experimental] Data Streams Monitoring (DSM) commands
+    ///
+    /// Backed by `/api/ui/data_streams/...` on dsm-api. This API surface is
+    /// experimental and may change without notice. OAuth2 bearer auth only.
+    ///
+    /// CAPABILITIES:
+    ///   • Inspect Kafka topic / broker configuration
+    ///   • Inspect Kafka producer / consumer client configuration
+    ///   • Read messages from a Kafka cluster / topic (requires agent + perm)
+    ///
+    /// EXAMPLES:
+    ///   pup data-streams kafka-topic-configs --kafka-cluster-id <id> --topic <t>
+    ///   pup data-streams kafka-broker-configs --kafka-cluster-id <id> --broker-id <b>
+    ///   pup data-streams kafka-client-configs --kafka-cluster-id <id> \
+    ///       --service web:producer --service worker:consumer
+    ///   pup data-streams read-messages --cluster <id> --topic <t> \
+    ///       --bootstrap-servers <brokers>
+    ///
+    /// AUTHENTICATION:
+    ///   Requires OAuth2 bearer token (`pup auth login`). API keys are not
+    ///   accepted by `/api/ui/` endpoints. `read-messages` additionally
+    ///   requires the `data_streams_capture_messages` permission on the
+    ///   calling user and a Datadog Agent reachable via Remote Config.
+    #[command(name = "data-streams", verbatim_doc_comment)]
+    DataStreams {
+        #[command(subcommand)]
+        action: DataStreamsActions,
+    },
 }
 
 // ---- Extensions ----
@@ -8700,6 +8728,86 @@ enum StaticAnalysisCustomRuleActions {
     },
 }
 
+// ---- Data Streams (Experimental) ----
+#[derive(Subcommand)]
+enum DataStreamsActions {
+    /// Get Kafka topic configuration versions
+    #[command(name = "kafka-topic-configs")]
+    KafkaTopicConfigs {
+        #[arg(long, help = "Kafka cluster ID")]
+        kafka_cluster_id: String,
+        #[arg(long, help = "Kafka topic name")]
+        topic: String,
+    },
+    /// Get Kafka broker configuration versions
+    #[command(name = "kafka-broker-configs")]
+    KafkaBrokerConfigs {
+        #[arg(long, help = "Kafka cluster ID")]
+        kafka_cluster_id: String,
+        #[arg(long, help = "Broker ID")]
+        broker_id: String,
+    },
+    /// Get Kafka client (producer/consumer) configuration
+    #[command(name = "kafka-client-configs")]
+    KafkaClientConfigs {
+        #[arg(long, help = "Kafka cluster ID")]
+        kafka_cluster_id: String,
+        /// Service to fetch configs for in the form `name:producer` or
+        /// `name:consumer`. May be repeated.
+        #[arg(long = "service", value_name = "NAME:TYPE", required = true)]
+        services: Vec<String>,
+    },
+    /// Read messages from a Kafka cluster / topic via the Datadog Agent
+    ///
+    /// Dispatches a read-messages action via Remote Config and polls for the
+    /// agent's response. Requires the `data_streams_capture_messages`
+    /// permission and a Datadog Agent connected to the target cluster.
+    /// Rate-limited to 10 calls/minute per user.
+    #[command(name = "read-messages", verbatim_doc_comment)]
+    ReadMessages {
+        #[arg(long, help = "Kafka cluster ID")]
+        cluster: String,
+        #[arg(long, help = "Kafka topic name")]
+        topic: String,
+        #[arg(long, help = "Bootstrap servers (host:port,...)")]
+        bootstrap_servers: String,
+        #[arg(long, help = "Partition to read from (omit for all)")]
+        partition: Option<i32>,
+        #[arg(long, default_value_t = 0, help = "Offset to start reading from")]
+        start_offset: i64,
+        #[arg(long, help = "Start timestamp (unix ms); overrides start_offset")]
+        start_timestamp: Option<i64>,
+        #[arg(long, default_value_t = 10, help = "Max messages to return (<=100)")]
+        n_messages_retrieved: u32,
+        #[arg(long, default_value_t = 1000, help = "Max messages to scan (<=10000)")]
+        max_scanned_messages: u32,
+        #[arg(long, help = "Message filter expression")]
+        filter: Option<String>,
+        #[arg(long, help = "Value format: avro|json|protobuf|raw|string")]
+        value_format: Option<String>,
+        #[arg(long, help = "Key format: avro|json|protobuf|raw|string")]
+        key_format: Option<String>,
+        #[arg(long, help = "Consumer group ID to use")]
+        consumer_group_id: Option<String>,
+    },
+    /// List all Kafka Schema Registry schemas for the org
+    #[command(name = "all-kafka-schemas")]
+    AllKafkaSchemas {
+        #[arg(long, help = "Start time (unix seconds, optional)")]
+        start_unix: Option<i64>,
+        #[arg(long, help = "End time (unix seconds, optional)")]
+        end_unix: Option<i64>,
+    },
+    /// Get all Schema Registry versions for a subject on a cluster
+    #[command(name = "subject-kafka-schemas")]
+    SubjectKafkaSchemas {
+        #[arg(long, help = "Kafka cluster ID")]
+        kafka_cluster_id: String,
+        #[arg(long, help = "Schema Registry subject name")]
+        subject: String,
+    },
+}
+
 // ---- Auth ----
 #[derive(Subcommand)]
 enum AuthActions {
@@ -13677,6 +13785,99 @@ async fn main_inner() -> anyhow::Result<()> {
                         commands::csm_threats::policy_download(&cfg).await?;
                     }
                 },
+            }
+        }
+        // --- Data Streams (Experimental) ---
+        Commands::DataStreams { action } => {
+            cfg.validate_auth()?;
+            match action {
+                DataStreamsActions::KafkaTopicConfigs {
+                    kafka_cluster_id,
+                    topic,
+                } => {
+                    commands::data_streams::kafka_topic_configs(&cfg, &kafka_cluster_id, &topic)
+                        .await?;
+                }
+                DataStreamsActions::KafkaBrokerConfigs {
+                    kafka_cluster_id,
+                    broker_id,
+                } => {
+                    commands::data_streams::kafka_broker_configs(
+                        &cfg,
+                        &kafka_cluster_id,
+                        &broker_id,
+                    )
+                    .await?;
+                }
+                DataStreamsActions::KafkaClientConfigs {
+                    kafka_cluster_id,
+                    services,
+                } => {
+                    let mut parsed = Vec::with_capacity(services.len());
+                    for s in services {
+                        let (name, kind) = s.split_once(':').ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "--service must be in the form NAME:producer|consumer (got {s:?})"
+                            )
+                        })?;
+                        if kind != "producer" && kind != "consumer" {
+                            anyhow::bail!(
+                                "--service type must be 'producer' or 'consumer' (got {kind:?})"
+                            );
+                        }
+                        parsed.push((name.to_string(), kind.to_string()));
+                    }
+                    commands::data_streams::kafka_client_configs(&cfg, &kafka_cluster_id, parsed)
+                        .await?;
+                }
+                DataStreamsActions::AllKafkaSchemas {
+                    start_unix,
+                    end_unix,
+                } => {
+                    commands::data_streams::all_kafka_schemas(&cfg, start_unix, end_unix).await?;
+                }
+                DataStreamsActions::SubjectKafkaSchemas {
+                    kafka_cluster_id,
+                    subject,
+                } => {
+                    commands::data_streams::subject_kafka_schemas(
+                        &cfg,
+                        &kafka_cluster_id,
+                        &subject,
+                    )
+                    .await?;
+                }
+                DataStreamsActions::ReadMessages {
+                    cluster,
+                    topic,
+                    bootstrap_servers,
+                    partition,
+                    start_offset,
+                    start_timestamp,
+                    n_messages_retrieved,
+                    max_scanned_messages,
+                    filter,
+                    value_format,
+                    key_format,
+                    consumer_group_id,
+                } => {
+                    commands::data_streams::read_messages(
+                        &cfg,
+                        &cluster,
+                        &topic,
+                        &bootstrap_servers,
+                        partition,
+                        start_offset,
+                        start_timestamp,
+                        n_messages_retrieved,
+                        max_scanned_messages,
+                        filter,
+                        value_format,
+                        key_format,
+                        consumer_group_id,
+                    )
+                    .await?;
+                }
             }
         }
     }
