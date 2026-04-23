@@ -1889,8 +1889,8 @@ enum Commands {
     ///   pup notebooks delete 12345
     ///
     /// AUTHENTICATION:
-    ///   Requires API key authentication (DD_API_KEY + DD_APP_KEY).
-    ///   OAuth2 is not supported for this endpoint.
+    ///   Requires OAuth2 (via 'pup auth login') with notebooks_read/notebooks_write
+    ///   scopes, or API key authentication (DD_API_KEY + DD_APP_KEY).
     #[command(verbatim_doc_comment)]
     Notebooks {
         #[command(subcommand)]
