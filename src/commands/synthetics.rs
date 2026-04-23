@@ -11,7 +11,6 @@ use datadog_api_client::datadogV2::model::{
     DeletedSuitesRequestDeleteRequest, SuiteCreateEditRequest,
 };
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 
@@ -210,11 +209,7 @@ pub async fn tests_run(
 }
 
 pub async fn tests_list(cfg: &Config, page_size: i64, page_number: i64) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SyntheticsAPI::with_client_and_config(dd_cfg, c),
-        None => SyntheticsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SyntheticsAPI, cfg);
     let resp = api
         .list_tests(
             ListTestsOptionalParams::default()
@@ -227,11 +222,7 @@ pub async fn tests_list(cfg: &Config, page_size: i64, page_number: i64) -> Resul
 }
 
 pub async fn tests_get(cfg: &Config, public_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SyntheticsAPI::with_client_and_config(dd_cfg, c),
-        None => SyntheticsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SyntheticsAPI, cfg);
     let resp = api
         .get_test(public_id.to_string())
         .await
@@ -248,11 +239,7 @@ pub async fn tests_search(
     start: i64,
     sort: Option<String>,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SyntheticsAPI::with_client_and_config(dd_cfg, c),
-        None => SyntheticsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SyntheticsAPI, cfg);
 
     let mut params = SearchTestsOptionalParams::default();
     if let Some(t) = text {
@@ -282,11 +269,7 @@ pub async fn tests_search(
 }
 
 pub async fn locations_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SyntheticsAPI::with_client_and_config(dd_cfg, c),
-        None => SyntheticsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SyntheticsAPI, cfg);
     let resp = api
         .list_locations()
         .await
@@ -297,11 +280,7 @@ pub async fn locations_list(cfg: &Config) -> Result<()> {
 // ---- Suites (V2 API) ----
 
 pub async fn suites_list(cfg: &Config, query: Option<String>) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SyntheticsV2API::with_client_and_config(dd_cfg, c),
-        None => SyntheticsV2API::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SyntheticsV2API, cfg);
     let mut params = SearchSuitesOptionalParams::default();
     if let Some(q) = query {
         params = params.query(q);
@@ -314,11 +293,7 @@ pub async fn suites_list(cfg: &Config, query: Option<String>) -> Result<()> {
 }
 
 pub async fn suites_get(cfg: &Config, suite_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SyntheticsV2API::with_client_and_config(dd_cfg, c),
-        None => SyntheticsV2API::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SyntheticsV2API, cfg);
     let resp = api
         .get_synthetics_suite(suite_id.to_string())
         .await
@@ -327,11 +302,7 @@ pub async fn suites_get(cfg: &Config, suite_id: &str) -> Result<()> {
 }
 
 pub async fn suites_create(cfg: &Config, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SyntheticsV2API::with_client_and_config(dd_cfg, c),
-        None => SyntheticsV2API::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SyntheticsV2API, cfg);
     let body: SuiteCreateEditRequest = crate::util::read_json_file(file)?;
     let resp = api
         .create_synthetics_suite(body)
@@ -341,11 +312,7 @@ pub async fn suites_create(cfg: &Config, file: &str) -> Result<()> {
 }
 
 pub async fn suites_update(cfg: &Config, suite_id: &str, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SyntheticsV2API::with_client_and_config(dd_cfg, c),
-        None => SyntheticsV2API::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SyntheticsV2API, cfg);
     let body: SuiteCreateEditRequest = crate::util::read_json_file(file)?;
     let resp = api
         .edit_synthetics_suite(suite_id.to_string(), body)
@@ -355,11 +322,7 @@ pub async fn suites_update(cfg: &Config, suite_id: &str, file: &str) -> Result<(
 }
 
 pub async fn suites_delete(cfg: &Config, suite_ids: Vec<String>) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SyntheticsV2API::with_client_and_config(dd_cfg, c),
-        None => SyntheticsV2API::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SyntheticsV2API, cfg);
     let attrs = DeletedSuitesRequestDeleteAttributes::new(suite_ids);
     let data = DeletedSuitesRequestDelete::new(attrs);
     let body = DeletedSuitesRequestDeleteRequest::new(data);
@@ -373,11 +336,7 @@ pub async fn suites_delete(cfg: &Config, suite_ids: Vec<String>) -> Result<()> {
 // ---- Tests (V2 API) ----
 
 pub async fn tests_get_fast_result(cfg: &Config, result_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SyntheticsV2API::with_client_and_config(dd_cfg, c),
-        None => SyntheticsV2API::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SyntheticsV2API, cfg);
     let resp = api
         .get_synthetics_fast_test_result(result_id.to_string())
         .await
@@ -391,11 +350,7 @@ pub async fn tests_get_version(
     version: i64,
     include_change_metadata: bool,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SyntheticsV2API::with_client_and_config(dd_cfg, c),
-        None => SyntheticsV2API::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SyntheticsV2API, cfg);
     let mut params = GetSyntheticsTestVersionOptionalParams::default();
     if include_change_metadata {
         params = params.include_change_metadata(true);
@@ -413,11 +368,7 @@ pub async fn tests_list_versions(
     limit: Option<i64>,
     last_version_number: Option<i64>,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SyntheticsV2API::with_client_and_config(dd_cfg, c),
-        None => SyntheticsV2API::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SyntheticsV2API, cfg);
     let mut params = ListSyntheticsTestVersionsOptionalParams::default();
     if let Some(l) = limit {
         params = params.limit(l);
@@ -435,11 +386,7 @@ pub async fn tests_list_versions(
 // ---- Multistep (V2 API) ----
 
 pub async fn multistep_get_subtests(cfg: &Config, public_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SyntheticsV2API::with_client_and_config(dd_cfg, c),
-        None => SyntheticsV2API::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SyntheticsV2API, cfg);
     let resp = api
         .get_api_multistep_subtests(public_id.to_string())
         .await
@@ -448,11 +395,7 @@ pub async fn multistep_get_subtests(cfg: &Config, public_id: &str) -> Result<()>
 }
 
 pub async fn multistep_get_subtest_parents(cfg: &Config, public_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SyntheticsV2API::with_client_and_config(dd_cfg, c),
-        None => SyntheticsV2API::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SyntheticsV2API, cfg);
     let resp = api
         .get_api_multistep_subtest_parents(public_id.to_string())
         .await

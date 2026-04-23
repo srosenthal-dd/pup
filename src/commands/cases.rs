@@ -22,11 +22,7 @@ use crate::formatter;
 // ---------------------------------------------------------------------------
 
 fn make_api(cfg: &Config) -> CaseManagementAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    match client::make_bearer_client(cfg) {
-        Some(c) => CaseManagementAPI::with_client_and_config(dd_cfg, c),
-        None => CaseManagementAPI::with_config(dd_cfg),
-    }
+    crate::make_api!(CaseManagementAPI, cfg)
 }
 
 // ---------------------------------------------------------------------------

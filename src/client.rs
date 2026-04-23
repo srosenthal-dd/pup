@@ -132,6 +132,18 @@ pub fn make_bearer_client(cfg: &Config) -> Option<ClientWithMiddleware> {
     None
 }
 
+#[macro_export]
+macro_rules! make_api {
+    ($api:ty, $cfg:expr) => {{
+        let cfg = $cfg;
+        let dd_cfg = $crate::client::make_dd_config(cfg);
+        match $crate::client::make_bearer_client(cfg) {
+            Some(c) => <$api>::with_client_and_config(dd_cfg, c),
+            None => <$api>::with_config(dd_cfg),
+        }
+    }};
+}
+
 // ---------------------------------------------------------------------------
 // Unstable operations table — used by make_dd_config
 // ---------------------------------------------------------------------------
@@ -1020,6 +1032,25 @@ mod tests {
         let mut cfg = test_cfg();
         cfg.access_token = Some("test-token".into());
         assert!(make_bearer_client(&cfg).is_some());
+    }
+
+    #[test]
+    fn test_make_api_macro_without_bearer_token() {
+        use datadog_api_client::datadogV1::api_monitors::MonitorsAPI;
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        std::env::remove_var("PUP_MOCK_SERVER");
+        let cfg = test_cfg();
+        let _api: MonitorsAPI = crate::make_api!(MonitorsAPI, &cfg);
+    }
+
+    #[test]
+    fn test_make_api_macro_with_bearer_token() {
+        use datadog_api_client::datadogV1::api_monitors::MonitorsAPI;
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        std::env::remove_var("PUP_MOCK_SERVER");
+        let mut cfg = test_cfg();
+        cfg.access_token = Some("test-token".into());
+        let _api: MonitorsAPI = crate::make_api!(MonitorsAPI, &cfg);
     }
 
     #[test]

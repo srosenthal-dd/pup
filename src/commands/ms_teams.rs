@@ -4,7 +4,6 @@ use datadog_api_client::datadogV2::api_microsoft_teams_integration::{
     MicrosoftTeamsIntegrationAPI,
 };
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
@@ -14,11 +13,7 @@ use crate::util;
 // ---------------------------------------------------------------------------
 
 fn make_api(cfg: &Config) -> MicrosoftTeamsIntegrationAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    match client::make_bearer_client(cfg) {
-        Some(c) => MicrosoftTeamsIntegrationAPI::with_client_and_config(dd_cfg, c),
-        None => MicrosoftTeamsIntegrationAPI::with_config(dd_cfg),
-    }
+    crate::make_api!(MicrosoftTeamsIntegrationAPI, cfg)
 }
 
 // ---------------------------------------------------------------------------

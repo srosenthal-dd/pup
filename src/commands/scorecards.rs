@@ -6,17 +6,12 @@ use datadog_api_client::datadogV2::api_scorecards::{
 };
 use datadog_api_client::datadogV2::model::{CreateCampaignRequest, UpdateCampaignRequest};
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
 fn make_api(cfg: &Config) -> ScorecardsAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    match client::make_bearer_client(cfg) {
-        Some(c) => ScorecardsAPI::with_client_and_config(dd_cfg, c),
-        None => ScorecardsAPI::with_config(dd_cfg),
-    }
+    crate::make_api!(ScorecardsAPI, cfg)
 }
 
 pub async fn rules_list(cfg: &Config) -> Result<()> {

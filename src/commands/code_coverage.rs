@@ -7,16 +7,11 @@ use datadog_api_client::datadogV2::model::{
     CommitCoverageSummaryRequestData, CommitCoverageSummaryRequestType,
 };
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 
 pub async fn branch_summary(cfg: &Config, repo: String, branch: String) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => CodeCoverageAPI::with_client_and_config(dd_cfg, c),
-        None => CodeCoverageAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(CodeCoverageAPI, cfg);
     let body = BranchCoverageSummaryRequest::new(BranchCoverageSummaryRequestData::new(
         BranchCoverageSummaryRequestAttributes::new(branch, repo),
         BranchCoverageSummaryRequestType::CI_APP_COVERAGE_BRANCH_SUMMARY_REQUEST,
@@ -29,11 +24,7 @@ pub async fn branch_summary(cfg: &Config, repo: String, branch: String) -> Resul
 }
 
 pub async fn commit_summary(cfg: &Config, repo: String, commit: String) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => CodeCoverageAPI::with_client_and_config(dd_cfg, c),
-        None => CodeCoverageAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(CodeCoverageAPI, cfg);
     let body = CommitCoverageSummaryRequest::new(CommitCoverageSummaryRequestData::new(
         CommitCoverageSummaryRequestAttributes::new(commit, repo),
         CommitCoverageSummaryRequestType::CI_APP_COVERAGE_COMMIT_SUMMARY_REQUEST,

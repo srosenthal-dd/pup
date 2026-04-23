@@ -2,17 +2,12 @@ use anyhow::Result;
 use datadog_api_client::datadogV2::api_cloud_authentication::CloudAuthenticationAPI;
 use datadog_api_client::datadogV2::model::AWSCloudAuthPersonaMappingCreateRequest;
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
 fn make_api(cfg: &Config) -> CloudAuthenticationAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    match client::make_bearer_client(cfg) {
-        Some(c) => CloudAuthenticationAPI::with_client_and_config(dd_cfg, c),
-        None => CloudAuthenticationAPI::with_config(dd_cfg),
-    }
+    crate::make_api!(CloudAuthenticationAPI, cfg)
 }
 
 pub async fn persona_mappings_list(cfg: &Config) -> Result<()> {

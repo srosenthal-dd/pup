@@ -1,7 +1,6 @@
 use anyhow::Result;
 use datadog_api_client::datadogV1::api_hosts::{HostsAPI, ListHostsOptionalParams};
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 
@@ -11,11 +10,7 @@ pub async fn hosts_list(
     sort: String,
     count: i64,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => HostsAPI::with_client_and_config(dd_cfg, c),
-        None => HostsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(HostsAPI, cfg);
     let mut params = ListHostsOptionalParams::default()
         .count(count)
         .sort_field(sort);
@@ -32,11 +27,7 @@ pub async fn hosts_list(
 pub async fn hosts_get(cfg: &Config, hostname: &str) -> Result<()> {
     // The V1 HostsAPI does not have a direct get-host method.
     // Use list_hosts with a filter to find the specific host.
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => HostsAPI::with_client_and_config(dd_cfg, c),
-        None => HostsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(HostsAPI, cfg);
     let params = ListHostsOptionalParams::default()
         .filter(hostname.to_string())
         .count(1);

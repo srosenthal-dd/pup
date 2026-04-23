@@ -5,7 +5,6 @@ use datadog_api_client::datadogV2::api_key_management::{
 };
 use datadog_api_client::datadogV2::model::ApplicationKeysSort;
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 
@@ -34,11 +33,7 @@ pub async fn list(
     filter: &str,
     sort: &str,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => KeyManagementAPI::with_client_and_config(dd_cfg, c),
-        None => KeyManagementAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(KeyManagementAPI, cfg);
 
     let mut params = ListCurrentUserApplicationKeysOptionalParams::default();
     if page_size > 0 {
@@ -72,11 +67,7 @@ pub async fn list_all(
     filter: &str,
     sort: &str,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => KeyManagementAPI::with_client_and_config(dd_cfg, c),
-        None => KeyManagementAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(KeyManagementAPI, cfg);
 
     let mut params = ListApplicationKeysOptionalParams::default();
     if page_size > 0 {
@@ -104,11 +95,7 @@ pub async fn list_all(
 // ---------------------------------------------------------------------------
 
 pub async fn get(cfg: &Config, key_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => KeyManagementAPI::with_client_and_config(dd_cfg, c),
-        None => KeyManagementAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(KeyManagementAPI, cfg);
     let resp = api
         .get_current_user_application_key(key_id.to_string())
         .await
@@ -141,11 +128,7 @@ pub async fn create(cfg: &Config, name: &str, scopes: &str) -> Result<()> {
         ApplicationKeysType::APPLICATION_KEYS,
     ));
 
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => KeyManagementAPI::with_client_and_config(dd_cfg, c),
-        None => KeyManagementAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(KeyManagementAPI, cfg);
     let resp = api
         .create_current_user_application_key(body)
         .await
@@ -182,11 +165,7 @@ pub async fn update(cfg: &Config, key_id: &str, name: &str, scopes: &str) -> Res
         ApplicationKeysType::APPLICATION_KEYS,
     ));
 
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => KeyManagementAPI::with_client_and_config(dd_cfg, c),
-        None => KeyManagementAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(KeyManagementAPI, cfg);
     let resp = api
         .update_current_user_application_key(key_id.to_string(), body)
         .await
@@ -199,11 +178,7 @@ pub async fn update(cfg: &Config, key_id: &str, name: &str, scopes: &str) -> Res
 // ---------------------------------------------------------------------------
 
 pub async fn delete(cfg: &Config, key_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => KeyManagementAPI::with_client_and_config(dd_cfg, c),
-        None => KeyManagementAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(KeyManagementAPI, cfg);
     api.delete_current_user_application_key(key_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete application key: {e:?}"))?;

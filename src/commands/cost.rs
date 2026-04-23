@@ -5,17 +5,12 @@ use datadog_api_client::datadogV2::api_usage_metering::{
     GetProjectedCostOptionalParams, UsageMeteringAPI as UsageMeteringV2API,
 };
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
 fn make_usage_api(cfg: &Config) -> UsageMeteringV2API {
-    let dd_cfg = client::make_dd_config(cfg);
-    match client::make_bearer_client(cfg) {
-        Some(c) => UsageMeteringV2API::with_client_and_config(dd_cfg, c),
-        None => UsageMeteringV2API::with_config(dd_cfg),
-    }
+    crate::make_api!(UsageMeteringV2API, cfg)
 }
 
 pub async fn projected(cfg: &Config) -> Result<()> {
@@ -67,11 +62,7 @@ pub async fn attribution(cfg: &Config, start: String, fields: Option<String>) ->
 // ---- Cloud Cost Management — AWS CUR Config ----
 
 fn make_ccm_api(cfg: &Config) -> CloudCostManagementAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    match client::make_bearer_client(cfg) {
-        Some(c) => CloudCostManagementAPI::with_client_and_config(dd_cfg, c),
-        None => CloudCostManagementAPI::with_config(dd_cfg),
-    }
+    crate::make_api!(CloudCostManagementAPI, cfg)
 }
 
 pub async fn aws_config_list(cfg: &Config) -> Result<()> {

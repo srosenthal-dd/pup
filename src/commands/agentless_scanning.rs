@@ -1,17 +1,12 @@
 use anyhow::Result;
 use datadog_api_client::datadogV2::api_agentless_scanning::AgentlessScanningAPI;
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
 pub async fn aws_scan_options_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => AgentlessScanningAPI::with_client_and_config(dd_cfg, c),
-        None => AgentlessScanningAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(AgentlessScanningAPI, cfg);
     let resp = api
         .list_aws_scan_options()
         .await
@@ -20,11 +15,7 @@ pub async fn aws_scan_options_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn aws_scan_options_get(cfg: &Config, account_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => AgentlessScanningAPI::with_client_and_config(dd_cfg, c),
-        None => AgentlessScanningAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(AgentlessScanningAPI, cfg);
     let resp = api
         .get_aws_scan_options(account_id.to_string())
         .await
@@ -33,11 +24,7 @@ pub async fn aws_scan_options_get(cfg: &Config, account_id: &str) -> Result<()> 
 }
 
 pub async fn aws_scan_options_create(cfg: &Config, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => AgentlessScanningAPI::with_client_and_config(dd_cfg, c),
-        None => AgentlessScanningAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(AgentlessScanningAPI, cfg);
     let body = util::read_json_file(file)?;
     let resp = api
         .create_aws_scan_options(body)
@@ -47,11 +34,7 @@ pub async fn aws_scan_options_create(cfg: &Config, file: &str) -> Result<()> {
 }
 
 pub async fn aws_scan_options_update(cfg: &Config, account_id: &str, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => AgentlessScanningAPI::with_client_and_config(dd_cfg, c),
-        None => AgentlessScanningAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(AgentlessScanningAPI, cfg);
     let body = util::read_json_file(file)?;
     api.update_aws_scan_options(account_id.to_string(), body)
         .await
@@ -61,11 +44,7 @@ pub async fn aws_scan_options_update(cfg: &Config, account_id: &str, file: &str)
 }
 
 pub async fn aws_scan_options_delete(cfg: &Config, account_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => AgentlessScanningAPI::with_client_and_config(dd_cfg, c),
-        None => AgentlessScanningAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(AgentlessScanningAPI, cfg);
     api.delete_aws_scan_options(account_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete AWS scan options: {e:?}"))?;
@@ -74,11 +53,7 @@ pub async fn aws_scan_options_delete(cfg: &Config, account_id: &str) -> Result<(
 }
 
 pub async fn aws_on_demand_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => AgentlessScanningAPI::with_client_and_config(dd_cfg, c),
-        None => AgentlessScanningAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(AgentlessScanningAPI, cfg);
     let resp = api
         .list_aws_on_demand_tasks()
         .await
@@ -87,11 +62,7 @@ pub async fn aws_on_demand_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn aws_on_demand_get(cfg: &Config, task_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => AgentlessScanningAPI::with_client_and_config(dd_cfg, c),
-        None => AgentlessScanningAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(AgentlessScanningAPI, cfg);
     let resp = api
         .get_aws_on_demand_task(task_id.to_string())
         .await
@@ -100,11 +71,7 @@ pub async fn aws_on_demand_get(cfg: &Config, task_id: &str) -> Result<()> {
 }
 
 pub async fn aws_on_demand_create(cfg: &Config, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => AgentlessScanningAPI::with_client_and_config(dd_cfg, c),
-        None => AgentlessScanningAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(AgentlessScanningAPI, cfg);
     let body = util::read_json_file(file)?;
     let resp = api
         .create_aws_on_demand_task(body)
@@ -114,11 +81,7 @@ pub async fn aws_on_demand_create(cfg: &Config, file: &str) -> Result<()> {
 }
 
 pub async fn azure_scan_options_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => AgentlessScanningAPI::with_client_and_config(dd_cfg, c),
-        None => AgentlessScanningAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(AgentlessScanningAPI, cfg);
     let resp = api
         .list_azure_scan_options()
         .await
@@ -127,11 +90,7 @@ pub async fn azure_scan_options_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn azure_scan_options_get(cfg: &Config, subscription_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => AgentlessScanningAPI::with_client_and_config(dd_cfg, c),
-        None => AgentlessScanningAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(AgentlessScanningAPI, cfg);
     let resp = api
         .get_azure_scan_options(subscription_id.to_string())
         .await
@@ -140,11 +99,7 @@ pub async fn azure_scan_options_get(cfg: &Config, subscription_id: &str) -> Resu
 }
 
 pub async fn azure_scan_options_create(cfg: &Config, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => AgentlessScanningAPI::with_client_and_config(dd_cfg, c),
-        None => AgentlessScanningAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(AgentlessScanningAPI, cfg);
     let body = util::read_json_file(file)?;
     let resp = api
         .create_azure_scan_options(body)
@@ -158,11 +113,7 @@ pub async fn azure_scan_options_update(
     subscription_id: &str,
     file: &str,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => AgentlessScanningAPI::with_client_and_config(dd_cfg, c),
-        None => AgentlessScanningAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(AgentlessScanningAPI, cfg);
     let body = util::read_json_file(file)?;
     let resp = api
         .update_azure_scan_options(subscription_id.to_string(), body)
@@ -172,11 +123,7 @@ pub async fn azure_scan_options_update(
 }
 
 pub async fn azure_scan_options_delete(cfg: &Config, subscription_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => AgentlessScanningAPI::with_client_and_config(dd_cfg, c),
-        None => AgentlessScanningAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(AgentlessScanningAPI, cfg);
     api.delete_azure_scan_options(subscription_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete Azure scan options: {e:?}"))?;
@@ -185,11 +132,7 @@ pub async fn azure_scan_options_delete(cfg: &Config, subscription_id: &str) -> R
 }
 
 pub async fn gcp_scan_options_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => AgentlessScanningAPI::with_client_and_config(dd_cfg, c),
-        None => AgentlessScanningAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(AgentlessScanningAPI, cfg);
     let resp = api
         .list_gcp_scan_options()
         .await
@@ -198,11 +141,7 @@ pub async fn gcp_scan_options_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn gcp_scan_options_get(cfg: &Config, project_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => AgentlessScanningAPI::with_client_and_config(dd_cfg, c),
-        None => AgentlessScanningAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(AgentlessScanningAPI, cfg);
     let resp = api
         .get_gcp_scan_options(project_id.to_string())
         .await
@@ -211,11 +150,7 @@ pub async fn gcp_scan_options_get(cfg: &Config, project_id: &str) -> Result<()> 
 }
 
 pub async fn gcp_scan_options_create(cfg: &Config, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => AgentlessScanningAPI::with_client_and_config(dd_cfg, c),
-        None => AgentlessScanningAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(AgentlessScanningAPI, cfg);
     let body = util::read_json_file(file)?;
     let resp = api
         .create_gcp_scan_options(body)
@@ -225,11 +160,7 @@ pub async fn gcp_scan_options_create(cfg: &Config, file: &str) -> Result<()> {
 }
 
 pub async fn gcp_scan_options_update(cfg: &Config, project_id: &str, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => AgentlessScanningAPI::with_client_and_config(dd_cfg, c),
-        None => AgentlessScanningAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(AgentlessScanningAPI, cfg);
     let body = util::read_json_file(file)?;
     let resp = api
         .update_gcp_scan_options(project_id.to_string(), body)
@@ -239,11 +170,7 @@ pub async fn gcp_scan_options_update(cfg: &Config, project_id: &str, file: &str)
 }
 
 pub async fn gcp_scan_options_delete(cfg: &Config, project_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => AgentlessScanningAPI::with_client_and_config(dd_cfg, c),
-        None => AgentlessScanningAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(AgentlessScanningAPI, cfg);
     api.delete_gcp_scan_options(project_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete GCP scan options: {e:?}"))?;

@@ -4,7 +4,6 @@ use datadog_api_client::datadogV2::api_container_images::{
 };
 use datadog_api_client::datadogV2::api_containers::{ContainersAPI, ListContainersOptionalParams};
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 
@@ -15,11 +14,7 @@ pub async fn list(
     sort: Option<String>,
     page_size: Option<i32>,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => ContainersAPI::with_client_and_config(dd_cfg, c),
-        None => ContainersAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(ContainersAPI, cfg);
     let mut params = ListContainersOptionalParams::default();
     if let Some(v) = filter_tags {
         params = params.filter_tags(v);
@@ -47,11 +42,7 @@ pub async fn images_list(
     sort: Option<String>,
     page_size: Option<i32>,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => ContainerImagesAPI::with_client_and_config(dd_cfg, c),
-        None => ContainerImagesAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(ContainerImagesAPI, cfg);
     let mut params = ListContainerImagesOptionalParams::default();
     if let Some(v) = filter_tags {
         params = params.filter_tags(v);

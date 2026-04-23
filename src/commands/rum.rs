@@ -21,11 +21,7 @@ use crate::formatter;
 use crate::util;
 
 pub async fn apps_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => RUMAPI::with_client_and_config(dd_cfg, c),
-        None => RUMAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(RUMAPI, cfg);
     let resp = api
         .get_rum_applications()
         .await
@@ -34,11 +30,7 @@ pub async fn apps_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn apps_get(cfg: &Config, app_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => RUMAPI::with_client_and_config(dd_cfg, c),
-        None => RUMAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(RUMAPI, cfg);
     let resp = api
         .get_rum_application(app_id.to_string())
         .await
@@ -47,11 +39,7 @@ pub async fn apps_get(cfg: &Config, app_id: &str) -> Result<()> {
 }
 
 pub async fn apps_create(cfg: &Config, name: &str, app_type: Option<String>) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => RUMAPI::with_client_and_config(dd_cfg, c),
-        None => RUMAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(RUMAPI, cfg);
     let mut attrs = RUMApplicationCreateAttributes::new(name.to_string());
     if let Some(t) = app_type {
         attrs = attrs.type_(t);
@@ -66,11 +54,7 @@ pub async fn apps_create(cfg: &Config, name: &str, app_type: Option<String>) -> 
 }
 
 pub async fn apps_delete(cfg: &Config, app_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => RUMAPI::with_client_and_config(dd_cfg, c),
-        None => RUMAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(RUMAPI, cfg);
     api.delete_rum_application(app_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete RUM app: {e:?}"))?;
@@ -85,11 +69,7 @@ pub async fn events_list(
     to: String,
     limit: i32,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => RUMAPI::with_client_and_config(dd_cfg, c),
-        None => RUMAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(RUMAPI, cfg);
 
     let from_dt =
         chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&from)?).unwrap();
@@ -118,11 +98,7 @@ pub async fn sessions_search(
     to: String,
     _limit: i32,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => RUMAPI::with_client_and_config(dd_cfg, c),
-        None => RUMAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(RUMAPI, cfg);
 
     let from_str = chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&from)?)
         .unwrap()
@@ -148,11 +124,7 @@ pub async fn sessions_search(
 }
 
 pub async fn apps_update(cfg: &Config, app_id: &str, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => RUMAPI::with_client_and_config(dd_cfg, c),
-        None => RUMAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(RUMAPI, cfg);
     let body: RUMApplicationUpdateRequest = crate::util::read_json_file(file)?;
     let resp = api
         .update_rum_application(app_id.to_string(), body)
@@ -164,11 +136,7 @@ pub async fn apps_update(cfg: &Config, app_id: &str, file: &str) -> Result<()> {
 // ---- RUM Metrics ----
 
 pub async fn metrics_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => RumMetricsAPI::with_client_and_config(dd_cfg, c),
-        None => RumMetricsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(RumMetricsAPI, cfg);
     let resp = api
         .list_rum_metrics()
         .await
@@ -177,11 +145,7 @@ pub async fn metrics_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn metrics_get(cfg: &Config, metric_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => RumMetricsAPI::with_client_and_config(dd_cfg, c),
-        None => RumMetricsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(RumMetricsAPI, cfg);
     let resp = api
         .get_rum_metric(metric_id.to_string())
         .await
@@ -190,11 +154,7 @@ pub async fn metrics_get(cfg: &Config, metric_id: &str) -> Result<()> {
 }
 
 pub async fn metrics_create(cfg: &Config, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => RumMetricsAPI::with_client_and_config(dd_cfg, c),
-        None => RumMetricsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(RumMetricsAPI, cfg);
     let body: RumMetricCreateRequest = crate::util::read_json_file(file)?;
     let resp = api
         .create_rum_metric(body)
@@ -204,11 +164,7 @@ pub async fn metrics_create(cfg: &Config, file: &str) -> Result<()> {
 }
 
 pub async fn metrics_update(cfg: &Config, metric_id: &str, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => RumMetricsAPI::with_client_and_config(dd_cfg, c),
-        None => RumMetricsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(RumMetricsAPI, cfg);
     let body: RumMetricUpdateRequest = crate::util::read_json_file(file)?;
     let resp = api
         .update_rum_metric(metric_id.to_string(), body)
@@ -218,11 +174,7 @@ pub async fn metrics_update(cfg: &Config, metric_id: &str, file: &str) -> Result
 }
 
 pub async fn metrics_delete(cfg: &Config, metric_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => RumMetricsAPI::with_client_and_config(dd_cfg, c),
-        None => RumMetricsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(RumMetricsAPI, cfg);
     api.delete_rum_metric(metric_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete RUM metric: {e:?}"))?;
@@ -233,11 +185,7 @@ pub async fn metrics_delete(cfg: &Config, metric_id: &str) -> Result<()> {
 // ---- RUM Retention Filters ----
 
 pub async fn retention_filters_list(cfg: &Config, app_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => RumRetentionFiltersAPI::with_client_and_config(dd_cfg, c),
-        None => RumRetentionFiltersAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(RumRetentionFiltersAPI, cfg);
     let resp = api
         .list_retention_filters(app_id.to_string())
         .await
@@ -246,11 +194,7 @@ pub async fn retention_filters_list(cfg: &Config, app_id: &str) -> Result<()> {
 }
 
 pub async fn retention_filters_get(cfg: &Config, app_id: &str, filter_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => RumRetentionFiltersAPI::with_client_and_config(dd_cfg, c),
-        None => RumRetentionFiltersAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(RumRetentionFiltersAPI, cfg);
     let resp = api
         .get_retention_filter(app_id.to_string(), filter_id.to_string())
         .await
@@ -259,11 +203,7 @@ pub async fn retention_filters_get(cfg: &Config, app_id: &str, filter_id: &str) 
 }
 
 pub async fn retention_filters_create(cfg: &Config, app_id: &str, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => RumRetentionFiltersAPI::with_client_and_config(dd_cfg, c),
-        None => RumRetentionFiltersAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(RumRetentionFiltersAPI, cfg);
     let body: RumRetentionFilterCreateRequest = crate::util::read_json_file(file)?;
     let resp = api
         .create_retention_filter(app_id.to_string(), body)
@@ -278,11 +218,7 @@ pub async fn retention_filters_update(
     filter_id: &str,
     file: &str,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => RumRetentionFiltersAPI::with_client_and_config(dd_cfg, c),
-        None => RumRetentionFiltersAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(RumRetentionFiltersAPI, cfg);
     let body: RumRetentionFilterUpdateRequest = crate::util::read_json_file(file)?;
     let resp = api
         .update_retention_filter(app_id.to_string(), filter_id.to_string(), body)
@@ -292,11 +228,7 @@ pub async fn retention_filters_update(
 }
 
 pub async fn retention_filters_delete(cfg: &Config, app_id: &str, filter_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => RumRetentionFiltersAPI::with_client_and_config(dd_cfg, c),
-        None => RumRetentionFiltersAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(RumRetentionFiltersAPI, cfg);
     api.delete_retention_filter(app_id.to_string(), filter_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete RUM retention filter: {e:?}"))?;
@@ -307,11 +239,7 @@ pub async fn retention_filters_delete(cfg: &Config, app_id: &str, filter_id: &st
 // ---- RUM Sessions ----
 
 pub async fn sessions_list(cfg: &Config, from: String, to: String, limit: i32) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => RUMAPI::with_client_and_config(dd_cfg, c),
-        None => RUMAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(RUMAPI, cfg);
 
     let from_str = chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&from)?)
         .unwrap()
@@ -340,11 +268,7 @@ pub async fn sessions_list(cfg: &Config, from: String, to: String, limit: i32) -
 // ---- RUM Playlists ----
 
 pub async fn playlists_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => RumReplayPlaylistsAPI::with_client_and_config(dd_cfg, c),
-        None => RumReplayPlaylistsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(RumReplayPlaylistsAPI, cfg);
     let resp = api
         .list_rum_replay_playlists(ListRumReplayPlaylistsOptionalParams::default())
         .await
@@ -353,11 +277,7 @@ pub async fn playlists_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn playlists_get(cfg: &Config, playlist_id: i32) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => RumReplayPlaylistsAPI::with_client_and_config(dd_cfg, c),
-        None => RumReplayPlaylistsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(RumReplayPlaylistsAPI, cfg);
     let resp = api
         .get_rum_replay_playlist(playlist_id)
         .await
@@ -368,11 +288,7 @@ pub async fn playlists_get(cfg: &Config, playlist_id: i32) -> Result<()> {
 // ---- RUM Heatmaps ----
 
 pub async fn heatmaps_query(cfg: &Config, view_name: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => RumReplayHeatmapsAPI::with_client_and_config(dd_cfg, c),
-        None => RumReplayHeatmapsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(RumReplayHeatmapsAPI, cfg);
     let resp = api
         .list_replay_heatmap_snapshots(
             view_name.to_string(),

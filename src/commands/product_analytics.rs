@@ -4,18 +4,13 @@ use datadog_api_client::datadogV2::model::{
     ProductAnalyticsAnalyticsRequest, ProductAnalyticsServerSideEventItem,
 };
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
 pub async fn events_send(cfg: &Config, file: &str) -> Result<()> {
     let body: ProductAnalyticsServerSideEventItem = util::read_json_file(file)?;
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => ProductAnalyticsAPI::with_client_and_config(dd_cfg, c),
-        None => ProductAnalyticsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(ProductAnalyticsAPI, cfg);
     let resp = api
         .submit_product_analytics_event(body)
         .await
@@ -26,11 +21,7 @@ pub async fn events_send(cfg: &Config, file: &str) -> Result<()> {
 // ---- Query ----
 
 fn make_api(cfg: &Config) -> ProductAnalyticsAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    match client::make_bearer_client(cfg) {
-        Some(c) => ProductAnalyticsAPI::with_client_and_config(dd_cfg, c),
-        None => ProductAnalyticsAPI::with_config(dd_cfg),
-    }
+    crate::make_api!(ProductAnalyticsAPI, cfg)
 }
 
 pub async fn query_scalar(cfg: &Config, file: &str) -> Result<()> {

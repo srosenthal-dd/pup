@@ -5,7 +5,6 @@ use datadog_api_client::datadogV2::api_fleet_automation::{
     ListFleetDeploymentsOptionalParams, ListFleetTracersOptionalParams,
 };
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
@@ -15,11 +14,7 @@ pub async fn agents_list(
     page_size: Option<i64>,
     filter: Option<String>,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
-        None => FleetAutomationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(FleetAutomationAPI, cfg);
     let mut params = ListFleetAgentsOptionalParams::default();
     if let Some(ps) = page_size {
         params = params.page_size(ps);
@@ -35,11 +30,7 @@ pub async fn agents_list(
 }
 
 pub async fn agents_get(cfg: &Config, agent_key: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
-        None => FleetAutomationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(FleetAutomationAPI, cfg);
     let resp = api
         .get_fleet_agent_info(agent_key.to_string())
         .await
@@ -48,11 +39,7 @@ pub async fn agents_get(cfg: &Config, agent_key: &str) -> Result<()> {
 }
 
 pub async fn agents_versions(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
-        None => FleetAutomationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(FleetAutomationAPI, cfg);
     let resp = api
         .list_fleet_agent_versions()
         .await
@@ -61,11 +48,7 @@ pub async fn agents_versions(cfg: &Config) -> Result<()> {
 }
 
 pub async fn deployments_list(cfg: &Config, page_size: Option<i64>) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
-        None => FleetAutomationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(FleetAutomationAPI, cfg);
     let mut params = ListFleetDeploymentsOptionalParams::default();
     if let Some(ps) = page_size {
         params = params.page_size(ps);
@@ -78,11 +61,7 @@ pub async fn deployments_list(cfg: &Config, page_size: Option<i64>) -> Result<()
 }
 
 pub async fn deployments_get(cfg: &Config, deployment_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
-        None => FleetAutomationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(FleetAutomationAPI, cfg);
     let resp = api
         .get_fleet_deployment(
             deployment_id.to_string(),
@@ -94,11 +73,7 @@ pub async fn deployments_get(cfg: &Config, deployment_id: &str) -> Result<()> {
 }
 
 pub async fn schedules_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
-        None => FleetAutomationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(FleetAutomationAPI, cfg);
     let resp = api
         .list_fleet_schedules()
         .await
@@ -107,11 +82,7 @@ pub async fn schedules_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn schedules_get(cfg: &Config, schedule_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
-        None => FleetAutomationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(FleetAutomationAPI, cfg);
     let resp = api
         .get_fleet_schedule(schedule_id.to_string())
         .await
@@ -120,11 +91,7 @@ pub async fn schedules_get(cfg: &Config, schedule_id: &str) -> Result<()> {
 }
 
 pub async fn schedules_update(cfg: &Config, schedule_id: &str, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
-        None => FleetAutomationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(FleetAutomationAPI, cfg);
     let body = util::read_json_file(file)?;
     let resp = api
         .update_fleet_schedule(schedule_id.to_string(), body)
@@ -134,11 +101,7 @@ pub async fn schedules_update(cfg: &Config, schedule_id: &str, file: &str) -> Re
 }
 
 pub async fn schedules_delete(cfg: &Config, schedule_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
-        None => FleetAutomationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(FleetAutomationAPI, cfg);
     api.delete_fleet_schedule(schedule_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete schedule: {e:?}"))?;
@@ -147,11 +110,7 @@ pub async fn schedules_delete(cfg: &Config, schedule_id: &str) -> Result<()> {
 }
 
 pub async fn deployments_cancel(cfg: &Config, deployment_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
-        None => FleetAutomationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(FleetAutomationAPI, cfg);
     api.cancel_fleet_deployment(deployment_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to cancel deployment: {e:?}"))?;
@@ -160,11 +119,7 @@ pub async fn deployments_cancel(cfg: &Config, deployment_id: &str) -> Result<()>
 }
 
 pub async fn deployments_configure(cfg: &Config, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
-        None => FleetAutomationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(FleetAutomationAPI, cfg);
     let body = util::read_json_file(file)?;
     let resp = api
         .create_fleet_deployment_configure(body)
@@ -174,11 +129,7 @@ pub async fn deployments_configure(cfg: &Config, file: &str) -> Result<()> {
 }
 
 pub async fn deployments_upgrade(cfg: &Config, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
-        None => FleetAutomationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(FleetAutomationAPI, cfg);
     let body = util::read_json_file(file)?;
     let resp = api
         .create_fleet_deployment_upgrade(body)
@@ -188,11 +139,7 @@ pub async fn deployments_upgrade(cfg: &Config, file: &str) -> Result<()> {
 }
 
 pub async fn schedules_create(cfg: &Config, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
-        None => FleetAutomationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(FleetAutomationAPI, cfg);
     let body = util::read_json_file(file)?;
     let resp = api
         .create_fleet_schedule(body)
@@ -202,11 +149,7 @@ pub async fn schedules_create(cfg: &Config, file: &str) -> Result<()> {
 }
 
 pub async fn schedules_trigger(cfg: &Config, schedule_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
-        None => FleetAutomationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(FleetAutomationAPI, cfg);
     api.trigger_fleet_schedule(schedule_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to trigger schedule: {e:?}"))?;
@@ -222,11 +165,7 @@ pub async fn tracers_list(
     sort_attribute: Option<String>,
     sort_descending: bool,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
-        None => FleetAutomationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(FleetAutomationAPI, cfg);
     let mut params = ListFleetTracersOptionalParams::default();
     if let Some(f) = filter {
         params = params.filter(f);
@@ -258,11 +197,7 @@ pub async fn agents_tracers_list(
     sort_attribute: Option<String>,
     sort_descending: bool,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
-        None => FleetAutomationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(FleetAutomationAPI, cfg);
     let mut params = ListFleetAgentTracersOptionalParams::default();
     if let Some(ps) = page_size {
         params = params.page_size(ps);
@@ -291,11 +226,7 @@ pub async fn clusters_list(
     sort_attribute: Option<String>,
     sort_descending: bool,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
-        None => FleetAutomationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(FleetAutomationAPI, cfg);
     let mut params = ListFleetClustersOptionalParams::default();
     if let Some(f) = filter {
         params = params.filter(f);
@@ -320,11 +251,7 @@ pub async fn clusters_list(
 }
 
 pub async fn instrumented_pods_list(cfg: &Config, cluster_name: String) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => FleetAutomationAPI::with_client_and_config(dd_cfg, c),
-        None => FleetAutomationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(FleetAutomationAPI, cfg);
     let resp = api
         .list_fleet_instrumented_pods(cluster_name)
         .await

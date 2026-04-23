@@ -166,12 +166,7 @@ pub async fn search(
 ) -> Result<()> {
     validate_sort(&sort)?;
 
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = if let Some(bearer_client) = client::make_bearer_client(cfg) {
-        SpansAPI::with_client_and_config(dd_cfg, bearer_client)
-    } else {
-        SpansAPI::with_config(dd_cfg)
-    };
+    let api = crate::make_api!(SpansAPI, cfg);
 
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;
@@ -236,12 +231,7 @@ pub async fn aggregate(
 ) -> Result<()> {
     let (agg_fn, metric) = parse_compute(&compute)?;
 
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = if let Some(bearer_client) = client::make_bearer_client(cfg) {
-        SpansAPI::with_client_and_config(dd_cfg, bearer_client)
-    } else {
-        SpansAPI::with_config(dd_cfg)
-    };
+    let api = crate::make_api!(SpansAPI, cfg);
 
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;

@@ -3,7 +3,6 @@ use datadog_api_client::datadogV2::api_static_analysis::{
     ListCustomRuleRevisionsOptionalParams, StaticAnalysisAPI,
 };
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
@@ -13,11 +12,7 @@ use crate::util;
 // ---------------------------------------------------------------------------
 
 pub async fn custom_rulesets_get(cfg: &Config, id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => StaticAnalysisAPI::with_client_and_config(dd_cfg, c),
-        None => StaticAnalysisAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(StaticAnalysisAPI, cfg);
     let resp = api
         .get_custom_ruleset(id.to_string())
         .await
@@ -26,11 +21,7 @@ pub async fn custom_rulesets_get(cfg: &Config, id: &str) -> Result<()> {
 }
 
 pub async fn custom_rulesets_update(cfg: &Config, ruleset_name: &str, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => StaticAnalysisAPI::with_client_and_config(dd_cfg, c),
-        None => StaticAnalysisAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(StaticAnalysisAPI, cfg);
     let body = util::read_json_file(file)?;
     let resp = api
         .update_custom_ruleset(ruleset_name.to_string(), body)
@@ -40,11 +31,7 @@ pub async fn custom_rulesets_update(cfg: &Config, ruleset_name: &str, file: &str
 }
 
 pub async fn custom_rulesets_delete(cfg: &Config, ruleset_name: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => StaticAnalysisAPI::with_client_and_config(dd_cfg, c),
-        None => StaticAnalysisAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(StaticAnalysisAPI, cfg);
     api.delete_custom_ruleset(ruleset_name.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete custom ruleset: {e:?}"))?;
@@ -57,11 +44,7 @@ pub async fn custom_rulesets_delete(cfg: &Config, ruleset_name: &str) -> Result<
 // ---------------------------------------------------------------------------
 
 pub async fn custom_rules_get(cfg: &Config, ruleset_name: &str, rule_name: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => StaticAnalysisAPI::with_client_and_config(dd_cfg, c),
-        None => StaticAnalysisAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(StaticAnalysisAPI, cfg);
     let resp = api
         .get_custom_rule(ruleset_name.to_string(), rule_name.to_string())
         .await
@@ -70,11 +53,7 @@ pub async fn custom_rules_get(cfg: &Config, ruleset_name: &str, rule_name: &str)
 }
 
 pub async fn custom_rules_create(cfg: &Config, ruleset_name: &str, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => StaticAnalysisAPI::with_client_and_config(dd_cfg, c),
-        None => StaticAnalysisAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(StaticAnalysisAPI, cfg);
     let body = util::read_json_file(file)?;
     let resp = api
         .create_custom_rule(ruleset_name.to_string(), body)
@@ -84,11 +63,7 @@ pub async fn custom_rules_create(cfg: &Config, ruleset_name: &str, file: &str) -
 }
 
 pub async fn custom_rules_delete(cfg: &Config, ruleset_name: &str, rule_name: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => StaticAnalysisAPI::with_client_and_config(dd_cfg, c),
-        None => StaticAnalysisAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(StaticAnalysisAPI, cfg);
     api.delete_custom_rule(ruleset_name.to_string(), rule_name.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete custom rule: {e:?}"))?;
@@ -101,11 +76,7 @@ pub async fn custom_rule_revisions_list(
     ruleset_name: &str,
     rule_name: &str,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => StaticAnalysisAPI::with_client_and_config(dd_cfg, c),
-        None => StaticAnalysisAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(StaticAnalysisAPI, cfg);
     let resp = api
         .list_custom_rule_revisions(
             ruleset_name.to_string(),
@@ -123,11 +94,7 @@ pub async fn custom_rule_revision_get(
     rule_name: &str,
     revision_id: &str,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => StaticAnalysisAPI::with_client_and_config(dd_cfg, c),
-        None => StaticAnalysisAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(StaticAnalysisAPI, cfg);
     let resp = api
         .get_custom_rule_revision(
             ruleset_name.to_string(),

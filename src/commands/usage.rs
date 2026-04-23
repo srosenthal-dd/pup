@@ -4,17 +4,12 @@ use datadog_api_client::datadogV1::api_usage_metering::{
 };
 use datadog_api_client::datadogV1::model::HourlyUsageAttributionUsageType;
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
 pub async fn summary(cfg: &Config, start: String, end: Option<String>) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => UsageMeteringAPI::with_client_and_config(dd_cfg, c),
-        None => UsageMeteringAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(UsageMeteringAPI, cfg);
 
     let start_dt =
         chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&start)?).unwrap();
@@ -34,11 +29,7 @@ pub async fn summary(cfg: &Config, start: String, end: Option<String>) -> Result
 }
 
 pub async fn hourly(cfg: &Config, start: String, end: Option<String>) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => UsageMeteringAPI::with_client_and_config(dd_cfg, c),
-        None => UsageMeteringAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(UsageMeteringAPI, cfg);
 
     let start_dt =
         chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&start)?).unwrap();

@@ -5,17 +5,12 @@ use datadog_api_client::datadogV2::api_service_accounts::{
 };
 use datadog_api_client::datadogV2::api_users::{ListUsersOptionalParams, UsersAPI};
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
 pub async fn list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => UsersAPI::with_client_and_config(dd_cfg, c),
-        None => UsersAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(UsersAPI, cfg);
     let resp = api
         .list_users(ListUsersOptionalParams::default())
         .await
@@ -24,11 +19,7 @@ pub async fn list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn get(cfg: &Config, id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => UsersAPI::with_client_and_config(dd_cfg, c),
-        None => UsersAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(UsersAPI, cfg);
     let resp = api
         .get_user(id.to_string())
         .await
@@ -37,11 +28,7 @@ pub async fn get(cfg: &Config, id: &str) -> Result<()> {
 }
 
 pub async fn roles_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => RolesAPI::with_client_and_config(dd_cfg, c),
-        None => RolesAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(RolesAPI, cfg);
     let resp = api
         .list_roles(ListRolesOptionalParams::default())
         .await
@@ -50,11 +37,7 @@ pub async fn roles_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn service_accounts_create(cfg: &Config, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => ServiceAccountsAPI::with_client_and_config(dd_cfg, c),
-        None => ServiceAccountsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(ServiceAccountsAPI, cfg);
     let body = util::read_json_file(file)?;
     let resp = api
         .create_service_account(body)
@@ -68,11 +51,7 @@ pub async fn service_account_app_keys_create(
     service_account_id: &str,
     file: &str,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => ServiceAccountsAPI::with_client_and_config(dd_cfg, c),
-        None => ServiceAccountsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(ServiceAccountsAPI, cfg);
     let body = util::read_json_file(file)?;
     let resp = api
         .create_service_account_application_key(service_account_id.to_string(), body)
@@ -82,11 +61,7 @@ pub async fn service_account_app_keys_create(
 }
 
 pub async fn service_account_app_keys_list(cfg: &Config, service_account_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => ServiceAccountsAPI::with_client_and_config(dd_cfg, c),
-        None => ServiceAccountsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(ServiceAccountsAPI, cfg);
     let resp = api
         .list_service_account_application_keys(
             service_account_id.to_string(),
@@ -102,11 +77,7 @@ pub async fn service_account_app_keys_get(
     service_account_id: &str,
     app_key_id: &str,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => ServiceAccountsAPI::with_client_and_config(dd_cfg, c),
-        None => ServiceAccountsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(ServiceAccountsAPI, cfg);
     let resp = api
         .get_service_account_application_key(service_account_id.to_string(), app_key_id.to_string())
         .await
@@ -120,11 +91,7 @@ pub async fn service_account_app_keys_update(
     app_key_id: &str,
     file: &str,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => ServiceAccountsAPI::with_client_and_config(dd_cfg, c),
-        None => ServiceAccountsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(ServiceAccountsAPI, cfg);
     let body = util::read_json_file(file)?;
     let resp = api
         .update_service_account_application_key(
@@ -142,11 +109,7 @@ pub async fn service_account_app_keys_delete(
     service_account_id: &str,
     app_key_id: &str,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => ServiceAccountsAPI::with_client_and_config(dd_cfg, c),
-        None => ServiceAccountsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(ServiceAccountsAPI, cfg);
     api.delete_service_account_application_key(
         service_account_id.to_string(),
         app_key_id.to_string(),

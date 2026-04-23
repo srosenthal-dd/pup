@@ -167,11 +167,7 @@ pub async fn findings_analyze(
 }
 
 pub async fn rules_list(cfg: &Config, filter: Option<String>, sort: Option<String>) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SecurityMonitoringAPI::with_client_and_config(dd_cfg, c),
-        None => SecurityMonitoringAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SecurityMonitoringAPI, cfg);
     let mut params = ListSecurityMonitoringRulesOptionalParams::default();
     if let Some(s) = sort {
         params = params.sort(parse_rule_sort(&s));
@@ -207,11 +203,7 @@ fn parse_rule_sort(s: &str) -> SecurityMonitoringRuleSort {
 }
 
 pub async fn rules_get(cfg: &Config, rule_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SecurityMonitoringAPI::with_client_and_config(dd_cfg, c),
-        None => SecurityMonitoringAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SecurityMonitoringAPI, cfg);
     let resp = api
         .get_security_monitoring_rule(rule_id.to_string())
         .await
@@ -226,11 +218,7 @@ pub async fn signals_search(
     to: String,
     limit: i32,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SecurityMonitoringAPI::with_client_and_config(dd_cfg, c),
-        None => SecurityMonitoringAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SecurityMonitoringAPI, cfg);
 
     let from_dt =
         chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&from)?).unwrap();
@@ -256,11 +244,7 @@ pub async fn signals_search(
 }
 
 pub async fn signals_investigation_queries(cfg: &Config, signal_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SecurityMonitoringAPI::with_client_and_config(dd_cfg, c),
-        None => SecurityMonitoringAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SecurityMonitoringAPI, cfg);
     let resp = api
         .get_investigation_log_queries_matching_signal(signal_id.to_string())
         .await
@@ -273,11 +257,7 @@ pub async fn signals_investigation_queries(cfg: &Config, signal_id: &str) -> Res
 }
 
 pub async fn signals_suggested_actions(cfg: &Config, signal_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SecurityMonitoringAPI::with_client_and_config(dd_cfg, c),
-        None => SecurityMonitoringAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SecurityMonitoringAPI, cfg);
     let resp = api
         .get_suggested_actions_matching_signal(signal_id.to_string())
         .await
@@ -288,11 +268,7 @@ pub async fn signals_suggested_actions(cfg: &Config, signal_id: &str) -> Result<
 }
 
 pub async fn findings_search(cfg: &Config, query: Option<String>, limit: i64) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SecurityMonitoringAPI::with_client_and_config(dd_cfg, c),
-        None => SecurityMonitoringAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SecurityMonitoringAPI, cfg);
     let mut params = ListFindingsOptionalParams::default().page_limit(limit);
     if let Some(q) = query {
         params = params.filter_tags(q);
@@ -307,11 +283,7 @@ pub async fn findings_search(cfg: &Config, query: Option<String>, limit: i64) ->
 // ---- Bulk Export ----
 
 pub async fn rules_bulk_export(cfg: &Config, rule_ids: Vec<String>) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SecurityMonitoringAPI::with_client_and_config(dd_cfg, c),
-        None => SecurityMonitoringAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SecurityMonitoringAPI, cfg);
     let attrs = SecurityMonitoringRuleBulkExportAttributes::new(rule_ids);
     let data = SecurityMonitoringRuleBulkExportData::new(
         attrs,
@@ -331,11 +303,7 @@ pub async fn rules_bulk_export(cfg: &Config, rule_ids: Vec<String>) -> Result<()
 // ---- Content Packs ----
 
 pub async fn content_packs_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SecurityMonitoringAPI::with_client_and_config(dd_cfg, c),
-        None => SecurityMonitoringAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SecurityMonitoringAPI, cfg);
     let resp = api
         .get_content_packs_states()
         .await
@@ -344,11 +312,7 @@ pub async fn content_packs_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn content_packs_activate(cfg: &Config, pack_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SecurityMonitoringAPI::with_client_and_config(dd_cfg, c),
-        None => SecurityMonitoringAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SecurityMonitoringAPI, cfg);
     api.activate_content_pack(pack_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to activate content pack: {e:?}"))?;
@@ -357,11 +321,7 @@ pub async fn content_packs_activate(cfg: &Config, pack_id: &str) -> Result<()> {
 }
 
 pub async fn content_packs_deactivate(cfg: &Config, pack_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SecurityMonitoringAPI::with_client_and_config(dd_cfg, c),
-        None => SecurityMonitoringAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SecurityMonitoringAPI, cfg);
     api.deactivate_content_pack(pack_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to deactivate content pack: {e:?}"))?;
@@ -372,11 +332,7 @@ pub async fn content_packs_deactivate(cfg: &Config, pack_id: &str) -> Result<()>
 // ---- Risk Scores ----
 
 pub async fn risk_scores_list(cfg: &Config, query: Option<String>) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => EntityRiskScoresAPI::with_client_and_config(dd_cfg, c),
-        None => EntityRiskScoresAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(EntityRiskScoresAPI, cfg);
     let mut params = ListEntityRiskScoresOptionalParams::default();
     if let Some(q) = query {
         params = params.filter_query(q);
@@ -408,11 +364,7 @@ fn parse_suppression_sort(s: &str) -> SecurityMonitoringSuppressionSort {
 }
 
 pub async fn suppressions_list(cfg: &Config, sort: Option<String>) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SecurityMonitoringAPI::with_client_and_config(dd_cfg, c),
-        None => SecurityMonitoringAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SecurityMonitoringAPI, cfg);
     let mut params = ListSecurityMonitoringSuppressionsOptionalParams::default();
     if let Some(s) = sort {
         params = params.sort(parse_suppression_sort(&s));
@@ -425,11 +377,7 @@ pub async fn suppressions_list(cfg: &Config, sort: Option<String>) -> Result<()>
 }
 
 pub async fn suppressions_get(cfg: &Config, suppression_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SecurityMonitoringAPI::with_client_and_config(dd_cfg, c),
-        None => SecurityMonitoringAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SecurityMonitoringAPI, cfg);
     let resp = api
         .get_security_monitoring_suppression(suppression_id.to_string())
         .await
@@ -439,11 +387,7 @@ pub async fn suppressions_get(cfg: &Config, suppression_id: &str) -> Result<()> 
 
 pub async fn suppressions_create(cfg: &Config, file: &str) -> Result<()> {
     let body: SecurityMonitoringSuppressionCreateRequest = util::read_json_file(file)?;
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SecurityMonitoringAPI::with_client_and_config(dd_cfg, c),
-        None => SecurityMonitoringAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SecurityMonitoringAPI, cfg);
     let resp = api
         .create_security_monitoring_suppression(body)
         .await
@@ -453,11 +397,7 @@ pub async fn suppressions_create(cfg: &Config, file: &str) -> Result<()> {
 
 pub async fn suppressions_update(cfg: &Config, suppression_id: &str, file: &str) -> Result<()> {
     let body: SecurityMonitoringSuppressionUpdateRequest = util::read_json_file(file)?;
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SecurityMonitoringAPI::with_client_and_config(dd_cfg, c),
-        None => SecurityMonitoringAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SecurityMonitoringAPI, cfg);
     let resp = api
         .update_security_monitoring_suppression(suppression_id.to_string(), body)
         .await
@@ -466,11 +406,7 @@ pub async fn suppressions_update(cfg: &Config, suppression_id: &str, file: &str)
 }
 
 pub async fn suppressions_delete(cfg: &Config, suppression_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SecurityMonitoringAPI::with_client_and_config(dd_cfg, c),
-        None => SecurityMonitoringAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SecurityMonitoringAPI, cfg);
     api.delete_security_monitoring_suppression(suppression_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete suppression: {e:?}"))?;
@@ -480,11 +416,7 @@ pub async fn suppressions_delete(cfg: &Config, suppression_id: &str) -> Result<(
 
 pub async fn suppressions_validate(cfg: &Config, file: &str) -> Result<()> {
     let body: SecurityMonitoringSuppressionCreateRequest = util::read_json_file(file)?;
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SecurityMonitoringAPI::with_client_and_config(dd_cfg, c),
-        None => SecurityMonitoringAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SecurityMonitoringAPI, cfg);
     api.validate_security_monitoring_suppression(body)
         .await
         .map_err(|e| anyhow::anyhow!("failed to validate suppression: {e:?}"))?;

@@ -6,17 +6,12 @@ use datadog_api_client::datadogV2::model::{
     AuditLogsQueryFilter, AuditLogsQueryPageOptions, AuditLogsSearchEventsRequest, AuditLogsSort,
 };
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
 pub async fn list(cfg: &Config, from: String, to: String, limit: i32) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => AuditAPI::with_client_and_config(dd_cfg, c),
-        None => AuditAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(AuditAPI, cfg);
 
     let from_dt =
         chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&from)?).unwrap();
@@ -42,11 +37,7 @@ pub async fn search(
     to: String,
     limit: i32,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => AuditAPI::with_client_and_config(dd_cfg, c),
-        None => AuditAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(AuditAPI, cfg);
 
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;

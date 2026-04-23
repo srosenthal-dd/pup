@@ -11,17 +11,12 @@ use datadog_api_client::datadogV2::model::{
     SecurityMonitoringRuleValidatePayload,
 };
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
 fn make_csm_api(cfg: &Config) -> CSMThreatsAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    match client::make_bearer_client(cfg) {
-        Some(c) => CSMThreatsAPI::with_client_and_config(dd_cfg, c),
-        None => CSMThreatsAPI::with_config(dd_cfg),
-    }
+    crate::make_api!(CSMThreatsAPI, cfg)
 }
 
 pub async fn agent_policies_list(cfg: &Config) -> Result<()> {
@@ -157,11 +152,7 @@ pub async fn policy_download(cfg: &Config) -> Result<()> {
 // ---- Backend Rules (Workload Security detection rules) ----
 
 fn make_sec_api(cfg: &Config) -> SecurityMonitoringAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    match client::make_bearer_client(cfg) {
-        Some(c) => SecurityMonitoringAPI::with_client_and_config(dd_cfg, c),
-        None => SecurityMonitoringAPI::with_config(dd_cfg),
-    }
+    crate::make_api!(SecurityMonitoringAPI, cfg)
 }
 
 pub async fn backend_rules_list(cfg: &Config, query: Option<String>) -> Result<()> {

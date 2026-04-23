@@ -5,7 +5,6 @@ use datadog_api_client::datadogV1::api_service_level_objectives::{
 };
 use datadog_api_client::datadogV1::model::{ServiceLevelObjective, ServiceLevelObjectiveRequest};
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
@@ -18,11 +17,7 @@ pub async fn list(
     limit: Option<i64>,
     offset: Option<i64>,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => ServiceLevelObjectivesAPI::with_client_and_config(dd_cfg, c),
-        None => ServiceLevelObjectivesAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(ServiceLevelObjectivesAPI, cfg);
     let mut params = ListSLOsOptionalParams::default();
     if let Some(query) = query {
         params = params.query(query);
@@ -47,11 +42,7 @@ pub async fn list(
 }
 
 pub async fn get(cfg: &Config, id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => ServiceLevelObjectivesAPI::with_client_and_config(dd_cfg, c),
-        None => ServiceLevelObjectivesAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(ServiceLevelObjectivesAPI, cfg);
     let resp = api
         .get_slo(id.to_string(), GetSLOOptionalParams::default())
         .await
@@ -61,11 +52,7 @@ pub async fn get(cfg: &Config, id: &str) -> Result<()> {
 
 pub async fn create(cfg: &Config, file: &str) -> Result<()> {
     let body: ServiceLevelObjectiveRequest = util::read_json_file(file)?;
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => ServiceLevelObjectivesAPI::with_client_and_config(dd_cfg, c),
-        None => ServiceLevelObjectivesAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(ServiceLevelObjectivesAPI, cfg);
     let resp = api
         .create_slo(body)
         .await
@@ -75,11 +62,7 @@ pub async fn create(cfg: &Config, file: &str) -> Result<()> {
 
 pub async fn update(cfg: &Config, id: &str, file: &str) -> Result<()> {
     let body: ServiceLevelObjective = util::read_json_file(file)?;
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => ServiceLevelObjectivesAPI::with_client_and_config(dd_cfg, c),
-        None => ServiceLevelObjectivesAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(ServiceLevelObjectivesAPI, cfg);
     let resp = api
         .update_slo(id.to_string(), body)
         .await
@@ -88,11 +71,7 @@ pub async fn update(cfg: &Config, id: &str, file: &str) -> Result<()> {
 }
 
 pub async fn delete(cfg: &Config, id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => ServiceLevelObjectivesAPI::with_client_and_config(dd_cfg, c),
-        None => ServiceLevelObjectivesAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(ServiceLevelObjectivesAPI, cfg);
     let resp = api
         .delete_slo(id.to_string(), DeleteSLOOptionalParams::default())
         .await
@@ -105,11 +84,7 @@ pub async fn status(cfg: &Config, id: &str, from_ts: i64, to_ts: i64) -> Result<
         GetSloStatusOptionalParams, ServiceLevelObjectivesAPI as SloV2API,
     };
 
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SloV2API::with_client_and_config(dd_cfg, c),
-        None => SloV2API::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SloV2API, cfg);
     let resp = api
         .get_slo_status(
             id.to_string(),

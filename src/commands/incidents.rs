@@ -13,7 +13,6 @@ use datadog_api_client::datadogV2::api_incidents::{
 };
 use datadog_api_client::datadogV2::model::{IncidentImportRequest, IncidentSearchSortOrder};
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
@@ -23,11 +22,7 @@ use crate::util;
 // ---------------------------------------------------------------------------
 
 fn make_api(cfg: &Config) -> IncidentsAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    match client::make_bearer_client(cfg) {
-        Some(c) => IncidentsAPI::with_client_and_config(dd_cfg, c),
-        None => IncidentsAPI::with_config(dd_cfg),
-    }
+    crate::make_api!(IncidentsAPI, cfg)
 }
 
 // ---------------------------------------------------------------------------
@@ -235,11 +230,7 @@ pub async fn postmortem_templates_delete(cfg: &Config, template_id: &str) -> Res
 // ---------------------------------------------------------------------------
 
 fn make_teams_api(cfg: &Config) -> IncidentTeamsAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    match client::make_bearer_client(cfg) {
-        Some(c) => IncidentTeamsAPI::with_client_and_config(dd_cfg, c),
-        None => IncidentTeamsAPI::with_config(dd_cfg),
-    }
+    crate::make_api!(IncidentTeamsAPI, cfg)
 }
 
 pub async fn teams_list(cfg: &Config) -> Result<()> {
@@ -297,11 +288,7 @@ pub async fn teams_delete(cfg: &Config, team_id: &str) -> Result<()> {
 // ---------------------------------------------------------------------------
 
 fn make_services_api(cfg: &Config) -> IncidentServicesAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    match client::make_bearer_client(cfg) {
-        Some(c) => IncidentServicesAPI::with_client_and_config(dd_cfg, c),
-        None => IncidentServicesAPI::with_config(dd_cfg),
-    }
+    crate::make_api!(IncidentServicesAPI, cfg)
 }
 
 pub async fn services_list(cfg: &Config) -> Result<()> {
