@@ -471,11 +471,7 @@ pub async fn probes_watch(
     };
 
     // Set up logs API
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => LogsAPI::with_client_and_config(dd_cfg, c),
-        None => LogsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(LogsAPI, cfg);
 
     let query = format!("@debugger.snapshot.probe.id:{id}");
     let mut from_ms = from_ms_init;

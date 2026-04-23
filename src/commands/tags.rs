@@ -5,16 +5,11 @@ use datadog_api_client::datadogV1::api_tags::{
 };
 use datadog_api_client::datadogV1::model::HostTags;
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 
 pub async fn list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TagsAPI::with_client_and_config(dd_cfg, c),
-        None => TagsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(TagsAPI, cfg);
     let resp = api
         .list_host_tags(ListHostTagsOptionalParams::default())
         .await
@@ -23,11 +18,7 @@ pub async fn list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn get(cfg: &Config, hostname: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TagsAPI::with_client_and_config(dd_cfg, c),
-        None => TagsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(TagsAPI, cfg);
     let resp = api
         .get_host_tags(hostname.to_string(), GetHostTagsOptionalParams::default())
         .await
@@ -36,11 +27,7 @@ pub async fn get(cfg: &Config, hostname: &str) -> Result<()> {
 }
 
 pub async fn add(cfg: &Config, hostname: &str, tags: Vec<String>) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TagsAPI::with_client_and_config(dd_cfg, c),
-        None => TagsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(TagsAPI, cfg);
     let body = HostTags::new().tags(tags);
     let resp = api
         .create_host_tags(
@@ -54,11 +41,7 @@ pub async fn add(cfg: &Config, hostname: &str, tags: Vec<String>) -> Result<()> 
 }
 
 pub async fn update(cfg: &Config, hostname: &str, tags: Vec<String>) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TagsAPI::with_client_and_config(dd_cfg, c),
-        None => TagsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(TagsAPI, cfg);
     let body = HostTags::new().tags(tags);
     let resp = api
         .update_host_tags(
@@ -72,11 +55,7 @@ pub async fn update(cfg: &Config, hostname: &str, tags: Vec<String>) -> Result<(
 }
 
 pub async fn delete(cfg: &Config, hostname: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TagsAPI::with_client_and_config(dd_cfg, c),
-        None => TagsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(TagsAPI, cfg);
     api.delete_host_tags(
         hostname.to_string(),
         DeleteHostTagsOptionalParams::default(),

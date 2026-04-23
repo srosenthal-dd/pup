@@ -3,18 +3,13 @@ use datadog_api_client::datadogV2::api_test_optimization::{
     SearchFlakyTestsOptionalParams, TestOptimizationAPI,
 };
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 
 // ---- Service Settings ----
 
 pub async fn settings_get(cfg: &Config, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TestOptimizationAPI::with_client_and_config(dd_cfg, c),
-        None => TestOptimizationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(TestOptimizationAPI, cfg);
     let body = crate::util::read_json_file(file)?;
     let resp = api
         .get_test_optimization_service_settings(body)
@@ -24,11 +19,7 @@ pub async fn settings_get(cfg: &Config, file: &str) -> Result<()> {
 }
 
 pub async fn settings_update(cfg: &Config, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TestOptimizationAPI::with_client_and_config(dd_cfg, c),
-        None => TestOptimizationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(TestOptimizationAPI, cfg);
     let body = crate::util::read_json_file(file)?;
     let resp = api
         .update_test_optimization_service_settings(body)
@@ -40,11 +31,7 @@ pub async fn settings_update(cfg: &Config, file: &str) -> Result<()> {
 }
 
 pub async fn settings_delete(cfg: &Config, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TestOptimizationAPI::with_client_and_config(dd_cfg, c),
-        None => TestOptimizationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(TestOptimizationAPI, cfg);
     let body = crate::util::read_json_file(file)?;
     api.delete_test_optimization_service_settings(body)
         .await
@@ -58,11 +45,7 @@ pub async fn settings_delete(cfg: &Config, file: &str) -> Result<()> {
 // ---- Flaky Tests ----
 
 pub async fn flaky_tests_search(cfg: &Config, file: Option<String>) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TestOptimizationAPI::with_client_and_config(dd_cfg, c),
-        None => TestOptimizationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(TestOptimizationAPI, cfg);
     let params = if let Some(f) = file {
         let body = crate::util::read_json_file(&f)?;
         SearchFlakyTestsOptionalParams::default().body(body)
@@ -88,11 +71,7 @@ pub async fn flaky_tests_search(cfg: &Config, file: Option<String>) -> Result<()
 }
 
 pub async fn flaky_tests_update(cfg: &Config, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TestOptimizationAPI::with_client_and_config(dd_cfg, c),
-        None => TestOptimizationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(TestOptimizationAPI, cfg);
     let body = crate::util::read_json_file(file)?;
     let resp = api
         .update_flaky_tests(body)
@@ -104,11 +83,7 @@ pub async fn flaky_tests_update(cfg: &Config, file: &str) -> Result<()> {
 // ---- Flaky Tests Management Policies ----
 
 pub async fn flaky_tests_management_policies_get(cfg: &Config, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TestOptimizationAPI::with_client_and_config(dd_cfg, c),
-        None => TestOptimizationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(TestOptimizationAPI, cfg);
     let body = crate::util::read_json_file(file)?;
     let resp = api
         .get_flaky_tests_management_policies(body)
@@ -118,11 +93,7 @@ pub async fn flaky_tests_management_policies_get(cfg: &Config, file: &str) -> Re
 }
 
 pub async fn flaky_tests_management_policies_update(cfg: &Config, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TestOptimizationAPI::with_client_and_config(dd_cfg, c),
-        None => TestOptimizationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(TestOptimizationAPI, cfg);
     let body = crate::util::read_json_file(file)?;
     let resp = api
         .update_flaky_tests_management_policies(body)

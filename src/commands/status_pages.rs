@@ -1,4 +1,3 @@
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
@@ -23,11 +22,7 @@ use datadog_api_client::datadogV2::model::{
 // ---------------------------------------------------------------------------
 
 fn make_api(cfg: &Config) -> StatusPagesAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    match client::make_bearer_client(cfg) {
-        Some(c) => StatusPagesAPI::with_client_and_config(dd_cfg, c),
-        None => StatusPagesAPI::with_config(dd_cfg),
-    }
+    crate::make_api!(StatusPagesAPI, cfg)
 }
 
 pub async fn pages_list(cfg: &Config) -> Result<()> {

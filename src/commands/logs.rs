@@ -235,11 +235,7 @@ pub async fn search(
     sort: String,
     storage: Option<String>,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => LogsAPI::with_client_and_config(dd_cfg, c),
-        None => LogsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(LogsAPI, cfg);
 
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;
@@ -340,11 +336,7 @@ pub async fn aggregate(cfg: &Config, args: AggregateArgs) -> Result<()> {
 }
 
 pub async fn archives_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => LogsArchivesAPI::with_client_and_config(dd_cfg, c),
-        None => LogsArchivesAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(LogsArchivesAPI, cfg);
 
     let resp = api
         .list_logs_archives()
@@ -356,11 +348,7 @@ pub async fn archives_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn archives_get(cfg: &Config, archive_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => LogsArchivesAPI::with_client_and_config(dd_cfg, c),
-        None => LogsArchivesAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(LogsArchivesAPI, cfg);
 
     let resp = api
         .get_logs_archive(archive_id.to_string())
@@ -372,11 +360,7 @@ pub async fn archives_get(cfg: &Config, archive_id: &str) -> Result<()> {
 }
 
 pub async fn archives_delete(cfg: &Config, archive_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => LogsArchivesAPI::with_client_and_config(dd_cfg, c),
-        None => LogsArchivesAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(LogsArchivesAPI, cfg);
 
     api.delete_logs_archive(archive_id.to_string())
         .await
@@ -387,11 +371,7 @@ pub async fn archives_delete(cfg: &Config, archive_id: &str) -> Result<()> {
 }
 
 pub async fn custom_destinations_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => LogsCustomDestinationsAPI::with_client_and_config(dd_cfg, c),
-        None => LogsCustomDestinationsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(LogsCustomDestinationsAPI, cfg);
 
     let resp = api
         .list_logs_custom_destinations()
@@ -403,11 +383,7 @@ pub async fn custom_destinations_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn custom_destinations_get(cfg: &Config, destination_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => LogsCustomDestinationsAPI::with_client_and_config(dd_cfg, c),
-        None => LogsCustomDestinationsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(LogsCustomDestinationsAPI, cfg);
 
     let resp = api
         .get_logs_custom_destination(destination_id.to_string())
@@ -419,11 +395,7 @@ pub async fn custom_destinations_get(cfg: &Config, destination_id: &str) -> Resu
 }
 
 pub async fn metrics_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => LogsMetricsAPI::with_client_and_config(dd_cfg, c),
-        None => LogsMetricsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(LogsMetricsAPI, cfg);
 
     let resp = api
         .list_logs_metrics()
@@ -435,11 +407,7 @@ pub async fn metrics_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn metrics_get(cfg: &Config, metric_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => LogsMetricsAPI::with_client_and_config(dd_cfg, c),
-        None => LogsMetricsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(LogsMetricsAPI, cfg);
 
     let resp = api
         .get_logs_metric(metric_id.to_string())
@@ -451,11 +419,7 @@ pub async fn metrics_get(cfg: &Config, metric_id: &str) -> Result<()> {
 }
 
 pub async fn metrics_delete(cfg: &Config, metric_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => LogsMetricsAPI::with_client_and_config(dd_cfg, c),
-        None => LogsMetricsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(LogsMetricsAPI, cfg);
 
     api.delete_logs_metric(metric_id.to_string())
         .await

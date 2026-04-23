@@ -20,17 +20,12 @@ use datadog_api_client::datadogV2::model::{
     UserTeamUpdateRequest, UserTeamUserType,
 };
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
 pub async fn teams_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TeamsAPI::with_client_and_config(dd_cfg, c),
-        None => TeamsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(TeamsAPI, cfg);
     let resp = api
         .list_teams(ListTeamsOptionalParams::default())
         .await
@@ -39,11 +34,7 @@ pub async fn teams_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn teams_get(cfg: &Config, team_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TeamsAPI::with_client_and_config(dd_cfg, c),
-        None => TeamsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(TeamsAPI, cfg);
     let resp = api
         .get_team(team_id.to_string())
         .await
@@ -52,11 +43,7 @@ pub async fn teams_get(cfg: &Config, team_id: &str) -> Result<()> {
 }
 
 pub async fn teams_delete(cfg: &Config, team_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TeamsAPI::with_client_and_config(dd_cfg, c),
-        None => TeamsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(TeamsAPI, cfg);
     api.delete_team(team_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete team: {e:?}"))?;
@@ -65,11 +52,7 @@ pub async fn teams_delete(cfg: &Config, team_id: &str) -> Result<()> {
 }
 
 pub async fn teams_create(cfg: &Config, name: &str, handle: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TeamsAPI::with_client_and_config(dd_cfg, c),
-        None => TeamsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(TeamsAPI, cfg);
     let attrs = TeamCreateAttributes::new(handle.to_string(), name.to_string());
     let data = TeamCreate::new(attrs, TeamType::TEAM);
     let body = TeamCreateRequest::new(data);
@@ -81,11 +64,7 @@ pub async fn teams_create(cfg: &Config, name: &str, handle: &str) -> Result<()> 
 }
 
 pub async fn teams_update(cfg: &Config, team_id: &str, name: &str, handle: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TeamsAPI::with_client_and_config(dd_cfg, c),
-        None => TeamsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(TeamsAPI, cfg);
     let attrs = TeamUpdateAttributes::new(handle.to_string(), name.to_string());
     let data = TeamUpdate::new(attrs, TeamType::TEAM);
     let body = TeamUpdateRequest::new(data);
@@ -97,11 +76,7 @@ pub async fn teams_update(cfg: &Config, team_id: &str, name: &str, handle: &str)
 }
 
 pub async fn memberships_list(cfg: &Config, team_id: &str, page_size: i64) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TeamsAPI::with_client_and_config(dd_cfg, c),
-        None => TeamsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(TeamsAPI, cfg);
     let params = GetTeamMembershipsOptionalParams::default().page_size(page_size);
     let resp = api
         .get_team_memberships(team_id.to_string(), params)
@@ -116,11 +91,7 @@ pub async fn memberships_add(
     user_id: &str,
     role: Option<String>,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TeamsAPI::with_client_and_config(dd_cfg, c),
-        None => TeamsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(TeamsAPI, cfg);
     let mut attrs = UserTeamAttributes::new();
     if let Some(r) = role {
         let team_role = match r.to_lowercase().as_str() {
@@ -150,11 +121,7 @@ pub async fn memberships_update(
     user_id: &str,
     role: &str,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TeamsAPI::with_client_and_config(dd_cfg, c),
-        None => TeamsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(TeamsAPI, cfg);
     let team_role = match role.to_lowercase().as_str() {
         "admin" => UserTeamRole::ADMIN,
         _ => UserTeamRole::ADMIN,
@@ -170,11 +137,7 @@ pub async fn memberships_update(
 }
 
 pub async fn memberships_remove(cfg: &Config, team_id: &str, user_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TeamsAPI::with_client_and_config(dd_cfg, c),
-        None => TeamsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(TeamsAPI, cfg);
     api.delete_team_membership(team_id.to_string(), user_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to remove membership: {e:?}"))?;
@@ -185,11 +148,7 @@ pub async fn memberships_remove(cfg: &Config, team_id: &str, user_id: &str) -> R
 // ---- Escalation Policies ----
 
 pub async fn escalation_policies_get(cfg: &Config, policy_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     let resp = api
         .get_on_call_escalation_policy(
             policy_id.to_string(),
@@ -201,11 +160,7 @@ pub async fn escalation_policies_get(cfg: &Config, policy_id: &str) -> Result<()
 }
 
 pub async fn escalation_policies_create(cfg: &Config, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     let body: EscalationPolicyCreateRequest = util::read_json_file(file)?;
     let resp = api
         .create_on_call_escalation_policy(
@@ -218,11 +173,7 @@ pub async fn escalation_policies_create(cfg: &Config, file: &str) -> Result<()> 
 }
 
 pub async fn escalation_policies_update(cfg: &Config, policy_id: &str, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     let body: EscalationPolicyUpdateRequest = util::read_json_file(file)?;
     let resp = api
         .update_on_call_escalation_policy(
@@ -236,11 +187,7 @@ pub async fn escalation_policies_update(cfg: &Config, policy_id: &str, file: &st
 }
 
 pub async fn escalation_policies_delete(cfg: &Config, policy_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     api.delete_on_call_escalation_policy(policy_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete escalation policy: {e:?}"))?;
@@ -251,11 +198,7 @@ pub async fn escalation_policies_delete(cfg: &Config, policy_id: &str) -> Result
 // ---- Schedules ----
 
 pub async fn schedules_get(cfg: &Config, schedule_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     let resp = api
         .get_on_call_schedule(
             schedule_id.to_string(),
@@ -267,11 +210,7 @@ pub async fn schedules_get(cfg: &Config, schedule_id: &str) -> Result<()> {
 }
 
 pub async fn schedules_create(cfg: &Config, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     let body: ScheduleCreateRequest = util::read_json_file(file)?;
     let resp = api
         .create_on_call_schedule(body, CreateOnCallScheduleOptionalParams::default())
@@ -281,11 +220,7 @@ pub async fn schedules_create(cfg: &Config, file: &str) -> Result<()> {
 }
 
 pub async fn schedules_update(cfg: &Config, schedule_id: &str, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     let body: ScheduleUpdateRequest = util::read_json_file(file)?;
     let resp = api
         .update_on_call_schedule(
@@ -299,11 +234,7 @@ pub async fn schedules_update(cfg: &Config, schedule_id: &str, file: &str) -> Re
 }
 
 pub async fn schedules_delete(cfg: &Config, schedule_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     api.delete_on_call_schedule(schedule_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete schedule: {e:?}"))?;
@@ -314,11 +245,7 @@ pub async fn schedules_delete(cfg: &Config, schedule_id: &str) -> Result<()> {
 // ---- Notification Channels ----
 
 pub async fn notification_channels_list(cfg: &Config, user_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     let resp = api
         .list_user_notification_channels(user_id.to_string())
         .await
@@ -331,11 +258,7 @@ pub async fn notification_channels_get(
     user_id: &str,
     channel_id: &str,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     let resp = api
         .get_user_notification_channel(user_id.to_string(), channel_id.to_string())
         .await
@@ -344,11 +267,7 @@ pub async fn notification_channels_get(
 }
 
 pub async fn notification_channels_create(cfg: &Config, user_id: &str, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     let body: CreateUserNotificationChannelRequest = util::read_json_file(file)?;
     let resp = api
         .create_user_notification_channel(user_id.to_string(), body)
@@ -362,11 +281,7 @@ pub async fn notification_channels_delete(
     user_id: &str,
     channel_id: &str,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     api.delete_user_notification_channel(user_id.to_string(), channel_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete notification channel: {e:?}"))?;
@@ -377,11 +292,7 @@ pub async fn notification_channels_delete(
 // ---- Notification Rules ----
 
 pub async fn notification_rules_list(cfg: &Config, user_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     let resp = api
         .list_user_notification_rules(
             user_id.to_string(),
@@ -393,11 +304,7 @@ pub async fn notification_rules_list(cfg: &Config, user_id: &str) -> Result<()> 
 }
 
 pub async fn notification_rules_get(cfg: &Config, user_id: &str, rule_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     let resp = api
         .get_user_notification_rule(
             user_id.to_string(),
@@ -410,11 +317,7 @@ pub async fn notification_rules_get(cfg: &Config, user_id: &str, rule_id: &str) 
 }
 
 pub async fn notification_rules_create(cfg: &Config, user_id: &str, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     let body: CreateOnCallNotificationRuleRequest = util::read_json_file(file)?;
     let resp = api
         .create_user_notification_rule(user_id.to_string(), body)
@@ -429,11 +332,7 @@ pub async fn notification_rules_update(
     rule_id: &str,
     file: &str,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     let body: UpdateOnCallNotificationRuleRequest = util::read_json_file(file)?;
     let resp = api
         .update_user_notification_rule(
@@ -448,11 +347,7 @@ pub async fn notification_rules_update(
 }
 
 pub async fn notification_rules_delete(cfg: &Config, user_id: &str, rule_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     api.delete_user_notification_rule(user_id.to_string(), rule_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete notification rule: {e:?}"))?;
@@ -463,11 +358,7 @@ pub async fn notification_rules_delete(cfg: &Config, user_id: &str, rule_id: &st
 // ---- Pages ----
 
 pub async fn pages_create(cfg: &Config, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallPagingAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallPagingAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallPagingAPI, cfg);
     let body: CreatePageRequest = util::read_json_file(file)?;
     let resp = api
         .create_on_call_page(body)

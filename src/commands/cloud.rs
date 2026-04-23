@@ -9,16 +9,11 @@ use datadog_api_client::datadogV2::model::{
     CreateTenancyConfigRequest, UpdateTenancyConfigRequest,
 };
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 
 pub async fn aws_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => AWSIntegrationAPI::with_client_and_config(dd_cfg, c),
-        None => AWSIntegrationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(AWSIntegrationAPI, cfg);
     let resp = api
         .list_aws_accounts(ListAWSAccountsOptionalParams::default())
         .await
@@ -27,11 +22,7 @@ pub async fn aws_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn gcp_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => GCPIntegrationAPI::with_client_and_config(dd_cfg, c),
-        None => GCPIntegrationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(GCPIntegrationAPI, cfg);
     let resp = api
         .list_gcp_integration()
         .await
@@ -40,11 +31,7 @@ pub async fn gcp_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn azure_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => AzureIntegrationAPI::with_client_and_config(dd_cfg, c),
-        None => AzureIntegrationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(AzureIntegrationAPI, cfg);
     let resp = api
         .list_azure_integration()
         .await
@@ -57,11 +44,7 @@ pub async fn azure_list(cfg: &Config) -> Result<()> {
 // ---------------------------------------------------------------------------
 
 fn make_oci_api(cfg: &Config) -> OCIIntegrationAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    match client::make_bearer_client(cfg) {
-        Some(c) => OCIIntegrationAPI::with_client_and_config(dd_cfg, c),
-        None => OCIIntegrationAPI::with_config(dd_cfg),
-    }
+    crate::make_api!(OCIIntegrationAPI, cfg)
 }
 
 pub async fn oci_tenancies_list(cfg: &Config) -> Result<()> {

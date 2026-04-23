@@ -2,17 +2,12 @@ use anyhow::Result;
 use datadog_api_client::datadogV2::api_seats::{GetSeatsUsersOptionalParams, SeatsAPI};
 use datadog_api_client::datadogV2::model::{AssignSeatsUserRequest, UnassignSeatsUserRequest};
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
 fn make_api(cfg: &Config) -> SeatsAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    match client::make_bearer_client(cfg) {
-        Some(c) => SeatsAPI::with_client_and_config(dd_cfg, c),
-        None => SeatsAPI::with_config(dd_cfg),
-    }
+    crate::make_api!(SeatsAPI, cfg)
 }
 
 pub async fn users_list(cfg: &Config, product: &str, limit: i32) -> Result<()> {

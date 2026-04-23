@@ -15,11 +15,7 @@ use crate::formatter;
 use crate::util;
 
 fn make_api(cfg: &Config) -> LLMObservabilityAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    match client::make_bearer_client(cfg) {
-        Some(c) => LLMObservabilityAPI::with_client_and_config(dd_cfg, c),
-        None => LLMObservabilityAPI::with_config(dd_cfg),
-    }
+    crate::make_api!(LLMObservabilityAPI, cfg)
 }
 
 // ---- Projects ----

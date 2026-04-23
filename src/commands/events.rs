@@ -9,17 +9,12 @@ use datadog_api_client::datadogV2::model::{
     EventsListRequest, EventsQueryFilter, EventsRequestPage, EventsSort,
 };
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
 pub async fn list(cfg: &Config, start: i64, end: i64, tags: Option<String>) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => EventsV1API::with_client_and_config(dd_cfg, c),
-        None => EventsV1API::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(EventsV1API, cfg);
 
     // Default to last hour if not specified
     let now = chrono::Utc::now().timestamp();
@@ -44,11 +39,7 @@ pub async fn search(
     to: String,
     limit: i32,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => EventsV2API::with_client_and_config(dd_cfg, c),
-        None => EventsV2API::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(EventsV2API, cfg);
 
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;
@@ -79,11 +70,7 @@ pub async fn search(
 }
 
 pub async fn get(cfg: &Config, id: i64) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => EventsV1API::with_client_and_config(dd_cfg, c),
-        None => EventsV1API::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(EventsV1API, cfg);
     let resp = api
         .get_event(id)
         .await

@@ -15,7 +15,6 @@ use datadog_api_client::datadogV2::model::{
     FlakyTestsSearchRequest, UpdateFlakyTestsRequest,
 };
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
@@ -27,11 +26,7 @@ pub async fn pipelines_list(
     to: String,
     limit: i32,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => CIVisibilityPipelinesAPI::with_client_and_config(dd_cfg, c),
-        None => CIVisibilityPipelinesAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(CIVisibilityPipelinesAPI, cfg);
 
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;
@@ -67,11 +62,7 @@ pub async fn tests_list(
     to: String,
     limit: i32,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => CIVisibilityTestsAPI::with_client_and_config(dd_cfg, c),
-        None => CIVisibilityTestsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(CIVisibilityTestsAPI, cfg);
 
     let from_dt = util::parse_time_to_datetime(&from)?;
     let to_dt = util::parse_time_to_datetime(&to)?;
@@ -98,11 +89,7 @@ pub async fn events_search(
     to: String,
     limit: i32,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => CIVisibilityPipelinesAPI::with_client_and_config(dd_cfg, c),
-        None => CIVisibilityPipelinesAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(CIVisibilityPipelinesAPI, cfg);
 
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;
@@ -132,11 +119,7 @@ pub async fn events_search(
 }
 
 pub async fn events_aggregate(cfg: &Config, query: String, from: String, to: String) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => CIVisibilityPipelinesAPI::with_client_and_config(dd_cfg, c),
-        None => CIVisibilityPipelinesAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(CIVisibilityPipelinesAPI, cfg);
 
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;
@@ -169,11 +152,7 @@ pub async fn tests_search(
     to: String,
     limit: i32,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => CIVisibilityTestsAPI::with_client_and_config(dd_cfg, c),
-        None => CIVisibilityTestsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(CIVisibilityTestsAPI, cfg);
 
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;
@@ -203,11 +182,7 @@ pub async fn tests_search(
 }
 
 pub async fn tests_aggregate(cfg: &Config, query: String, from: String, to: String) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => CIVisibilityTestsAPI::with_client_and_config(dd_cfg, c),
-        None => CIVisibilityTestsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(CIVisibilityTestsAPI, cfg);
 
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;
@@ -236,11 +211,7 @@ pub async fn tests_aggregate(cfg: &Config, query: String, from: String, to: Stri
 // ---- Pipelines Get ----
 
 pub async fn pipelines_get(cfg: &Config, pipeline_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => CIVisibilityPipelinesAPI::with_client_and_config(dd_cfg, c),
-        None => CIVisibilityPipelinesAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(CIVisibilityPipelinesAPI, cfg);
 
     let filter = CIAppPipelinesQueryFilter::new().query(pipeline_id.to_string());
 
@@ -257,11 +228,7 @@ pub async fn pipelines_get(cfg: &Config, pipeline_id: &str) -> Result<()> {
 // ---- DORA Metrics ----
 
 pub async fn dora_patch_deployment(cfg: &Config, deployment_id: &str, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => DORAMetricsAPI::with_client_and_config(dd_cfg, c),
-        None => DORAMetricsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(DORAMetricsAPI, cfg);
     let body: DORADeploymentPatchRequest = crate::util::read_json_file(file)?;
     api.patch_dora_deployment(deployment_id.to_string(), body)
         .await
@@ -279,11 +246,7 @@ pub async fn flaky_tests_search(
     limit: i64,
     sort: Option<String>,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TestOptimizationAPI::with_client_and_config(dd_cfg, c),
-        None => TestOptimizationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(TestOptimizationAPI, cfg);
 
     use datadog_api_client::datadogV2::model::{
         FlakyTestsSearchFilter, FlakyTestsSearchPageOptions, FlakyTestsSearchRequestAttributes,
@@ -331,11 +294,7 @@ pub async fn flaky_tests_search(
 }
 
 pub async fn flaky_tests_update(cfg: &Config, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TestOptimizationAPI::with_client_and_config(dd_cfg, c),
-        None => TestOptimizationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(TestOptimizationAPI, cfg);
     let body: UpdateFlakyTestsRequest = crate::util::read_json_file(file)?;
     let resp = api
         .update_flaky_tests(body)

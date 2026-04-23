@@ -9,7 +9,6 @@ use datadog_api_client::datadogV2::model::{
     IssuesSearchRequestDataType,
 };
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 
@@ -20,11 +19,7 @@ pub async fn issues_search(
     track: Option<String>,
     persona: Option<String>,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => ErrorTrackingAPI::with_client_and_config(dd_cfg, c),
-        None => ErrorTrackingAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(ErrorTrackingAPI, cfg);
 
     let now = Utc::now().timestamp_millis();
     let one_day_ago = now - 86_400_000; // 24 hours in millis
@@ -75,11 +70,7 @@ pub async fn issues_search(
 }
 
 pub async fn issues_get(cfg: &Config, issue_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => ErrorTrackingAPI::with_client_and_config(dd_cfg, c),
-        None => ErrorTrackingAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(ErrorTrackingAPI, cfg);
     let resp = api
         .get_issue(issue_id.to_string(), GetIssueOptionalParams::default())
         .await

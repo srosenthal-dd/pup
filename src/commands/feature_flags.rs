@@ -3,7 +3,6 @@ use datadog_api_client::datadogV2::api_feature_flags::{
     FeatureFlagsAPI, ListFeatureFlagsEnvironmentsOptionalParams, ListFeatureFlagsOptionalParams,
 };
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
@@ -13,11 +12,7 @@ use crate::util;
 // ---------------------------------------------------------------------------
 
 fn make_api(cfg: &Config) -> FeatureFlagsAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    match client::make_bearer_client(cfg) {
-        Some(c) => FeatureFlagsAPI::with_client_and_config(dd_cfg, c),
-        None => FeatureFlagsAPI::with_config(dd_cfg),
-    }
+    crate::make_api!(FeatureFlagsAPI, cfg)
 }
 
 // ---------------------------------------------------------------------------
