@@ -4749,6 +4749,117 @@ enum OrgActions {
     List,
     /// Get organization details
     Get,
+    /// Manage organization group policies
+    Policies {
+        #[command(subcommand)]
+        action: OrgPoliciesActions,
+    },
+    /// Manage organization group policy overrides
+    #[command(name = "policy-overrides")]
+    PolicyOverrides {
+        #[command(subcommand)]
+        action: OrgPolicyOverridesActions,
+    },
+    /// List available org group policy config definitions
+    #[command(name = "policy-configs")]
+    PolicyConfigs {
+        #[command(subcommand)]
+        action: OrgPolicyConfigsActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum OrgPoliciesActions {
+    /// List policies for an org group
+    List {
+        /// Org group UUID (required)
+        #[arg(long = "group-id")]
+        group_id: String,
+        /// Filter by policy name
+        #[arg(long)]
+        name: Option<String>,
+        /// Page number
+        #[arg(long = "page-number")]
+        page_number: Option<i64>,
+        /// Page size (max 1000)
+        #[arg(long = "page-size")]
+        page_size: Option<i64>,
+        /// Sort (id, -id, name, -name)
+        #[arg(long)]
+        sort: Option<String>,
+    },
+    /// Get a policy by ID
+    Get {
+        /// Policy UUID
+        policy_id: String,
+    },
+    /// Create a policy
+    Create {
+        #[arg(long, help = "JSON file with request body (required)")]
+        file: String,
+    },
+    /// Update a policy
+    Update {
+        /// Policy UUID
+        policy_id: String,
+        #[arg(long, help = "JSON file with request body (required)")]
+        file: String,
+    },
+    /// Delete a policy
+    Delete {
+        /// Policy UUID
+        policy_id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum OrgPolicyOverridesActions {
+    /// List policy overrides for an org group
+    List {
+        /// Org group UUID (required)
+        #[arg(long = "group-id")]
+        group_id: String,
+        /// Filter by policy UUID
+        #[arg(long = "policy-id")]
+        policy_id: Option<String>,
+        /// Page number
+        #[arg(long = "page-number")]
+        page_number: Option<i64>,
+        /// Page size (max 1000)
+        #[arg(long = "page-size")]
+        page_size: Option<i64>,
+        /// Sort (id, -id, org_uuid, -org_uuid)
+        #[arg(long)]
+        sort: Option<String>,
+    },
+    /// Get a policy override by ID
+    Get {
+        /// Override UUID
+        override_id: String,
+    },
+    /// Create a policy override
+    Create {
+        #[arg(long, help = "JSON file with request body (required)")]
+        file: String,
+    },
+    /// Update a policy override
+    Update {
+        /// Override UUID
+        override_id: String,
+        #[arg(long, help = "JSON file with request body (required)")]
+        file: String,
+    },
+    /// Delete a policy override
+    Delete {
+        /// Override UUID
+        override_id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum OrgPolicyConfigsActions {
+    /// List available org group policy config definitions
+    List,
 }
 
 // ---- Cloud ----
@@ -10688,6 +10799,75 @@ async fn main_inner() -> anyhow::Result<()> {
             match action {
                 OrgActions::List => commands::organizations::list(&cfg).await?,
                 OrgActions::Get => commands::organizations::get(&cfg).await?,
+                OrgActions::Policies { action } => match action {
+                    OrgPoliciesActions::List {
+                        group_id,
+                        name,
+                        page_number,
+                        page_size,
+                        sort,
+                    } => {
+                        commands::organizations::policies_list(
+                            &cfg,
+                            &group_id,
+                            name,
+                            page_number,
+                            page_size,
+                            sort,
+                        )
+                        .await?;
+                    }
+                    OrgPoliciesActions::Get { policy_id } => {
+                        commands::organizations::policies_get(&cfg, &policy_id).await?;
+                    }
+                    OrgPoliciesActions::Create { file } => {
+                        commands::organizations::policies_create(&cfg, &file).await?;
+                    }
+                    OrgPoliciesActions::Update { policy_id, file } => {
+                        commands::organizations::policies_update(&cfg, &policy_id, &file).await?;
+                    }
+                    OrgPoliciesActions::Delete { policy_id } => {
+                        commands::organizations::policies_delete(&cfg, &policy_id).await?;
+                    }
+                },
+                OrgActions::PolicyOverrides { action } => match action {
+                    OrgPolicyOverridesActions::List {
+                        group_id,
+                        policy_id,
+                        page_number,
+                        page_size,
+                        sort,
+                    } => {
+                        commands::organizations::policy_overrides_list(
+                            &cfg,
+                            &group_id,
+                            policy_id,
+                            page_number,
+                            page_size,
+                            sort,
+                        )
+                        .await?;
+                    }
+                    OrgPolicyOverridesActions::Get { override_id } => {
+                        commands::organizations::policy_overrides_get(&cfg, &override_id).await?;
+                    }
+                    OrgPolicyOverridesActions::Create { file } => {
+                        commands::organizations::policy_overrides_create(&cfg, &file).await?;
+                    }
+                    OrgPolicyOverridesActions::Update { override_id, file } => {
+                        commands::organizations::policy_overrides_update(&cfg, &override_id, &file)
+                            .await?;
+                    }
+                    OrgPolicyOverridesActions::Delete { override_id } => {
+                        commands::organizations::policy_overrides_delete(&cfg, &override_id)
+                            .await?;
+                    }
+                },
+                OrgActions::PolicyConfigs { action } => match action {
+                    OrgPolicyConfigsActions::List => {
+                        commands::organizations::policy_configs_list(&cfg).await?;
+                    }
+                },
             }
         }
         // --- Change Management ---

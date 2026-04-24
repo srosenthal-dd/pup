@@ -238,6 +238,18 @@ static UNSTABLE_OPS: &[&str] = &[
     "v2.get_hamr_org_connection",
     // Entity Risk Scores (1)
     "v2.list_entity_risk_scores",
+    // Org Group Policies (11)
+    "v2.list_org_group_policies",
+    "v2.get_org_group_policy",
+    "v2.create_org_group_policy",
+    "v2.update_org_group_policy",
+    "v2.delete_org_group_policy",
+    "v2.list_org_group_policy_overrides",
+    "v2.get_org_group_policy_override",
+    "v2.create_org_group_policy_override",
+    "v2.update_org_group_policy_override",
+    "v2.delete_org_group_policy_override",
+    "v2.list_org_group_policy_configs",
     // Security Findings (1)
     "v2.list_findings",
     // SLO Status (1)
@@ -1015,7 +1027,7 @@ mod tests {
 
     #[test]
     fn test_unstable_ops_count() {
-        assert_eq!(UNSTABLE_OPS.len(), 147);
+        assert_eq!(UNSTABLE_OPS.len(), 158);
     }
 
     #[test]
