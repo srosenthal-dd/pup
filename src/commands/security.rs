@@ -12,8 +12,8 @@ use datadog_api_client::datadogV2::api_restriction_policies::{
     RestrictionPoliciesAPI, UpdateRestrictionPolicyOptionalParams,
 };
 use datadog_api_client::datadogV2::api_security_monitoring::{
-    ListFindingsOptionalParams, ListSecurityMonitoringRulesOptionalParams,
-    ListSecurityMonitoringSuppressionsOptionalParams,
+    ListFindingsOptionalParams, ListIndicatorsOfCompromiseOptionalParams,
+    ListSecurityMonitoringRulesOptionalParams, ListSecurityMonitoringSuppressionsOptionalParams,
     SearchSecurityMonitoringSignalsOptionalParams, SecurityMonitoringAPI,
 };
 use datadog_api_client::datadogV2::model::{
@@ -327,6 +327,49 @@ pub async fn content_packs_deactivate(cfg: &Config, pack_id: &str) -> Result<()>
     Ok(())
 }
 
+// ---- Indicators of Compromise ----
+
+pub async fn iocs_list(
+    cfg: &Config,
+    query: Option<String>,
+    limit: Option<i32>,
+    offset: Option<i32>,
+    sort_column: Option<String>,
+    sort_order: Option<String>,
+) -> Result<()> {
+    let api = crate::make_api!(SecurityMonitoringAPI, cfg);
+    let mut params = ListIndicatorsOfCompromiseOptionalParams::default();
+    if let Some(q) = query {
+        params.query = Some(q);
+    }
+    if let Some(l) = limit {
+        params.limit = Some(l);
+    }
+    if let Some(o) = offset {
+        params.offset = Some(o);
+    }
+    if let Some(c) = sort_column {
+        params.sort_column = Some(c);
+    }
+    if let Some(o) = sort_order {
+        params.sort_order = Some(o);
+    }
+    let resp = api
+        .list_indicators_of_compromise(params)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to list indicators of compromise: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn iocs_get(cfg: &Config, indicator: &str) -> Result<()> {
+    let api = crate::make_api!(SecurityMonitoringAPI, cfg);
+    let resp = api
+        .get_indicator_of_compromise(indicator.to_string())
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to get indicator of compromise: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
 // ---- Risk Scores ----
 
 pub async fn risk_scores_list(cfg: &Config, query: Option<String>) -> Result<()> {
@@ -638,6 +681,95 @@ mod tests {
         mock_all(&mut s, r#"{"data": []}"#).await;
         let _ = super::content_packs_list(&cfg).await;
         cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_security_iocs_list() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", r#"{"data":{},"meta":{}}"#).await;
+        let result = super::iocs_list(&cfg, None, None, None, None, None).await;
+        assert!(result.is_ok(), "iocs list failed: {:?}", result.err());
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_security_iocs_list_with_params() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", r#"{"data":{},"meta":{}}"#).await;
+        let result = super::iocs_list(
+            &cfg,
+            Some("indicator_type:ip".to_string()),
+            Some(50),
+            Some(100),
+            Some("score".to_string()),
+            Some("desc".to_string()),
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "iocs list with params failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_security_iocs_list_error() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("GET", mockito::Matcher::Any)
+            .with_status(403)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["Forbidden"]}"#)
+            .create_async()
+            .await;
+        let result = super::iocs_list(&cfg, None, None, None, None, None).await;
+        assert!(result.is_err(), "expected error for 403 response");
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_security_iocs_get() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", r#"{"data":{}}"#).await;
+        let result = super::iocs_get(&cfg, "1.2.3.4").await;
+        assert!(result.is_ok(), "iocs get failed: {:?}", result.err());
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_security_iocs_get_not_found() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("GET", mockito::Matcher::Any)
+            .with_status(404)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["Not found"]}"#)
+            .create_async()
+            .await;
+        let result = super::iocs_get(&cfg, "missing").await;
+        assert!(result.is_err(), "expected error for 404 response");
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
     }
 
     #[tokio::test]
