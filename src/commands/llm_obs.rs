@@ -4,7 +4,7 @@ use datadog_api_client::datadogV2::api_llm_observability::{
 };
 use datadog_api_client::datadogV2::model::{
     LLMObsAnnotationQueueInteractionsRequest, LLMObsAnnotationQueueRequest,
-    LLMObsAnnotationQueueUpdateRequest, LLMObsDatasetRequest,
+    LLMObsAnnotationQueueUpdateRequest, LLMObsCustomEvalConfigUpdateRequest, LLMObsDatasetRequest,
     LLMObsDeleteAnnotationQueueInteractionsRequest, LLMObsDeleteExperimentsRequest,
     LLMObsExperimentRequest, LLMObsExperimentUpdateRequest, LLMObsProjectRequest,
 };
@@ -296,6 +296,36 @@ pub async fn annotation_queue_interactions_list(cfg: &Config, queue_id: &str) ->
         .await
         .map_err(|e| anyhow::anyhow!("failed to list annotated interactions: {e:?}"))?;
     formatter::output(cfg, &resp)
+}
+
+// ---- Custom Evaluator Configs ----
+
+pub async fn eval_config_get(cfg: &Config, eval_name: &str) -> Result<()> {
+    let api = make_api(cfg);
+    let resp = api
+        .get_llm_obs_custom_eval_config(eval_name.to_string())
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to get LLM obs custom eval config: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn eval_config_update(cfg: &Config, eval_name: &str, file: &str) -> Result<()> {
+    let body: LLMObsCustomEvalConfigUpdateRequest = util::read_json_file(file)?;
+    let api = make_api(cfg);
+    api.update_llm_obs_custom_eval_config(eval_name.to_string(), body)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to update LLM obs custom eval config: {e:?}"))?;
+    eprintln!("LLM obs custom eval config '{eval_name}' updated.");
+    Ok(())
+}
+
+pub async fn eval_config_delete(cfg: &Config, eval_name: &str) -> Result<()> {
+    let api = make_api(cfg);
+    api.delete_llm_obs_custom_eval_config(eval_name.to_string())
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to delete LLM obs custom eval config: {e:?}"))?;
+    eprintln!("LLM obs custom eval config '{eval_name}' deleted.");
+    Ok(())
 }
 
 // ---- Spans (no typed equivalent — unstable MCP endpoint) ----
@@ -1182,6 +1212,129 @@ mod tests {
         assert!(result.is_err(), "should fail on 403");
         assert!(result.unwrap_err().to_string().contains("403"));
         cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_eval_config_get() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let body = r#"{"data":{"id":"toxicity","type":"evaluator_config","attributes":{"eval_name":"toxicity","created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z"}}}"#;
+        let _mock = mock_any(&mut server, "GET", body).await;
+        let result = super::eval_config_get(&cfg, "toxicity").await;
+        assert!(result.is_ok(), "eval_config_get failed: {:?}", result.err());
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_eval_config_get_404() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("GET", mockito::Matcher::Any)
+            .with_status(404)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["not found"]}"#)
+            .create_async()
+            .await;
+        let result = super::eval_config_get(&cfg, "missing").await;
+        assert!(result.is_err(), "expected 404 error");
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_eval_config_update() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let tmp = write_temp_json(
+            "pup_test_eval_config_update.json",
+            r#"{"data":{"type":"evaluator_config","attributes":{"target":{"application_name":"my-app","enabled":true}}}}"#,
+        );
+        let _mock = server
+            .mock("PUT", mockito::Matcher::Any)
+            .with_status(204)
+            .create_async()
+            .await;
+        let result = super::eval_config_update(&cfg, "toxicity", tmp.to_str().unwrap()).await;
+        assert!(
+            result.is_ok(),
+            "eval_config_update failed: {:?}",
+            result.err()
+        );
+        let _ = std::fs::remove_file(tmp);
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_eval_config_update_400() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let tmp = write_temp_json(
+            "pup_test_eval_config_update_400.json",
+            r#"{"data":{"type":"evaluator_config","attributes":{"target":{"application_name":"my-app","enabled":true}}}}"#,
+        );
+        let _mock = server
+            .mock("PUT", mockito::Matcher::Any)
+            .with_status(400)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["bad request"]}"#)
+            .create_async()
+            .await;
+        let result = super::eval_config_update(&cfg, "toxicity", tmp.to_str().unwrap()).await;
+        assert!(result.is_err(), "expected 400 error");
+        let _ = std::fs::remove_file(tmp);
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_eval_config_delete() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("DELETE", mockito::Matcher::Any)
+            .with_status(204)
+            .create_async()
+            .await;
+        let result = super::eval_config_delete(&cfg, "toxicity").await;
+        assert!(
+            result.is_ok(),
+            "eval_config_delete failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_llm_obs_eval_config_delete_404() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("DELETE", mockito::Matcher::Any)
+            .with_status(404)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["not found"]}"#)
+            .create_async()
+            .await;
+        let result = super::eval_config_delete(&cfg, "missing").await;
+        assert!(result.is_err(), "expected 404 error");
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
     }
 
     #[tokio::test]

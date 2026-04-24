@@ -7849,6 +7849,12 @@ enum LlmObsActions {
         #[command(subcommand)]
         action: LlmObsAnnotationQueuesActions,
     },
+    /// Manage LLM Observability custom evaluator configs
+    #[command(name = "eval-config")]
+    EvalConfig {
+        #[command(subcommand)]
+        action: LlmObsEvalConfigActions,
+    },
 }
 
 #[derive(Subcommand)]
@@ -8057,6 +8063,27 @@ enum LlmObsAnnotationQueueInteractionsActions {
     List {
         #[arg(help = "Annotation queue ID")]
         queue_id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum LlmObsEvalConfigActions {
+    /// Get a custom evaluator config by name
+    Get {
+        #[arg(help = "Evaluator name")]
+        eval_name: String,
+    },
+    /// Create or update a custom evaluator config by name
+    Update {
+        #[arg(help = "Evaluator name")]
+        eval_name: String,
+        #[arg(long, help = "JSON file with evaluator config body (required)")]
+        file: String,
+    },
+    /// Delete a custom evaluator config by name
+    Delete {
+        #[arg(help = "Evaluator name")]
+        eval_name: String,
     },
 }
 
@@ -13307,6 +13334,17 @@ async fn main_inner() -> anyhow::Result<()> {
                                 .await?;
                         }
                     },
+                },
+                LlmObsActions::EvalConfig { action } => match action {
+                    LlmObsEvalConfigActions::Get { eval_name } => {
+                        commands::llm_obs::eval_config_get(&cfg, &eval_name).await?;
+                    }
+                    LlmObsEvalConfigActions::Update { eval_name, file } => {
+                        commands::llm_obs::eval_config_update(&cfg, &eval_name, &file).await?;
+                    }
+                    LlmObsEvalConfigActions::Delete { eval_name } => {
+                        commands::llm_obs::eval_config_delete(&cfg, &eval_name).await?;
+                    }
                 },
             }
         }
