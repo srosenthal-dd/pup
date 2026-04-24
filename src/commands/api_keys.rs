@@ -54,33 +54,151 @@ mod tests {
 
     use crate::test_support::*;
 
+    // -----------------------------------------------------------------------
+    // list()
+    // -----------------------------------------------------------------------
+
     #[tokio::test]
-    async fn test_api_keys_list() {
+    async fn test_api_keys_list_success() {
         let _lock = lock_env().await;
         let mut s = mockito::Server::new_async().await;
         let cfg = test_config(&s.url());
         mock_all(&mut s, r#"{"data": []}"#).await;
-        let _ = super::list(&cfg).await;
+        let result = super::list(&cfg).await;
+        assert!(result.is_ok(), "list should succeed: {:?}", result.err());
         cleanup_env();
     }
 
     #[tokio::test]
-    async fn test_api_keys_get() {
+    async fn test_api_keys_list_error_403() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("GET", mockito::Matcher::Any)
+            .with_status(403)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["Forbidden"]}"#)
+            .create_async()
+            .await;
+        let result = super::list(&cfg).await;
+        assert!(result.is_err(), "expected error on 403");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("failed to list API keys"),
+            "error should mention failed listing: {err_msg}"
+        );
+        cleanup_env();
+    }
+
+    // -----------------------------------------------------------------------
+    // get()
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_api_keys_get_success() {
         let _lock = lock_env().await;
         let mut s = mockito::Server::new_async().await;
         let cfg = test_config(&s.url());
         mock_all(&mut s, r#"{"data": {}}"#).await;
-        let _ = super::get(&cfg, "k1").await;
+        let result = super::get(&cfg, "key-id-123").await;
+        assert!(result.is_ok(), "get should succeed: {:?}", result.err());
         cleanup_env();
     }
 
     #[tokio::test]
-    async fn test_api_keys_delete() {
+    async fn test_api_keys_get_error_404() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("GET", mockito::Matcher::Any)
+            .with_status(404)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["Not Found"]}"#)
+            .create_async()
+            .await;
+        let result = super::get(&cfg, "missing").await;
+        assert!(result.is_err(), "expected error on 404");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("failed to get API key"),
+            "error should mention failed get: {err_msg}"
+        );
+        cleanup_env();
+    }
+
+    // -----------------------------------------------------------------------
+    // create()
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_api_keys_create_success() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {"id":"k1","type":"api_keys"}}"#).await;
+        let result = super::create(&cfg, "my-new-key").await;
+        assert!(result.is_ok(), "create should succeed: {:?}", result.err());
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_api_keys_create_error_400() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("POST", mockito::Matcher::Any)
+            .with_status(400)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["Invalid name"]}"#)
+            .create_async()
+            .await;
+        let result = super::create(&cfg, "").await;
+        assert!(result.is_err(), "expected error on 400");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("failed to create API key"),
+            "error should mention failed create: {err_msg}"
+        );
+        cleanup_env();
+    }
+
+    // -----------------------------------------------------------------------
+    // delete()
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_api_keys_delete_success() {
         let _lock = lock_env().await;
         let mut s = mockito::Server::new_async().await;
         let cfg = test_config(&s.url());
         mock_all(&mut s, r#"{}"#).await;
-        let _ = super::delete(&cfg, "k1").await;
+        let result = super::delete(&cfg, "k1").await;
+        assert!(result.is_ok(), "delete should succeed: {:?}", result.err());
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_api_keys_delete_error_404() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("DELETE", mockito::Matcher::Any)
+            .with_status(404)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["Not Found"]}"#)
+            .create_async()
+            .await;
+        let result = super::delete(&cfg, "nope").await;
+        assert!(result.is_err(), "expected error on 404");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("failed to delete API key"),
+            "error should mention failed delete: {err_msg}"
+        );
         cleanup_env();
     }
 }
