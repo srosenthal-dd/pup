@@ -227,6 +227,9 @@ static UNSTABLE_OPS: &[&str] = &[
     "v2.activate_content_pack",
     "v2.deactivate_content_pack",
     "v2.get_content_packs_states",
+    // Indicators of Compromise (2)
+    "v2.list_indicators_of_compromise",
+    "v2.get_indicator_of_compromise",
     // Code Coverage (2)
     "v2.get_code_coverage_branch_summary",
     "v2.get_code_coverage_commit_summary",
@@ -1015,7 +1018,7 @@ mod tests {
 
     #[test]
     fn test_unstable_ops_count() {
-        assert_eq!(UNSTABLE_OPS.len(), 147);
+        assert_eq!(UNSTABLE_OPS.len(), 149);
     }
 
     #[test]
