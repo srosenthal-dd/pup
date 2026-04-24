@@ -5761,6 +5761,8 @@ enum OnCallPagesActions {
         #[arg(long, help = "Path to JSON file")]
         file: String,
     },
+    /// Get an on-call page by ID
+    Get { page_id: String },
 }
 
 #[derive(Subcommand)]
@@ -11417,6 +11419,9 @@ async fn main_inner() -> anyhow::Result<()> {
                 OnCallActions::Pages { action } => match action {
                     OnCallPagesActions::Create { file } => {
                         commands::on_call::pages_create(&cfg, &file).await?;
+                    }
+                    OnCallPagesActions::Get { page_id } => {
+                        commands::on_call::pages_get(&cfg, &page_id).await?;
                     }
                 },
             }
