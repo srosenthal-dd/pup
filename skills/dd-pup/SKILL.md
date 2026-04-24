@@ -98,7 +98,7 @@ pup metrics list --filter "system.*"
 pup apm services list --env production
 pup apm services stats --env production
 pup apm services operations --env production --service my-service
-pup apm services resources --env production --service my-service --operation http.request
+pup apm services resources --env production --service my-service --name http.request
 pup apm dependencies list --env production
 ```
 

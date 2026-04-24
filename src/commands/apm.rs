@@ -55,7 +55,7 @@ pub async fn services_operations(
 pub async fn services_resources(
     cfg: &Config,
     service: String,
-    operation: String,
+    name: String,
     env: String,
     from: String,
     to: String,
@@ -63,7 +63,7 @@ pub async fn services_resources(
     let from_ts = util::parse_time_to_unix(&from)?;
     let to_ts = util::parse_time_to_unix(&to)?;
     let path = format!(
-        "/api/ui/apm/resources?service={service}&operation={operation}&env={env}&from={from_ts}&to={to_ts}"
+        "/api/ui/apm/resources?service={service}&name={name}&env={env}&from={from_ts}&to={to_ts}"
     );
     let data = client::raw_get(cfg, &path, &[]).await?;
     formatter::output(cfg, &data)
@@ -171,7 +171,7 @@ mod tests {
             .mock("GET", "/api/ui/apm/resources")
             .match_query(mockito::Matcher::AllOf(vec![
                 mockito::Matcher::UrlEncoded("service".into(), "web".into()),
-                mockito::Matcher::UrlEncoded("operation".into(), "http.request".into()),
+                mockito::Matcher::UrlEncoded("name".into(), "http.request".into()),
                 mockito::Matcher::UrlEncoded("env".into(), "prod".into()),
                 mockito::Matcher::Regex("from=".into()),
                 mockito::Matcher::Regex("to=".into()),

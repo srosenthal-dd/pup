@@ -1379,7 +1379,7 @@ READ_COMMANDS: list[dict] = [
     },
     {
         "label": "apm services resources",
-        "args": ["apm", "services", "resources", "--env=prod", "--service=nginx", "--from=1h"],
+        "args": ["apm", "services", "resources", "--env=prod", "--service=nginx", "--name=http.request", "--from=1h"],
         "category": "auth_required",
         "expect_json": True,
         "skip_regression": True,

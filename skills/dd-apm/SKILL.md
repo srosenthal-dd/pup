@@ -56,7 +56,7 @@ pup apm services stats --env production --from 4h
 pup apm services operations --env production --service api-gateway
 
 # List resources (endpoints) for an operation
-pup apm services resources --env production --service api-gateway --operation http.request
+pup apm services resources --env production --service api-gateway --name http.request
 ```
 
 ### Service Dependencies
