@@ -7568,7 +7568,7 @@ enum ApmServiceActions {
         #[arg(long, help = "Service name (required)")]
         service: String,
         #[arg(long, help = "Operation name (required)")]
-        operation: String,
+        name: String,
         #[arg(long, help = "Environment filter (required)")]
         env: String,
         #[arg(long, default_value = "1h", help = "Start time")]
@@ -12561,13 +12561,13 @@ async fn main_inner() -> anyhow::Result<()> {
                     }
                     ApmServiceActions::Resources {
                         service,
-                        operation,
+                        name,
                         env,
                         from,
                         to,
                         ..
                     } => {
-                        commands::apm::services_resources(&cfg, service, operation, env, from, to)
+                        commands::apm::services_resources(&cfg, service, name, env, from, to)
                             .await?;
                     }
                 },
