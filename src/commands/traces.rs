@@ -80,64 +80,9 @@ fn validate_sort(sort: &str) -> Result<()> {
     }
 }
 
-/// Parse a compute string like "count", "avg(@duration)", "percentile(@duration, 99)"
-/// into a (function_name, Option<metric>) pair as raw strings.
-fn parse_compute_raw(input: &str) -> Result<(String, Option<String>)> {
-    let input = input.trim();
-    if input.is_empty() {
-        bail!("--compute is required");
-    }
-
-    // Simple aggregations without a metric
-    if input == "count" {
-        return Ok(("count".into(), None));
-    }
-
-    // func(@field) pattern
-    if let Some(paren) = input.find('(') {
-        let func = &input[..paren];
-        let rest = input[paren + 1..].trim_end_matches(')').trim();
-
-        // Handle percentile(@field, N)
-        if func == "percentile" {
-            let parts: Vec<&str> = rest.splitn(2, ',').collect();
-            if parts.len() != 2 {
-                bail!("percentile requires field and value: percentile(@duration, 99)");
-            }
-            let metric = parts[0].trim().to_string();
-            let pct: u32 = parts[1]
-                .trim()
-                .parse()
-                .map_err(|_| anyhow::anyhow!("invalid percentile value: {}", parts[1].trim()))?;
-            let agg_name = match pct {
-                75 => "pc75",
-                90 => "pc90",
-                95 => "pc95",
-                98 => "pc98",
-                99 => "pc99",
-                _ => bail!("unsupported percentile: {pct} (supported: 75, 90, 95, 98, 99)"),
-            };
-            return Ok((agg_name.into(), Some(metric)));
-        }
-
-        let metric = rest.to_string();
-        let agg_name = match func {
-            "avg" | "sum" | "min" | "max" | "median" | "cardinality" => func.to_string(),
-            "count" => bail!("count does not accept a field argument; use just 'count'"),
-            _ => bail!("unknown aggregation function: {func}"),
-        };
-        return Ok((agg_name, Some(metric)));
-    }
-
-    bail!(
-        "invalid --compute format: {input:?}\n\
-         Expected: count, avg(@duration), sum(@duration), percentile(@duration, 99), etc."
-    )
-}
-
 /// Parse a compute string into (SpansAggregationFunction, Option<metric>).
 fn parse_compute(input: &str) -> Result<(SpansAggregationFunction, Option<String>)> {
-    let (func, metric) = parse_compute_raw(input)?;
+    let (func, metric) = util::parse_compute_raw(input)?;
     let agg = match func.as_str() {
         "count" => SpansAggregationFunction::COUNT,
         "avg" => SpansAggregationFunction::AVG,
