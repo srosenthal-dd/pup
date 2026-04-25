@@ -148,7 +148,7 @@ macro_rules! make_api {
 // Unstable operations table — used by make_dd_config
 // ---------------------------------------------------------------------------
 
-/// All 93 unstable operations (snake_case for the Rust DD client).
+/// All unstable operations (snake_case for the Rust DD client).
 static UNSTABLE_OPS: &[&str] = &[
     // Incidents (26)
     "v2.list_incidents",
