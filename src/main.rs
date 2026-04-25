@@ -4362,6 +4362,11 @@ enum SecurityActions {
         #[command(subcommand)]
         action: SecurityContentPackActions,
     },
+    /// Explore indicators of compromise (IoCs)
+    Iocs {
+        #[command(subcommand)]
+        action: SecurityIocActions,
+    },
     /// Manage ASM WAF custom rules
     #[command(name = "asm-custom-rules")]
     AsmCustomRules {
@@ -4535,6 +4540,33 @@ enum SecurityContentPackActions {
     Activate { pack_id: String },
     /// Deactivate a content pack
     Deactivate { pack_id: String },
+}
+
+#[derive(Subcommand)]
+enum SecurityIocActions {
+    /// List indicators of compromise
+    List {
+        /// Search/filter query (supports field:value syntax)
+        #[arg(long)]
+        query: Option<String>,
+        /// Number of results per page
+        #[arg(long)]
+        limit: Option<i32>,
+        /// Pagination offset
+        #[arg(long)]
+        offset: Option<i32>,
+        /// Sort column (score, first_seen_ts_epoch, last_seen_ts_epoch, indicator, indicator_type, signal_count, log_count, category, as_type)
+        #[arg(long = "sort-column")]
+        sort_column: Option<String>,
+        /// Sort order (asc, desc)
+        #[arg(long = "sort-order")]
+        sort_order: Option<String>,
+    },
+    /// Get a single indicator of compromise
+    Get {
+        /// Indicator value (e.g. IP, domain, hash)
+        indicator: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -10592,6 +10624,28 @@ async fn main_inner() -> anyhow::Result<()> {
                     }
                     SecurityContentPackActions::Deactivate { pack_id } => {
                         commands::security::content_packs_deactivate(&cfg, &pack_id).await?;
+                    }
+                },
+                SecurityActions::Iocs { action } => match action {
+                    SecurityIocActions::List {
+                        query,
+                        limit,
+                        offset,
+                        sort_column,
+                        sort_order,
+                    } => {
+                        commands::security::iocs_list(
+                            &cfg,
+                            query,
+                            limit,
+                            offset,
+                            sort_column,
+                            sort_order,
+                        )
+                        .await?;
+                    }
+                    SecurityIocActions::Get { indicator } => {
+                        commands::security::iocs_get(&cfg, &indicator).await?;
                     }
                 },
                 SecurityActions::RiskScores { action } => match action {

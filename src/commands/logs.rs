@@ -83,56 +83,6 @@ pub fn split_compute_args(input: &str) -> Vec<String> {
     result
 }
 
-fn parse_compute_raw(input: &str) -> Result<(String, Option<String>)> {
-    let input = input.trim();
-    if input.is_empty() {
-        bail!("--compute is required");
-    }
-
-    if input == "count" {
-        return Ok(("count".into(), None));
-    }
-
-    if let Some(paren) = input.find('(') {
-        let func = &input[..paren];
-        let rest = input[paren + 1..].trim_end_matches(')').trim();
-
-        if func == "percentile" {
-            let parts: Vec<&str> = rest.splitn(2, ',').collect();
-            if parts.len() != 2 {
-                bail!("percentile requires field and value: percentile(@duration, 99)");
-            }
-            let metric = parts[0].trim().to_string();
-            let pct: u32 = parts[1]
-                .trim()
-                .parse()
-                .map_err(|_| anyhow::anyhow!("invalid percentile value: {}", parts[1].trim()))?;
-            let agg_name = match pct {
-                75 => "pc75",
-                90 => "pc90",
-                95 => "pc95",
-                98 => "pc98",
-                99 => "pc99",
-                _ => bail!("unsupported percentile: {pct} (supported: 75, 90, 95, 98, 99)"),
-            };
-            return Ok((agg_name.into(), Some(metric)));
-        }
-
-        let metric = rest.to_string();
-        let agg_name = match func {
-            "avg" | "sum" | "min" | "max" | "median" | "cardinality" => func.to_string(),
-            "count" => bail!("count does not accept a field argument; use just 'count'"),
-            _ => bail!("unknown aggregation function: {func}"),
-        };
-        return Ok((agg_name, Some(metric)));
-    }
-
-    bail!(
-        "invalid --compute format: {input:?}\n\
-         Expected: count, avg(@duration), sum(@duration), percentile(@duration, 99), etc."
-    )
-}
-
 const VALID_SORT_AGGREGATIONS: &[&str] = &[
     "count",
     "cardinality",
@@ -187,7 +137,7 @@ fn build_aggregate_body(
     let compute_arr: Vec<serde_json::Value> = computes
         .iter()
         .map(|c| {
-            let (aggregation, metric) = parse_compute_raw(c)?;
+            let (aggregation, metric) = util::parse_compute_raw(c)?;
             let mut obj = serde_json::json!({ "aggregation": aggregation });
             if let Some(m) = metric {
                 obj["metric"] = serde_json::Value::String(m);
@@ -450,107 +400,6 @@ mod tests {
     use crate::test_support::*;
 
     use super::*;
-
-    #[test]
-    fn test_parse_compute_count() {
-        let (aggregation, metric) = parse_compute_raw("count").unwrap();
-        assert_eq!(aggregation, "count");
-        assert!(metric.is_none());
-    }
-
-    #[test]
-    fn test_parse_compute_avg() {
-        let (aggregation, metric) = parse_compute_raw("avg(@duration)").unwrap();
-        assert_eq!(aggregation, "avg");
-        assert_eq!(metric.unwrap(), "@duration");
-    }
-
-    #[test]
-    fn test_parse_compute_sum() {
-        let (aggregation, metric) = parse_compute_raw("sum(@duration)").unwrap();
-        assert_eq!(aggregation, "sum");
-        assert_eq!(metric.unwrap(), "@duration");
-    }
-
-    #[test]
-    fn test_parse_compute_min() {
-        let (aggregation, metric) = parse_compute_raw("min(@duration)").unwrap();
-        assert_eq!(aggregation, "min");
-        assert_eq!(metric.unwrap(), "@duration");
-    }
-
-    #[test]
-    fn test_parse_compute_max() {
-        let (aggregation, metric) = parse_compute_raw("max(@duration)").unwrap();
-        assert_eq!(aggregation, "max");
-        assert_eq!(metric.unwrap(), "@duration");
-    }
-
-    #[test]
-    fn test_parse_compute_median() {
-        let (aggregation, metric) = parse_compute_raw("median(@duration)").unwrap();
-        assert_eq!(aggregation, "median");
-        assert_eq!(metric.unwrap(), "@duration");
-    }
-
-    #[test]
-    fn test_parse_compute_cardinality() {
-        let (aggregation, metric) = parse_compute_raw("cardinality(@usr.id)").unwrap();
-        assert_eq!(aggregation, "cardinality");
-        assert_eq!(metric.unwrap(), "@usr.id");
-    }
-
-    #[test]
-    fn test_parse_compute_percentile_99() {
-        let (aggregation, metric) = parse_compute_raw("percentile(@duration, 99)").unwrap();
-        assert_eq!(aggregation, "pc99");
-        assert_eq!(metric.unwrap(), "@duration");
-    }
-
-    #[test]
-    fn test_parse_compute_percentile_95() {
-        let (aggregation, metric) = parse_compute_raw("percentile(@duration, 95)").unwrap();
-        assert_eq!(aggregation, "pc95");
-        assert_eq!(metric.unwrap(), "@duration");
-    }
-
-    #[test]
-    fn test_parse_compute_percentile_90() {
-        let (aggregation, metric) = parse_compute_raw("percentile(@duration, 90)").unwrap();
-        assert_eq!(aggregation, "pc90");
-        assert_eq!(metric.unwrap(), "@duration");
-    }
-
-    #[test]
-    fn test_parse_compute_empty() {
-        assert!(parse_compute_raw("").is_err());
-    }
-
-    #[test]
-    fn test_parse_compute_invalid() {
-        assert!(parse_compute_raw("invalid").is_err());
-    }
-
-    #[test]
-    fn test_parse_compute_unknown_function() {
-        assert!(parse_compute_raw("foo(@bar)").is_err());
-    }
-
-    #[test]
-    fn test_parse_compute_unsupported_percentile() {
-        assert!(parse_compute_raw("percentile(@duration, 42)").is_err());
-    }
-
-    #[test]
-    fn test_parse_compute_percentile_missing_value() {
-        assert!(parse_compute_raw("percentile(@duration)").is_err());
-    }
-
-    #[test]
-    fn test_parse_compute_rejects_invalid_count_metric() {
-        let err = parse_compute_raw("count(@duration)").unwrap_err();
-        assert!(err.to_string().contains("does not accept a field"));
-    }
 
     #[test]
     fn test_normalize_storage_tier_alias() {
