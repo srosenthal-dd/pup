@@ -11,7 +11,7 @@ Pup supports OAuth2 authentication with PKCE (Proof Key for Code Exchange) for s
 - **PKCE Protection (S256)**: Prevents authorization code interception attacks
 - **Dynamic Client Registration (DCR)**: Each CLI installation gets unique credentials
 - **CSRF Protection**: State parameter validation prevents cross-site request forgery
-- **Secure Token Storage**: Tokens stored in `~/.config/pup/` with restricted permissions (0600)
+- **Secure Token Storage**: Tokens stored in the OS keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service); falls back to a JSON file under `~/.config/pup/` with `0600` permissions when no keychain is available
 - **Automatic Token Refresh**: Seamless token refresh before expiration
 
 ### 🎯 Key Benefits
@@ -37,7 +37,7 @@ This will:
 4. Start a local callback server on `http://127.0.0.1:<random-port>/callback`
 5. Wait for you to approve the requested scopes
 6. Exchange the authorization code for access/refresh tokens
-7. Store tokens securely in `~/.config/pup/`
+7. Store tokens securely (OS keychain, or JSON file under `~/.config/pup/` with `0600` permissions when no keychain is available)
 
 ### 2. Check Status
 
@@ -146,7 +146,13 @@ Proof Key for Code Exchange prevents authorization code interception:
 
 #### Token Storage
 
-Tokens are stored in `~/.config/pup/tokens_<site>.json`:
+Tokens are stored in the OS keychain by default (macOS Keychain, Windows
+Credential Manager, Linux Secret Service via the `keyring` crate). When a
+keychain is unavailable, pup falls back to a JSON file at
+`~/.config/pup/tokens_<site>.json` with `0600` permissions. Set
+`DD_TOKEN_STORAGE=file` to force file storage.
+
+The token payload is:
 
 ```json
 {
@@ -159,11 +165,11 @@ Tokens are stored in `~/.config/pup/tokens_<site>.json`:
 }
 ```
 
-File permissions: `0600` (read/write owner only)
-
 ## OAuth Scopes
 
-Pup requests the following OAuth scopes based on PR #84:
+Pup requests OAuth scopes covering the read/write surface of supported
+commands. The list below is illustrative — see
+[`src/auth/`](../src/auth/) for the canonical, code-driven scope set:
 
 ### Dashboards
 - `dashboards_read` - Read dashboards
@@ -385,10 +391,11 @@ This indicates a potential security issue. Run `pup auth login` again to start a
 
 ```
 src/auth/
-├── mod.rs         # Auth module and common types
+├── mod.rs         # Auth module entry point
+├── types.rs       # Shared auth types
 ├── dcr.rs         # Dynamic Client Registration
-├── oauth.rs       # OAuth2 flow and PKCE
-├── storage.rs     # Token and credential storage
+├── pkce.rs        # PKCE code verifier/challenge generation
+├── storage.rs     # Token and credential storage (keychain + JSON file fallback)
 └── callback.rs    # Local callback server
 ```
 
@@ -401,8 +408,6 @@ src/auth/
 
 ## Future Enhancements
 
-- [ ] OS keychain integration (macOS Keychain, Windows Credential Manager, Linux Secret Service)
-- [ ] Token encryption at rest with machine-specific keys
 - [ ] Automatic token refresh background service
 - [ ] Support for custom OAuth scopes
 - [ ] OAuth2 device flow for headless environments

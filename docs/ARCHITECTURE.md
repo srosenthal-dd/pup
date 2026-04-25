@@ -7,12 +7,11 @@ Technical architecture and design rationale for Pup CLI.
 ### Why Rust?
 
 **Benefits:**
-1. **Performance** - Compiled binary with fast startup (~3ms vs ~45ms in Go)
+1. **Performance** - Compiled binary with fast startup
 2. **Cross-platform** - Single binary for macOS, Linux, Windows
 3. **Memory safety** - No garbage collector, zero-cost abstractions
 4. **Concurrency** - Async/await with tokio runtime
-5. **Small binaries** - ~26MB stripped (31% smaller than Go version)
-6. **Strong type system** - Catch errors at compile time with rich enums
+5. **Strong type system** - Catch errors at compile time with rich enums
 
 **Tradeoffs:**
 - Steeper learning curve than Go
@@ -28,7 +27,7 @@ Technical architecture and design rationale for Pup CLI.
 4. **Type safety** - Derive-based argument parsing
 5. **Documentation** - Excellent docs and examples
 
-### Why Serde + serde_yaml?
+### Why Serde + serde_norway?
 
 **Benefits:**
 1. **Configuration management** - Handles YAML config files
@@ -64,15 +63,16 @@ pup/
 │   ├── version.rs         # Version information
 │   ├── auth/              # Authentication logic
 │   │   ├── mod.rs         # Auth module
-│   │   ├── oauth.rs       # OAuth2 flow + PKCE
+│   │   ├── pkce.rs        # PKCE code verifier/challenge generation
 │   │   ├── dcr.rs         # Dynamic Client Registration
-│   │   ├── storage.rs     # Token storage (keychain + file)
-│   │   └── callback.rs    # OAuth callback server
+│   │   ├── storage.rs     # Token storage (keychain + JSON file fallback)
+│   │   ├── callback.rs    # OAuth callback server
+│   │   └── types.rs       # Shared auth types
 │   └── commands/          # Command implementations
 │       ├── mod.rs         # Command registration
 │       ├── metrics.rs     # Metrics domain
 │       ├── monitors.rs    # Monitors domain
-│       └── ...            # 53 command modules
+│       └── ...            # one module per command group
 ├── Cargo.toml             # Dependencies and metadata
 ├── tests/                 # Integration tests
 │   ├── compare/           # Output comparison tests
@@ -94,14 +94,10 @@ pup/
    - macOS: Keychain (via `keyring` crate with `apple-native` feature)
    - Windows: Credential Manager
    - Linux: Secret Service / Keyring (via `linux-native` feature)
-2. **Encrypted file** (fallback) - When keychain unavailable
-   - Location: `~/.config/pup/tokens.enc`
-   - Encryption: AES-256-GCM (via `aes-gcm` crate)
-   - Key derivation: Machine-specific data
-
-**Why not plaintext?**
-- Security risk if file system compromised
-- Better to require re-auth than expose tokens
+2. **JSON file** (fallback) - When keychain unavailable
+   - Location: `~/.config/pup/tokens_<site>.json`
+   - Permissions: `0600` (owner read/write only) on Unix
+   - The file is plain JSON; do not enable file fallback on shared hosts
 
 ### OAuth2 Flow
 
@@ -113,7 +109,7 @@ Based on [RFC 6749](https://tools.ietf.org/html/rfc6749) and [RFC 7636](https://
 3. Authorization URL -> user approval
 4. Callback Server -> receive code
 5. Token Exchange -> access + refresh tokens
-6. Secure Storage -> keychain or encrypted file
+6. Secure Storage -> keychain (or `0600` JSON file fallback)
 7. Auto Refresh -> before expiration
 ```
 
@@ -150,7 +146,7 @@ pup/v0.1.0 (rust; os darwin; arch arm64; ai-agent claude-code)  # With agent
 
 **AI Agent Detection** (`src/useragent.rs`):
 
-Table-driven registry detecting 12 agents via environment variables. First match wins:
+Table-driven registry detecting AI coding agents via environment variables. First match wins:
 - Claude Code (`CLAUDECODE`, `CLAUDE_CODE`), Cursor (`CURSOR_AGENT`), Codex (`CODEX`, `OPENAI_CODEX`), OpenCode (`OPENCODE`), Aider (`AIDER`), Cline (`CLINE`), Windsurf (`WINDSURF_AGENT`), GitHub Copilot (`GITHUB_COPILOT`), Amazon Q (`AMAZON_Q`, `AWS_Q_DEVELOPER`), Gemini Code Assist (`GEMINI_CODE_ASSIST`), Sourcegraph Cody (`SRC_CODY`), Generic Agent (`AGENT`)
 - Manual override: `FORCE_AGENT_MODE=1` or `--agent` flag
 
@@ -327,7 +323,7 @@ Rust's ownership system ensures:
 ### Threat Model
 
 **Protected against:**
-1. Token theft (encrypted storage)
+1. Token theft (OS keychain primary; file fallback restricted to `0600`)
 2. Code interception (PKCE)
 3. CSRF attacks (state parameter)
 4. Man-in-the-middle (HTTPS only)
@@ -341,7 +337,7 @@ Rust's ownership system ensures:
 ### Security Best Practices
 
 1. **Never commit secrets** - Gitignore tokens, keys
-2. **Encrypt at rest** - Token storage encrypted
+2. **Restrict at-rest tokens** - Keychain primary; file fallback is owner-only (`0600`)
 3. **Validate inputs** - Prevent injection attacks
 4. **Use HTTPS** - All API calls over TLS
 5. **Minimal scopes** - Request only needed permissions

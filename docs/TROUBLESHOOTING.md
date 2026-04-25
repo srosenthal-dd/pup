@@ -87,7 +87,7 @@ ls -la ~/.config/pup/tokens_*.json
 
 **macOS symptoms:**
 ```
-Warning: keychain access denied, using encrypted file storage
+Warning: keychain access denied, using file storage
 ```
 
 **Solutions:**
@@ -99,8 +99,8 @@ Warning: keychain access denied, using encrypted file storage
    - Grant access to pup binary
 
 2. **Use fallback storage:**
-   - Pup automatically falls back to encrypted file
-   - Check: `~/.config/pup/tokens.enc`
+   - Pup automatically falls back to a JSON file
+   - Check: `~/.config/pup/tokens_<site>.json`
    - File permissions should be `0600`
 
 ### API Key Authentication Fails

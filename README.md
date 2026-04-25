@@ -10,9 +10,9 @@ Every AI agent needs a loyal companion. Meet Pup — the CLI that gives your age
 
 ## What is Pup?
 
-A comprehensive, AI-agent-ready CLI with 325+ commands across 57 Datadog product domains. We've unleashed the full power of Datadog's APIs so your agents can fetch metrics, sniff out errors, and track down issues without barking up the wrong API tree.
+A comprehensive, AI-agent-ready CLI covering a wide range of Datadog product domains. We've unleashed the full power of Datadog's APIs so your agents can fetch metrics, sniff out errors, and track down issues without barking up the wrong API tree.
 
-AI agents are the fastest-growing interface for infrastructure management. Companies like Vercel and AWS are racing to make their platforms agent-accessible, but we're leading the pack. Pup makes Datadog the alpha choice for AI-native workflows with 100% documented API coverage while competitors are still learning basic commands.
+AI agents are the fastest-growing interface for infrastructure management. Companies like Vercel and AWS are racing to make their platforms agent-accessible, but we're leading the pack. Pup makes Datadog a great choice for AI-native workflows by exposing the API surface in a way agents can navigate without barking up the wrong tree.
 
 ## Why Your Agent Will Love It
 
@@ -39,18 +39,17 @@ pup metrics query --query="avg:system.cpu.user{*}"   # Track the metrics tail
 
 ## API Coverage
 
-<!-- Last updated: 2026-03-30 | API Client: datadog-api-client-rust v0.28 -->
-
-Pup implements **54 of 85+ available Datadog APIs** (63% coverage) with **325+ subcommands** across **58 command groups**.
-
-See [docs/COMMANDS.md](docs/COMMANDS.md) for detailed command reference.
+Pup covers most major Datadog product surfaces. See
+[docs/COMMANDS.md](docs/COMMANDS.md) for the canonical command reference, or run
+`pup --help` (or `pup agent schema` for machine-readable output) for the live
+list of commands as built.
 
 💡 **Tip:** Use Ctrl/Cmd+F to search for specific APIs. [Request features via GitHub Issues](https://github.com/datadog-labs/pup/issues).
 
 ---
 
 <details>
-<summary><b>📊 Core Observability (5/9 implemented)</b></summary>
+<summary><b>📊 Core Observability</b></summary>
 
 | API Domain | Status | Pup Commands | Notes |
 |------------|--------|--------------|-------|
@@ -59,15 +58,14 @@ See [docs/COMMANDS.md](docs/COMMANDS.md) for detailed command reference.
 | Events | ✅ | `events list`, `events search`, `events get` | Infrastructure event management |
 | RUM | ✅ | `rum apps`, `rum sessions`, `rum metrics`, `rum retention-filters`, `rum playlists`, `rum heatmaps` | Apps, sessions, metrics, retention filters, replay playlists, heatmaps |
 | APM Services | ✅ | `apm services`, `apm entities`, `apm dependencies`, `apm flow-map` | Services stats, operations, resources; entity queries; dependencies; flow visualization |
-| Traces | ❌ | - | Not yet implemented |
-| Profiling | ❌ | - | Not yet implemented |
+| Traces | ✅ | `traces search`, `traces aggregate`, `traces metrics` | Span search/aggregation and span-based metric definitions |
+| Profiling | ✅ | `profiling aggregate`, `profiling analytics`, `profiling timeline`, … | Continuous Profiler queries (requires API + App keys) |
 | Session Replay | ❌ | - | Not yet implemented |
-| Spans Metrics | ❌ | - | Not yet implemented |
 
 </details>
 
 <details>
-<summary><b>🔔 Monitoring & Alerting (8/10 implemented)</b></summary>
+<summary><b>🔔 Monitoring & Alerting</b></summary>
 
 | API Domain | Status | Pup Commands | Notes |
 |------------|--------|--------------|-------|
@@ -86,7 +84,7 @@ See [docs/COMMANDS.md](docs/COMMANDS.md) for detailed command reference.
 </details>
 
 <details>
-<summary><b>🔒 Security & Compliance (6/8 implemented)</b></summary>
+<summary><b>🔒 Security & Compliance</b></summary>
 
 | API Domain | Status | Pup Commands | Notes |
 |------------|--------|--------------|-------|
@@ -96,30 +94,30 @@ See [docs/COMMANDS.md](docs/COMMANDS.md) for detailed command reference.
 | Static Analysis | ✅ | `static-analysis ast`, `static-analysis custom-rulesets`, `static-analysis sca`, `static-analysis coverage` | Code security analysis |
 | Audit Logs | ✅ | `audit-logs list`, `audit-logs search` | Full audit log search and listing |
 | Data Governance | ✅ | `data-governance scanner-rules list` | Sensitive data scanner rules |
-| CSM Threats | ❌ | - | Not yet implemented |
-| Sensitive Data Scanner | ❌ | - | Not yet implemented |
+| CSM Threats | ✅ | `csm-threats` | Cloud Security Management threat rules and agent rules |
+| Sensitive Data Scanner | ✅ | `data-governance scanner-rules list` | Listed via Data Governance row above |
 
 </details>
 
 <details>
-<summary><b>☁️ Infrastructure & Cloud (8/9 implemented)</b></summary>
+<summary><b>☁️ Infrastructure & Cloud</b></summary>
 
 | API Domain | Status | Pup Commands | Notes |
 |------------|--------|--------------|-------|
 | Infrastructure | ✅ | `infrastructure hosts list`, `infrastructure hosts get` | Host inventory management |
 | Tags | ✅ | `tags list`, `tags get`, `tags add`, `tags update`, `tags delete` | Host tag operations |
-| Network | ⏳ | `network flows list`, `network devices list` | Placeholder — API endpoints pending |
+| Network | ✅ | `network flows list`, `network devices`, `network interfaces` | Network flows, device inventory, interface tags |
 | Cloud (AWS) | ✅ | `cloud aws list`, `cloud aws cloud-auth persona-mappings` | AWS integration management with persona mapping CRUD |
 | Cloud (GCP) | ✅ | `cloud gcp list` | GCP integration management |
 | Cloud (Azure) | ✅ | `cloud azure list` | Azure integration management |
-| Cloud (OCI) | ✅ | `cloud oci` | **New** — Oracle Cloud tenancy configs and products |
+| Cloud (OCI) | ✅ | `cloud oci` | Oracle Cloud tenancy configs and products |
 | Containers | ✅ | `containers list`, `containers images list` | Containers |
-| Processes | ❌ | - | Not yet implemented |
+| Processes | ✅ | `processes list` | Process inventory query |
 
 </details>
 
 <details>
-<summary><b>🚨 Incident & Operations (10/11 implemented)</b></summary>
+<summary><b>🚨 Incident & Operations</b></summary>
 
 | API Domain | Status | Pup Commands | Notes |
 |------------|--------|--------------|-------|
@@ -133,24 +131,24 @@ See [docs/COMMANDS.md](docs/COMMANDS.md) for detailed command reference.
 | HAMR | ✅ | `hamr connections get`, `hamr connections create` | **New** — High Availability Multi-Region connections |
 | Investigations | ✅ | `investigations list`, `investigations get`, `investigations trigger` | Bits AI SRE investigation management |
 | Change Management | ✅ | `change-management create`, `change-management get`, `change-management update`, `change-management create-branch`, `change-management decisions` | Change request management with decisions and branching |
-| Incident Services/Teams | ❌ | - | Not yet implemented |
+| Incident Services/Teams | ✅ | `incidents services`, `incidents teams` | Service and team CRUD scoped to incident management |
 
 </details>
 
 <details>
-<summary><b>🔧 CI/CD & Development (4/4 implemented)</b></summary>
+<summary><b>🔧 CI/CD & Development</b></summary>
 
 | API Domain | Status | Pup Commands | Notes |
 |------------|--------|--------------|-------|
 | CI Visibility | ✅ | `cicd pipelines list`, `cicd events list` | CI/CD pipeline visibility and events |
-| Test Optimization | ✅ | `cicd tests`, `cicd flaky-tests` | **New** — Test events and flaky test management |
-| DORA Metrics | ✅ | `cicd dora` | **New** — DORA deployment patching |
-| Code Coverage | ✅ | `code-coverage branch-summary`, `code-coverage commit-summary` | **New** — Branch and commit-level coverage summaries |
+| Test Optimization | ✅ | `cicd tests`, `cicd flaky-tests`, `test-optimization` | Test events, flaky test management, and Test Optimization API |
+| DORA Metrics | ✅ | `cicd dora` | DORA deployment patching |
+| Code Coverage | ✅ | `code-coverage branch-summary`, `code-coverage commit-summary` | Branch and commit-level coverage summaries |
 
 </details>
 
 <details>
-<summary><b>👥 Organization & Access (5/6 implemented)</b></summary>
+<summary><b>👥 Organization & Access</b></summary>
 
 | API Domain | Status | Pup Commands | Notes |
 |------------|--------|--------------|-------|
@@ -164,7 +162,7 @@ See [docs/COMMANDS.md](docs/COMMANDS.md) for detailed command reference.
 </details>
 
 <details>
-<summary><b>⚙️ Platform & Configuration (9/11 implemented)</b></summary>
+<summary><b>⚙️ Platform & Configuration</b></summary>
 
 | API Domain | Status | Pup Commands | Notes |
 |------------|--------|--------------|-------|
@@ -177,7 +175,7 @@ See [docs/COMMANDS.md](docs/COMMANDS.md) for detailed command reference.
 | Reference Tables | ✅ | `reference-tables list`, `reference-tables get`, `reference-tables create`, `reference-tables batch-query` | **New** — Reference table management for log enrichment |
 | Miscellaneous | ✅ | `misc ip-ranges`, `misc status` | IP ranges and status |
 | App Builder | ✅ | `app-builder list`, `app-builder get`, `app-builder create`, `app-builder update`, `app-builder delete`, `app-builder publish` | Low-code app management with publish/unpublish and batch delete |
-| Key Management | ❌ | - | Not yet implemented |
+| Key Management | ✅ | `api-keys`, `app-keys` | API key and application key CRUD (listed in Organization & Access above) |
 | IP Allowlist | ❌ | - | Not yet implemented |
 
 </details>
@@ -486,7 +484,7 @@ See `docs/examples/runbooks/` for ready-to-use examples and [docs/EXAMPLES.md](d
 
 ## Agent Skills
 
-Pup ships 7 skills and 48 domain agents embedded in the binary, installable to any AI coding assistant.
+Pup ships a set of skills and domain agents embedded in the binary, installable to any AI coding assistant. Run `pup skills list` to see what's available in the version you have installed.
 
 ```bash
 # Install all skills and agents for your AI assistant

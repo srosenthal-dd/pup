@@ -340,7 +340,7 @@ Error responses in agent mode:
 
 | File | Purpose |
 |------|---------|
-| `src/useragent.rs` | Agent detection (12 agents + FORCE_AGENT_MODE) |
+| `src/useragent.rs` | Agent detection (table-driven registry + FORCE_AGENT_MODE) |
 | `src/commands/agent.rs` | Schema generation, `pup agent schema`, `pup agent guide` |
 | `src/formatter.rs` | Agent envelope and structured errors |
 | `src/config.rs` | `agent_mode` field on Config |

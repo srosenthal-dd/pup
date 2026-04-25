@@ -1,6 +1,8 @@
 # Command Reference
 
-Complete reference for all 58 command groups in Pup.
+Complete reference for the command groups in Pup. Run `pup --help` (or `pup
+agent schema --compact`) for the live, exhaustive list as built into your
+binary — the table below is curated documentation and may lag the source.
 
 ## Command Pattern
 
@@ -81,8 +83,6 @@ pup <domain> <subgroup> <action> [options] # Nested commands
 | investigations | list, get, trigger | src/commands/investigations.rs | ✅ |
 | change-requests | create, get, update, create-branch, decisions (update, delete) | src/commands/change_management.rs | ✅ |
 | app-builder | list, get, create, update, delete, delete-batch, publish, unpublish | src/commands/app_builder.rs | ✅ |
-
-**Summary:** 59 working, 0 API-blocked, 0 placeholders
 
 **Note:** RUM command is fully operational. Apps and sessions work completely. Metrics and retention-filters support list/get operations (create/update/delete operations pending due to complex API type structures).
 

@@ -7858,7 +7858,9 @@ enum InvestigationActions {
     },
 }
 
-// ---- Network (placeholder) ----
+// ---- Network ----
+// `List` is a stub (the top-level network monitors API isn't wired yet);
+// `Flows`, `Devices`, and `Interfaces` are implemented.
 #[derive(Subcommand)]
 enum NetworkActions {
     /// List network devices/monitors
@@ -8507,7 +8509,7 @@ enum AcpActions {
     },
 }
 
-// ---- Agent (placeholder) ----
+// ---- Agent ----
 #[derive(Subcommand)]
 enum AgentActions {
     /// Output command schema as JSON
@@ -12962,10 +12964,12 @@ async fn main_inner() -> anyhow::Result<()> {
                 }
             }
         }
-        // --- Network (placeholder) ---
+        // --- Network ---
         Commands::Network { action } => match action {
             NetworkActions::List => {
-                anyhow::bail!("network commands are not yet implemented (API endpoints pending)")
+                anyhow::bail!(
+                    "the bare `pup network list` is not implemented; use `pup network flows`, `pup network devices`, or `pup network interfaces`"
+                )
             }
             NetworkActions::Flows { action } => match action {
                 NetworkFlowActions::List => {
