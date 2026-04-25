@@ -178,7 +178,7 @@ mod tests {
 
 **Stage specific files** (avoid `git add .`):
 ```bash
-git add src/auth/oauth.rs src/auth/mod.rs
+git add src/auth/pkce.rs src/auth/mod.rs
 ```
 
 **Commit with conventional format:**
@@ -242,7 +242,7 @@ gh pr create \
 Brief overview of what this PR does (1-2 sentences).
 
 ## Changes
-- Specific change 1 with file reference (src/auth/oauth.rs:123)
+- Specific change 1 with file reference (src/auth/pkce.rs:123)
 - Specific change 2 with file reference
 - Specific change 3 with file reference
 
@@ -289,7 +289,7 @@ Implements automatic OAuth2 token refresh using PKCE flow to maintain authentica
 - Added token refresher in src/auth/refresh.rs:45
 - Implemented background refresh scheduler
 - Added unit tests in src/auth/refresh.rs (tests module)
-- Updated OAuth client to use refresh tokens in src/auth/oauth.rs:123
+- Updated OAuth client to use refresh tokens in src/auth/pkce.rs:123
 
 ## Testing
 - Unit tests verify refresh token exchange (98% coverage)
@@ -347,7 +347,7 @@ See [TESTING.md](TESTING.md) for detailed testing guidelines.
 - Validate state parameter to prevent CSRF
 - Never log or print access/refresh tokens
 - Use OS keychain for primary token storage
-- Encrypt fallback file storage with AES-256-GCM
+- Restrict fallback file-storage permissions to `0600`
 
 ## Documentation
 
