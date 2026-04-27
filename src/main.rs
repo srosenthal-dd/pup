@@ -1435,8 +1435,14 @@ enum Commands {
     ///   • completed: Post-incident tasks completed (postmortem, etc.)
     ///
     /// EXAMPLES:
-    ///   # List all incidents
+    ///   # List active incidents (default)
     ///   pup incidents list
+    ///
+    ///   # List resolved incidents
+    ///   pup incidents list --query="state:resolved"
+    ///
+    ///   # Filter by severity
+    ///   pup incidents list --query="severity:SEV-2"
     ///
     ///   # Get detailed incident information
     ///   pup incidents get abc-123-def
@@ -3000,6 +3006,11 @@ enum LogMetricActions {
 enum IncidentActions {
     /// List all incidents
     List {
+        #[arg(
+            long,
+            help = "Filter incidents using Datadog incidents search syntax (e.g., 'state:resolved', 'severity:SEV-2', 'state:(active OR stable)'). Defaults to 'state:active'."
+        )]
+        query: Option<String>,
         #[arg(long, default_value_t = 50)]
         limit: i64,
     },
@@ -9990,8 +10001,8 @@ async fn main_inner() -> anyhow::Result<()> {
         Commands::Incidents { action } => {
             cfg.validate_auth()?;
             match action {
-                IncidentActions::List { limit } => {
-                    commands::incidents::list(&cfg, limit).await?;
+                IncidentActions::List { query, limit } => {
+                    commands::incidents::list(&cfg, query, limit).await?;
                 }
                 IncidentActions::Get { incident_id } => {
                     commands::incidents::get(&cfg, &incident_id).await?;
