@@ -26,7 +26,7 @@ Pup CLI for Datadog API operations. Supports OAuth2 and API key auth.
 | List hosts | `pup infrastructure hosts list` |
 | Check SLOs | `pup slos list` |
 | On-call teams | `pup on-call teams list` |
-| Security signals | `pup security signals list --from 24h` |
+| Security signals | `pup security signals list --query "*" --from 24h` |
 | Inspect runtime values | `pup debugger probes create --service my-svc --env prod --probe-location com.example.MyClass:myMethod` |
 | Find probe-able methods | `pup symdb search --service my-svc --query MyController --view probe-locations` |
 | Check auth | `pup auth status` |
@@ -155,7 +155,7 @@ pup downtime cancel abc-123-def
 ```bash
 pup infrastructure hosts list
 pup infrastructure hosts list --filter "env:prod"
-pup infrastructure hosts list --count
+pup infrastructure hosts list --count 100
 pup infrastructure hosts get <host-id>
 ```
 
@@ -177,7 +177,7 @@ pup on-call teams get <team-id>
 
 ### Security
 ```bash
-pup security signals list --from 24h
+pup security signals list --query "*" --from 24h
 pup security signals list --query "severity:critical" --from 24h
 pup security rules list
 ```
