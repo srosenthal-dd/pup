@@ -35,13 +35,13 @@ pup auth login
 ```bash
 pup monitors list
 pup monitors list --tags "team:platform"
-pup monitors list --status "Alert"
+pup monitors search --query "status:Alert"
 ```
 
 ### Get Monitor
 
 ```bash
-pup monitors get <id> --json
+pup monitors get <id>
 ```
 
 ### Create Monitor
@@ -167,10 +167,10 @@ def safe_mark_monitor_for_deletion(monitor_id: str, client) -> bool:
 
 ```bash
 # Find monitors without owners
-pup monitors list --json | jq '.[] | select(.tags | contains(["team:"]) | not) | {id, name}'
+pup monitors list | jq '.[] | select(.tags | contains(["team:"]) | not) | {id, name}'
 
 # Find noisy monitors (high alert count)
-pup monitors list --json | jq 'sort_by(.overall_state_modified) | .[:10] | .[] | {id, name, status: .overall_state}'
+pup monitors list | jq 'sort_by(.overall_state_modified) | .[:10] | .[] | {id, name, status: .overall_state}'
 ```
 
 ## Downtime vs Muting
