@@ -832,6 +832,38 @@ fn apply_auth(
     anyhow::bail!("no authentication configured")
 }
 
+/// POST a JSON:API document. Wraps `attributes` in `{data:{type,attributes}}`
+/// and sends with `Content-Type: application/vnd.api+json`. Use for dsm-api
+/// routes whose rapid-framework decoder is configured for JSON:API
+/// (e.g. `/api/ui/data_streams/kafka_actions/read_messages`).
+pub async fn raw_post_jsonapi(
+    cfg: &Config,
+    path: &str,
+    resource_type: &str,
+    attributes: serde_json::Value,
+) -> anyhow::Result<serde_json::Value> {
+    let url = format!("{}{}", cfg.api_base_url(), path);
+    let envelope = serde_json::json!({
+        "data": { "type": resource_type, "attributes": attributes },
+    });
+    let client = reqwest::Client::new();
+    let mut req = client.post(&url);
+    req = apply_auth(req, cfg, "POST", path)?;
+    let resp = req
+        .header("Content-Type", "application/vnd.api+json")
+        .header("Accept", "application/vnd.api+json")
+        .header("User-Agent", useragent::get())
+        .json(&envelope)
+        .send()
+        .await?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("POST {url} failed (HTTP {status}): {body}");
+    }
+    Ok(resp.json().await?)
+}
+
 /// Like `raw_post`, but returns the parsed JSON body even on non-2xx responses.
 /// Callers are responsible for inspecting the body for errors.
 pub async fn raw_post_lenient(

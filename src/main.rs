@@ -8783,10 +8783,6 @@ enum DataStreamsActions {
         max_scanned_messages: u32,
         #[arg(long, help = "Message filter expression")]
         filter: Option<String>,
-        #[arg(long, help = "Value format: avro|json|protobuf|raw|string")]
-        value_format: Option<String>,
-        #[arg(long, help = "Key format: avro|json|protobuf|raw|string")]
-        key_format: Option<String>,
         #[arg(long, help = "Consumer group ID to use")]
         consumer_group_id: Option<String>,
     },
@@ -13857,8 +13853,6 @@ async fn main_inner() -> anyhow::Result<()> {
                     n_messages_retrieved,
                     max_scanned_messages,
                     filter,
-                    value_format,
-                    key_format,
                     consumer_group_id,
                 } => {
                     commands::data_streams::read_messages(
@@ -13872,8 +13866,6 @@ async fn main_inner() -> anyhow::Result<()> {
                         n_messages_retrieved,
                         max_scanned_messages,
                         filter,
-                        value_format,
-                        key_format,
                         consumer_group_id,
                     )
                     .await?;

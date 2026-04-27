@@ -81,10 +81,13 @@ pub async fn kafka_client_configs(
 /// POST /api/ui/data_streams/kafka_actions/read_messages
 ///
 /// Dispatches a Kafka read-messages action to the agent via Remote Config and
-/// polls until the agent responds. The caller's org must have a Datadog Agent
-/// reachable by Remote Config that can connect to the target cluster, and the
-/// caller must have the `data_streams_capture_messages` permission. Calls are
-/// rate-limited to 10 per minute per user by dsm-api.
+/// polls until the agent responds. Requires the
+/// `data_streams_capture_messages` permission.
+///
+/// Body is wrapped in a JSON:API envelope because dsm-api configures this
+/// route with rapid's default JSON:API content type. Key/value formats and
+/// schemas are intentionally not exposed: dsm-api auto-resolves them from the
+/// schema registry / persisted DSM message schemas when omitted.
 #[allow(clippy::too_many_arguments)]
 pub async fn read_messages(
     cfg: &Config,
@@ -97,11 +100,9 @@ pub async fn read_messages(
     n_messages_retrieved: u32,
     max_scanned_messages: u32,
     filter: Option<String>,
-    value_format: Option<String>,
-    key_format: Option<String>,
     consumer_group_id: Option<String>,
 ) -> Result<()> {
-    let mut body = json!({
+    let mut attrs = json!({
         "cluster": cluster,
         "topic": topic,
         "bootstrap_servers": bootstrap_servers,
@@ -110,27 +111,26 @@ pub async fn read_messages(
         "max_scanned_messages": max_scanned_messages,
     });
     if let Some(p) = partition {
-        body["partition"] = json!(p);
+        attrs["partition"] = json!(p);
     }
     if let Some(ts) = start_timestamp {
-        body["start_timestamp"] = json!(ts);
+        attrs["start_timestamp"] = json!(ts);
     }
     if let Some(f) = filter {
-        body["filter"] = json!(f);
-    }
-    if let Some(vf) = value_format {
-        body["value_format"] = json!(vf);
-    }
-    if let Some(kf) = key_format {
-        body["key_format"] = json!(kf);
+        attrs["filter"] = json!(f);
     }
     if let Some(cg) = consumer_group_id {
-        body["consumer_group_id"] = json!(cg);
+        attrs["consumer_group_id"] = json!(cg);
     }
 
-    let resp = client::raw_post(cfg, READ_MESSAGES_PATH, body)
-        .await
-        .map_err(|e| anyhow::anyhow!("failed to read kafka messages: {e:?}"))?;
+    let resp = client::raw_post_jsonapi(
+        cfg,
+        READ_MESSAGES_PATH,
+        "kafka_action_read_messages",
+        attrs,
+    )
+    .await
+    .map_err(|e| anyhow::anyhow!("failed to read kafka messages: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
 
