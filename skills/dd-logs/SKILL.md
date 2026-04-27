@@ -37,8 +37,8 @@ pup logs search --query="status:error" --from="1h"
 # With filters
 pup logs search --query="service:api status:error" --from="1h" --limit 100
 
-# JSON output
-pup logs search --query="@http.status_code:>=500" --from="1h" --json
+# JSON output is the default
+pup logs search --query="@http.status_code:>=500" --from="1h"
 ```
 
 ### Search Syntax
@@ -58,10 +58,10 @@ Process logs before indexing:
 
 ```bash
 # List pipelines
-pup logs pipelines list
+pup obs-pipelines list
 
 # Create pipeline (JSON)
-pup logs pipelines create --json @pipeline.json
+pup obs-pipelines create --file pipeline.json
 ```
 
 ### Common Processors
@@ -108,7 +108,7 @@ pup logs pipelines create --json @pipeline.json
 
 ```bash
 # Find noisiest log sources
-pup logs search --query="*" --from="1h" --json | jq 'group_by(.service) | map({service: .[0].service, count: length}) | sort_by(-.count)[:10]'
+pup logs search --query="*" --from="1h" | jq 'group_by(.service) | map({service: .[0].service, count: length}) | sort_by(-.count)[:10]'
 ```
 
 | Exclude | Query |
@@ -139,27 +139,13 @@ pup logs archives list
 }
 ```
 
-### Rehydrate (Restore)
-
-```bash
-# Rehydrate archived logs
-pup logs rehydrate create \
-  --archive-id abc123 \
-  --from "2024-01-01T00:00:00Z" \
-  --to "2024-01-02T00:00:00Z" \
-  --query "service:api status:error"
-```
-
 ## Log-Based Metrics
 
-Create metrics from logs (cheaper than indexing):
+Inspect log-based metrics:
 
 ```bash
-# Count errors per service
-pup logs metrics create \
-  --name "api.errors.count" \
-  --query "service:api status:error" \
-  --group-by "endpoint"
+# List existing log-based metrics
+pup logs metrics list
 ```
 
 **⚠️ Cardinality warning:** Group by bounded values only.

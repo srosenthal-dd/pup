@@ -47,24 +47,20 @@ pup monitors get <id>
 ### Create Monitor
 
 ```bash
-pup monitors create \
-  --name "High CPU on web servers" \
-  --type "metric alert" \
-  --query "avg(last_5m):avg:system.cpu.user{env:prod} > 80" \
-  --message "CPU above 80% @slack-ops"
+pup monitors create --file monitor.json
 ```
 
 ### Mute/Unmute
 
 ```bash
 # Mute with duration
-pup monitors mute --id 12345 --duration 1h
+pup monitors update 12345 --file monitor-muted.json
 
 # Or mute with specific end time
-pup monitors mute --id 12345 --end "2024-01-15T18:00:00Z"
+pup monitors update 12345 --file monitor-muted-until.json
 
 # Unmute
-pup monitors unmute --id 12345
+pup monitors update 12345 --file monitor-unmuted.json
 ```
 
 ## ⚠️ Monitor Creation Best Practices
@@ -182,11 +178,7 @@ pup monitors list | jq 'sort_by(.overall_state_modified) | .[:10] | .[] | {id, n
 
 ```bash
 # Downtime (preferred)
-pup downtime create \
-  --scope "env:prod" \
-  --monitor-tags "team:platform" \
-  --start "2024-01-15T02:00:00Z" \
-  --end "2024-01-15T06:00:00Z"
+pup downtime create --file downtime.json
 ```
 
 ## Failure Handling
