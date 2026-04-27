@@ -29,13 +29,14 @@ fn make_api(cfg: &Config) -> IncidentsAPI {
 // Core incident operations
 // ---------------------------------------------------------------------------
 
-pub async fn list(cfg: &Config, limit: i64) -> Result<()> {
+pub async fn list(cfg: &Config, query: Option<String>, limit: i64) -> Result<()> {
     let api = make_api(cfg);
     let params = SearchIncidentsOptionalParams::default()
         .page_size(limit)
         .sort(IncidentSearchSortOrder::CREATED_DESCENDING);
+    let q = query.unwrap_or_else(|| "state:active".to_string());
     let resp = api
-        .search_incidents("state:active".to_string(), params)
+        .search_incidents(q, params)
         .await
         .map_err(|e| anyhow::anyhow!("failed to list incidents: {:?}", e))?;
     formatter::output(cfg, &resp)?;
@@ -364,7 +365,7 @@ mod tests {
         let mut s = mockito::Server::new_async().await;
         let cfg = test_config(&s.url());
         mock_all(&mut s, r#"{"data": []}"#).await;
-        let _ = super::list(&cfg, 10).await;
+        let _ = super::list(&cfg, None, 10).await;
         cleanup_env();
     }
 
