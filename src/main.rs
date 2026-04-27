@@ -8781,7 +8781,22 @@ enum DataStreamsActions {
         n_messages_retrieved: u32,
         #[arg(long, default_value_t = 1000, help = "Max messages to scan (<=10000)")]
         max_scanned_messages: u32,
-        #[arg(long, help = "Message filter expression")]
+        /// Optional jq-style filter expression evaluated agent-side against each
+        /// deserialized message. The message context exposes top-level fields
+        /// .key, .value, .headers, .topic, .partition, .offset, and .timestamp;
+        /// navigate nested fields with dotted paths (e.g. .value.user.country).
+        /// Supported operators: ==, !=, >, <, >=, <=, contains. Combine with
+        /// ' and ' / ' or ' (or has higher precedence; or is split first).
+        /// String literals must be quoted with " or '. Numeric literals are
+        /// parsed as int/float. A bare path (no operator) is an existence
+        /// check — true when the field resolves to a non-null value.
+        /// Examples:
+        ///   '.value.status == "failed"'
+        ///   '.value.amount > 100'
+        ///   '.headers.tenant == "acme" and .value.priority >= 5'
+        ///   '.value.tags contains "urgent"'
+        ///   '.value.error' (existence)
+        #[arg(long, verbatim_doc_comment)]
         filter: Option<String>,
         #[arg(long, help = "Consumer group ID to use")]
         consumer_group_id: Option<String>,

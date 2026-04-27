@@ -55,6 +55,25 @@ pup data-streams read-messages \
 
 `--value-format` and `--key-format` are intentionally not exposed: dsm-api auto-resolves them from the schema registry / persisted DSM message schemas when omitted.
 
+### `--filter` expressions
+
+`--filter` is a jq-style expression evaluated agent-side against each deserialized message. The message context exposes top-level fields `.key`, `.value`, `.headers`, `.topic`, `.partition`, `.offset`, and `.timestamp`; navigate nested fields with dotted paths (e.g. `.value.user.country`).
+
+- Operators: `==`, `!=`, `>`, `<`, `>=`, `<=`, `contains`.
+- Combine with ` and ` / ` or ` (note: `or` has higher precedence — it is split first).
+- String literals must be quoted with `"` or `'`. Numeric literals are parsed as int/float.
+- A bare path (no operator) is an existence check — true when the field resolves to a non-null value.
+
+Examples:
+
+```bash
+--filter='.value.status == "failed"'
+--filter='.value.amount > 100'
+--filter='.headers.tenant == "acme" and .value.priority >= 5'
+--filter='.value.tags contains "urgent"'
+--filter='.value.error'   # existence
+```
+
 ## Auto-discovering arguments via Datadog metrics
 
 Before calling `read-messages`, you almost never have the `kafka_cluster_id` / `bootstrap_servers` / partition / offset on hand. Resolve them by querying Datadog metrics with `pup metrics query`. **DSM Kafka tools are usable only when `kafka.broker.count` is reported for the cluster** — if that metric is empty, do not call `read-messages`.
