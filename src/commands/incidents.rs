@@ -369,6 +369,67 @@ mod tests {
         cleanup_env();
     }
 
+    /// When a `--query` is supplied, it must be forwarded as the
+    /// `filter[query]` URL parameter on the incidents-search request.
+    #[tokio::test]
+    async fn test_incidents_list_forwards_query() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+
+        // Strict mock: only matches when the request URL contains the
+        // URL-encoded `filter[query]=state:resolved`. Any other query
+        // string falls through and the request fails.
+        let _mock = s
+            .mock("GET", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::UrlEncoded(
+                "filter[query]".into(),
+                "state:resolved".into(),
+            ))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data": []}"#)
+            .create_async()
+            .await;
+
+        let result = super::list(&cfg, Some("state:resolved".to_string()), 10).await;
+        assert!(
+            result.is_ok(),
+            "list with --query=state:resolved should forward the query: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    /// When `--query` is omitted, the default `state:active` must still be
+    /// sent on the wire, preserving the previous CLI behavior.
+    #[tokio::test]
+    async fn test_incidents_list_defaults_to_state_active() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+
+        let _mock = s
+            .mock("GET", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::UrlEncoded(
+                "filter[query]".into(),
+                "state:active".into(),
+            ))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data": []}"#)
+            .create_async()
+            .await;
+
+        let result = super::list(&cfg, None, 10).await;
+        assert!(
+            result.is_ok(),
+            "list with no --query should default to state:active: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
     #[tokio::test]
     async fn test_incidents_get() {
         let _lock = lock_env().await;
