@@ -370,25 +370,25 @@ mod tests {
     }
 
     /// When a `--query` is supplied, it must be forwarded as the
-    /// `filter[query]` URL parameter on the incidents-search request.
+    /// `query` URL parameter on the incidents-search request.
     #[tokio::test]
     async fn test_incidents_list_forwards_query() {
         let _lock = lock_env().await;
         let mut s = mockito::Server::new_async().await;
         let cfg = test_config(&s.url());
 
-        // Strict mock: only matches when the request URL contains the
-        // URL-encoded `filter[query]=state:resolved`. Any other query
-        // string falls through and the request fails.
+        // Strict mock: only matches when the request URL contains
+        // `query=state:resolved`. Any other query string falls through
+        // and the request fails.
         let _mock = s
             .mock("GET", mockito::Matcher::Any)
             .match_query(mockito::Matcher::UrlEncoded(
-                "filter[query]".into(),
+                "query".into(),
                 "state:resolved".into(),
             ))
             .with_status(200)
             .with_header("content-type", "application/json")
-            .with_body(r#"{"data": []}"#)
+            .with_body(r#"{"data": {}}"#)
             .create_async()
             .await;
 
@@ -412,12 +412,12 @@ mod tests {
         let _mock = s
             .mock("GET", mockito::Matcher::Any)
             .match_query(mockito::Matcher::UrlEncoded(
-                "filter[query]".into(),
+                "query".into(),
                 "state:active".into(),
             ))
             .with_status(200)
             .with_header("content-type", "application/json")
-            .with_body(r#"{"data": []}"#)
+            .with_body(r#"{"data": {}}"#)
             .create_async()
             .await;
 
