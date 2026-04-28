@@ -1553,6 +1553,36 @@ enum Commands {
         #[command(subcommand)]
         action: InvestigationActions,
     },
+    /// [Experimental] Inspect Kafka clusters via Datadog
+    ///
+    /// Experimental. The API surface is not covered by Datadog's public API
+    /// compatibility guarantees and may change without notice. OAuth2 bearer
+    /// auth only.
+    ///
+    /// CAPABILITIES:
+    ///   • Inspect Kafka topic / broker configuration
+    ///   • Inspect Kafka producer / consumer client configuration
+    ///   • List Kafka Schema Registry schemas / subject history
+    ///   • Read messages from a Kafka cluster / topic (requires agent + perm)
+    ///
+    /// EXAMPLES:
+    ///   pup kafka topic-configs --kafka-cluster-id <id> --topic <t>
+    ///   pup kafka broker-configs --kafka-cluster-id <id> --broker-id <b>
+    ///   pup kafka client-configs --kafka-cluster-id <id> \
+    ///       --service web:producer --service worker:consumer
+    ///   pup kafka read-messages --cluster <id> --topic <t> \
+    ///       --bootstrap-servers <brokers>
+    ///
+    /// AUTHENTICATION:
+    ///   Requires OAuth2 bearer token (`pup auth login`). API keys are not
+    ///   accepted by these endpoints. `read-messages` additionally requires
+    ///   the `data_streams_capture_messages` permission on the calling user
+    ///   and a Datadog Agent reachable via Remote Config.
+    #[command(verbatim_doc_comment)]
+    Kafka {
+        #[command(subcommand)]
+        action: KafkaActions,
+    },
     /// Manage LLM Observability projects, experiments, and datasets
     ///
     /// Manage LLM Observability resources for AI/ML application monitoring.
@@ -2672,34 +2702,6 @@ enum Commands {
     Workflows {
         #[command(subcommand)]
         action: WorkflowActions,
-    },
-    /// [Experimental] Data Streams Monitoring (DSM) commands
-    ///
-    /// Backed by `/api/ui/data_streams/...` on dsm-api. This API surface is
-    /// experimental and may change without notice. OAuth2 bearer auth only.
-    ///
-    /// CAPABILITIES:
-    ///   • Inspect Kafka topic / broker configuration
-    ///   • Inspect Kafka producer / consumer client configuration
-    ///   • Read messages from a Kafka cluster / topic (requires agent + perm)
-    ///
-    /// EXAMPLES:
-    ///   pup data-streams kafka-topic-configs --kafka-cluster-id <id> --topic <t>
-    ///   pup data-streams kafka-broker-configs --kafka-cluster-id <id> --broker-id <b>
-    ///   pup data-streams kafka-client-configs --kafka-cluster-id <id> \
-    ///       --service web:producer --service worker:consumer
-    ///   pup data-streams read-messages --cluster <id> --topic <t> \
-    ///       --bootstrap-servers <brokers>
-    ///
-    /// AUTHENTICATION:
-    ///   Requires OAuth2 bearer token (`pup auth login`). API keys are not
-    ///   accepted by `/api/ui/` endpoints. `read-messages` additionally
-    ///   requires the `data_streams_capture_messages` permission on the
-    ///   calling user and a Datadog Agent reachable via Remote Config.
-    #[command(name = "data-streams", verbatim_doc_comment)]
-    DataStreams {
-        #[command(subcommand)]
-        action: DataStreamsActions,
     },
 }
 
@@ -8728,28 +8730,28 @@ enum StaticAnalysisCustomRuleActions {
     },
 }
 
-// ---- Data Streams (Experimental) ----
+// ---- Kafka (Experimental) ----
 #[derive(Subcommand)]
-enum DataStreamsActions {
+enum KafkaActions {
     /// Get Kafka topic configuration versions
-    #[command(name = "kafka-topic-configs")]
-    KafkaTopicConfigs {
+    #[command(name = "topic-configs")]
+    TopicConfigs {
         #[arg(long, help = "Kafka cluster ID")]
         kafka_cluster_id: String,
         #[arg(long, help = "Kafka topic name")]
         topic: String,
     },
     /// Get Kafka broker configuration versions
-    #[command(name = "kafka-broker-configs")]
-    KafkaBrokerConfigs {
+    #[command(name = "broker-configs")]
+    BrokerConfigs {
         #[arg(long, help = "Kafka cluster ID")]
         kafka_cluster_id: String,
         #[arg(long, help = "Broker ID")]
         broker_id: String,
     },
     /// Get Kafka client (producer/consumer) configuration
-    #[command(name = "kafka-client-configs")]
-    KafkaClientConfigs {
+    #[command(name = "client-configs")]
+    ClientConfigs {
         #[arg(long, help = "Kafka cluster ID")]
         kafka_cluster_id: String,
         /// Service to fetch configs for in the form `name:producer` or
@@ -8802,16 +8804,16 @@ enum DataStreamsActions {
         consumer_group_id: Option<String>,
     },
     /// List all Kafka Schema Registry schemas for the org
-    #[command(name = "all-kafka-schemas")]
-    AllKafkaSchemas {
+    #[command(name = "all-schemas")]
+    AllSchemas {
         #[arg(long, help = "Start time (unix seconds, optional)")]
         start_unix: Option<i64>,
         #[arg(long, help = "End time (unix seconds, optional)")]
         end_unix: Option<i64>,
     },
     /// Get all Schema Registry versions for a subject on a cluster
-    #[command(name = "subject-kafka-schemas")]
-    SubjectKafkaSchemas {
+    #[command(name = "subject-schemas")]
+    SubjectSchemas {
         #[arg(long, help = "Kafka cluster ID")]
         kafka_cluster_id: String,
         #[arg(long, help = "Schema Registry subject name")]
@@ -13798,29 +13800,23 @@ async fn main_inner() -> anyhow::Result<()> {
                 },
             }
         }
-        // --- Data Streams (Experimental) ---
-        Commands::DataStreams { action } => {
+        // --- Kafka (Experimental) ---
+        Commands::Kafka { action } => {
             cfg.validate_auth()?;
             match action {
-                DataStreamsActions::KafkaTopicConfigs {
+                KafkaActions::TopicConfigs {
                     kafka_cluster_id,
                     topic,
                 } => {
-                    commands::data_streams::kafka_topic_configs(&cfg, &kafka_cluster_id, &topic)
-                        .await?;
+                    commands::kafka::topic_configs(&cfg, &kafka_cluster_id, &topic).await?;
                 }
-                DataStreamsActions::KafkaBrokerConfigs {
+                KafkaActions::BrokerConfigs {
                     kafka_cluster_id,
                     broker_id,
                 } => {
-                    commands::data_streams::kafka_broker_configs(
-                        &cfg,
-                        &kafka_cluster_id,
-                        &broker_id,
-                    )
-                    .await?;
+                    commands::kafka::broker_configs(&cfg, &kafka_cluster_id, &broker_id).await?;
                 }
-                DataStreamsActions::KafkaClientConfigs {
+                KafkaActions::ClientConfigs {
                     kafka_cluster_id,
                     services,
                 } => {
@@ -13838,27 +13834,21 @@ async fn main_inner() -> anyhow::Result<()> {
                         }
                         parsed.push((name.to_string(), kind.to_string()));
                     }
-                    commands::data_streams::kafka_client_configs(&cfg, &kafka_cluster_id, parsed)
-                        .await?;
+                    commands::kafka::client_configs(&cfg, &kafka_cluster_id, parsed).await?;
                 }
-                DataStreamsActions::AllKafkaSchemas {
+                KafkaActions::AllSchemas {
                     start_unix,
                     end_unix,
                 } => {
-                    commands::data_streams::all_kafka_schemas(&cfg, start_unix, end_unix).await?;
+                    commands::kafka::all_schemas(&cfg, start_unix, end_unix).await?;
                 }
-                DataStreamsActions::SubjectKafkaSchemas {
+                KafkaActions::SubjectSchemas {
                     kafka_cluster_id,
                     subject,
                 } => {
-                    commands::data_streams::subject_kafka_schemas(
-                        &cfg,
-                        &kafka_cluster_id,
-                        &subject,
-                    )
-                    .await?;
+                    commands::kafka::subject_schemas(&cfg, &kafka_cluster_id, &subject).await?;
                 }
-                DataStreamsActions::ReadMessages {
+                KafkaActions::ReadMessages {
                     cluster,
                     topic,
                     bootstrap_servers,
@@ -13870,7 +13860,7 @@ async fn main_inner() -> anyhow::Result<()> {
                     filter,
                     consumer_group_id,
                 } => {
-                    commands::data_streams::read_messages(
+                    commands::kafka::read_messages(
                         &cfg,
                         &cluster,
                         &topic,

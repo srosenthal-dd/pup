@@ -1,14 +1,8 @@
-//! Data Streams Monitoring (DSM) commands.
+//! [Experimental] Kafka inspection commands.
 //!
-//! These endpoints are backed by `/api/ui/data_streams/...` on dsm-api and are
-//! considered **experimental** — the API surface is not covered by Datadog's
-//! public API compatibility guarantees and may change without notice.
-//!
-//! Endpoints:
-//!   • GET  /api/ui/data_streams/kafka_topic_configs
-//!   • GET  /api/ui/data_streams/kafka_broker_configs
-//!   • POST /api/ui/data_streams/kafka_client_configs
-//!   • POST /api/ui/data_streams/kafka_actions/read_messages
+//! These endpoints are experimental — the API surface is not covered by
+//! Datadog's public API compatibility guarantees and may change without
+//! notice.
 //!
 //! Authentication: OAuth2 bearer token (e.g. `pup auth login`). DD_API_KEY +
 //! DD_APP_KEY is not accepted by these UI routes.
@@ -24,11 +18,10 @@ const TOPIC_CONFIGS_PATH: &str = "/api/ui/data_streams/kafka_topic_configs";
 const BROKER_CONFIGS_PATH: &str = "/api/ui/data_streams/kafka_broker_configs";
 const CLIENT_CONFIGS_PATH: &str = "/api/ui/data_streams/kafka_client_configs";
 const READ_MESSAGES_PATH: &str = "/api/ui/data_streams/kafka_actions/read_messages";
-const ALL_KAFKA_SCHEMAS_PATH: &str = "/api/ui/data_streams/all_kafka_schemas";
-const SUBJECT_KAFKA_SCHEMAS_PATH: &str = "/api/ui/data_streams/subject_kafka_schemas";
+const ALL_SCHEMAS_PATH: &str = "/api/ui/data_streams/all_kafka_schemas";
+const SUBJECT_SCHEMAS_PATH: &str = "/api/ui/data_streams/subject_kafka_schemas";
 
-/// GET /api/ui/data_streams/kafka_topic_configs
-pub async fn kafka_topic_configs(cfg: &Config, kafka_cluster_id: &str, topic: &str) -> Result<()> {
+pub async fn topic_configs(cfg: &Config, kafka_cluster_id: &str, topic: &str) -> Result<()> {
     let query = [("kafka_cluster_id", kafka_cluster_id), ("topic", topic)];
     let resp = client::raw_get(cfg, TOPIC_CONFIGS_PATH, &query)
         .await
@@ -36,12 +29,7 @@ pub async fn kafka_topic_configs(cfg: &Config, kafka_cluster_id: &str, topic: &s
     formatter::output(cfg, &resp)
 }
 
-/// GET /api/ui/data_streams/kafka_broker_configs
-pub async fn kafka_broker_configs(
-    cfg: &Config,
-    kafka_cluster_id: &str,
-    broker_id: &str,
-) -> Result<()> {
+pub async fn broker_configs(cfg: &Config, kafka_cluster_id: &str, broker_id: &str) -> Result<()> {
     let query = [
         ("kafka_cluster_id", kafka_cluster_id),
         ("broker_id", broker_id),
@@ -52,11 +40,9 @@ pub async fn kafka_broker_configs(
     formatter::output(cfg, &resp)
 }
 
-/// POST /api/ui/data_streams/kafka_client_configs
-///
 /// `services` is a list of `service:config_type` pairs where `config_type` is
 /// either `producer` or `consumer`.
-pub async fn kafka_client_configs(
+pub async fn client_configs(
     cfg: &Config,
     kafka_cluster_id: &str,
     services: Vec<(String, String)>,
@@ -78,16 +64,8 @@ pub async fn kafka_client_configs(
     formatter::output(cfg, &resp)
 }
 
-/// POST /api/ui/data_streams/kafka_actions/read_messages
-///
 /// Dispatches a Kafka read-messages action to the agent via Remote Config and
-/// polls until the agent responds. Requires the
-/// `data_streams_capture_messages` permission.
-///
-/// Body is wrapped in a JSON:API envelope because dsm-api configures this
-/// route with rapid's default JSON:API content type. Key/value formats and
-/// schemas are intentionally not exposed: dsm-api auto-resolves them from the
-/// schema registry / persisted DSM message schemas when omitted.
+/// polls until the agent responds.
 #[allow(clippy::too_many_arguments)]
 pub async fn read_messages(
     cfg: &Config,
@@ -123,22 +101,17 @@ pub async fn read_messages(
         attrs["consumer_group_id"] = json!(cg);
     }
 
-    let resp = client::raw_post_jsonapi(
-        cfg,
-        READ_MESSAGES_PATH,
-        "kafka_action_read_messages",
-        attrs,
-    )
-    .await
-    .map_err(|e| anyhow::anyhow!("failed to read kafka messages: {e:?}"))?;
+    let resp =
+        client::raw_post_jsonapi(cfg, READ_MESSAGES_PATH, "kafka_action_read_messages", attrs)
+            .await
+            .map_err(|e| anyhow::anyhow!("failed to read kafka messages: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
 
-/// GET /api/ui/data_streams/all_kafka_schemas — every Kafka Schema Registry
-/// schema known to DSM for the org within the given time window. `start_unix`
-/// and `end_unix` are optional unix-seconds; when omitted dsm-api defaults to
-/// roughly the last hour.
-pub async fn all_kafka_schemas(
+/// Every Kafka Schema Registry schema known for the org within the given time
+/// window. `start_unix` and `end_unix` are optional unix-seconds; when omitted
+/// the server defaults to roughly the last hour.
+pub async fn all_schemas(
     cfg: &Config,
     start_unix: Option<i64>,
     end_unix: Option<i64>,
@@ -151,24 +124,16 @@ pub async fn all_kafka_schemas(
         query.push(("end_unix", e.to_string()));
     }
     let query_refs: Vec<(&str, &str)> = query.iter().map(|(k, v)| (*k, v.as_str())).collect();
-    let resp = client::raw_get(cfg, ALL_KAFKA_SCHEMAS_PATH, &query_refs)
+    let resp = client::raw_get(cfg, ALL_SCHEMAS_PATH, &query_refs)
         .await
         .map_err(|e| anyhow::anyhow!("failed to list kafka schema registry schemas: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
 
-/// GET /api/ui/data_streams/subject_kafka_schemas — all version history of a
-/// single Schema Registry subject on a Kafka cluster.
-pub async fn subject_kafka_schemas(
-    cfg: &Config,
-    kafka_cluster_id: &str,
-    subject: &str,
-) -> Result<()> {
-    let query = [
-        ("kafka_cluster_id", kafka_cluster_id),
-        ("subject", subject),
-    ];
-    let resp = client::raw_get(cfg, SUBJECT_KAFKA_SCHEMAS_PATH, &query)
+/// All version history of a single Schema Registry subject on a Kafka cluster.
+pub async fn subject_schemas(cfg: &Config, kafka_cluster_id: &str, subject: &str) -> Result<()> {
+    let query = [("kafka_cluster_id", kafka_cluster_id), ("subject", subject)];
+    let resp = client::raw_get(cfg, SUBJECT_SCHEMAS_PATH, &query)
         .await
         .map_err(|e| anyhow::anyhow!("failed to get subject kafka schemas: {e:?}"))?;
     formatter::output(cfg, &resp)

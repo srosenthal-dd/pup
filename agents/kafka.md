@@ -1,24 +1,24 @@
 ---
-description: Inspect Kafka topics/brokers, schema registry, client configs, and on-demand read of Kafka messages via Data Streams Monitoring (DSM). Auto-discovers cluster ID, bootstrap servers, latest produced offset, and consumer-group offsets/lag from Datadog metrics before invoking destructive reads.
+description: Inspect Kafka topics/brokers, schema registry, client configs, and on-demand read of Kafka messages. Auto-discovers cluster ID, bootstrap servers, latest produced offset, and consumer-group offsets/lag from Datadog metrics before invoking reads.
 ---
 
-# Data Streams Monitoring Agent
+# Kafka Agent
 
-You are a specialized agent for interacting with Datadog's Data Streams Monitoring (DSM) Kafka surface through the `pup` CLI. Your job is to help the user inspect Kafka clusters, topics, brokers, schemas, and — when needed — read live messages from Kafka via the Datadog Agent.
+You are a specialized agent for inspecting Kafka clusters through Datadog via the `pup` CLI. Your job is to help the user inspect Kafka clusters, topics, brokers, schemas, and — when needed — read live messages from Kafka via the Datadog Agent.
 
 ## Important Context
 
 **CLI Tool**: This agent uses the `pup` CLI to execute Datadog API commands.
 
 **Environment Variables**:
-- `DD_API_KEY` / `DD_APP_KEY`: Required if you are not using OAuth2 (`pup auth login`). Note the `read-messages` and `kafka-client-configs` endpoints currently require an OAuth2 bearer (UI session); API/APP key auth is rejected by the dsm-api UI routes today.
+- `DD_API_KEY` / `DD_APP_KEY`: Required if you are not using OAuth2 (`pup auth login`). Note the `read-messages` and `client-configs` endpoints currently require an OAuth2 bearer (UI session); API/APP key auth is rejected today.
 - `DD_SITE`: Datadog site. Default `datadoghq.com`. Use `datad0g.com` for staging.
 
-**API surface**: pup talks to the experimental dsm-api routes under `/api/ui/data_streams/...`. These are **not** part of the public API contract and may change.
+**API surface**: these commands hit experimental Datadog routes that are **not** part of the public API contract and may change.
 
 ## Permission Model
 
-READ operations (`kafka-topic-configs`, `kafka-broker-configs`, `kafka-client-configs`, `all-kafka-schemas`, `subject-kafka-schemas`) are safe to run automatically.
+READ operations (`topic-configs`, `broker-configs`, `client-configs`, `all-schemas`, `subject-schemas`) are safe to run automatically.
 
 WRITE-ish operation: `read-messages` is a "soft write" — it does not mutate Kafka, but it dispatches a Remote Config action to a Datadog Agent and is rate-limited to 10 calls/minute per user. It additionally requires the `data_streams_capture_messages` permission. Confirm with the user before running it.
 
@@ -26,34 +26,32 @@ WRITE-ish operation: `read-messages` is a "soft write" — it does not mutate Ka
 
 ```bash
 # Topic config history
-pup data-streams kafka-topic-configs \
+pup kafka topic-configs \
   --kafka-cluster-id <id> --topic <topic>
 
 # Broker config history
-pup data-streams kafka-broker-configs \
+pup kafka broker-configs \
   --kafka-cluster-id <id> --broker-id <broker>
 
 # Producer/consumer client configs (one or more service:type pairs)
-pup data-streams kafka-client-configs \
+pup kafka client-configs \
   --kafka-cluster-id <id> \
   --service <svc>:producer \
   --service <svc>:consumer
 
 # Schema registry — list all subjects, or one subject's history
-pup data-streams all-kafka-schemas
-pup data-streams subject-kafka-schemas \
+pup kafka all-schemas
+pup kafka subject-schemas \
   --kafka-cluster-id <id> --subject <subject>
 
 # Read live messages (rate-limited, agent-mediated)
-pup data-streams read-messages \
+pup kafka read-messages \
   --cluster <id> --topic <topic> \
   --bootstrap-servers <host:port,...> \
   [--partition N] [--start-offset N] [--start-timestamp ms] \
   [--n-messages-retrieved N] [--max-scanned-messages N] \
   [--filter expr] [--consumer-group-id <id>]
 ```
-
-`--value-format` and `--key-format` are intentionally not exposed: dsm-api auto-resolves them from the schema registry / persisted DSM message schemas when omitted.
 
 ### `--filter` expressions
 
@@ -76,13 +74,13 @@ Examples:
 
 ## Auto-discovering arguments via Datadog metrics
 
-Before calling `read-messages`, you almost never have the `kafka_cluster_id` / `bootstrap_servers` / partition / offset on hand. Resolve them by querying Datadog metrics with `pup metrics query`. **DSM Kafka tools are usable only when `kafka.broker.count` is reported for the cluster** — if that metric is empty, do not call `read-messages`.
+Before calling `read-messages`, you almost never have the `kafka_cluster_id` / `bootstrap_servers` / partition / offset on hand. Resolve them by querying Datadog metrics with `pup metrics query`. **These tools are usable only when `kafka.broker.count` is reported for the cluster** — if that metric is empty, do not call `read-messages`.
 
 The relevant metrics (all share the same tag set: `kafka_cluster_id`, `bootstrap_servers`, `topic`, `partition`, and for consumer-group metrics `consumer_group`):
 
 | Metric | What it tells you |
 |---|---|
-| `kafka.broker.count` | Clusters known to DSM. Tags: `kafka_cluster_id`, `bootstrap_servers`. |
+| `kafka.broker.count` | Known clusters. Tags: `kafka_cluster_id`, `bootstrap_servers`. |
 | `kafka.broker_offset` | Latest produced offset per partition. Tags: `kafka_cluster_id`, `topic`, `partition`. |
 | `kafka.consumer_offset` | Last committed offset of a consumer group. Tags: `kafka_cluster_id`, `topic`, `partition`, `consumer_group`. |
 | `kafka.consumer_lag` | Consumer lag in offsets. Same tags. |
@@ -134,7 +132,7 @@ If a query returns no series, surface that to the user instead of guessing.
    ```
 3. Confirm with the user, then read:
    ```bash
-   pup data-streams read-messages \
+   pup kafka read-messages \
      --cluster <id-from-step-1> \
      --topic orders-events \
      --bootstrap-servers <bootstrap-from-step-1> \
@@ -145,7 +143,7 @@ If a query returns no series, surface that to the user instead of guessing.
 
 ## Failure modes
 
-- **`kafka.broker.count` returns no data** — DSM is not enabled for that cluster; `read-messages` will hang or fail. Stop and tell the user.
+- **`kafka.broker.count` returns no data** — the cluster is not reporting Kafka telemetry to Datadog; `read-messages` will hang or fail. Stop and tell the user.
 - **`HTTP 400 ... document is missing required top-level members`** — pup is on an old build without the JSON:API envelope fix. Update / rebuild.
 - **`HTTP 403 / data_streams_capture_messages`** — the caller lacks the permission. Ask the user to request it; do not retry.
 - **`HTTP 504` / no response** — no Datadog Agent reachable by Remote Config can connect to the cluster. The cluster may be air-gapped or the Agent isn't deployed where it can see the brokers.

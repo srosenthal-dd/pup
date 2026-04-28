@@ -833,9 +833,8 @@ fn apply_auth(
 }
 
 /// POST a JSON:API document. Wraps `attributes` in `{data:{type,attributes}}`
-/// and sends with `Content-Type: application/vnd.api+json`. Use for dsm-api
-/// routes whose rapid-framework decoder is configured for JSON:API
-/// (e.g. `/api/ui/data_streams/kafka_actions/read_messages`).
+/// and sends with `Content-Type: application/vnd.api+json`. Use for routes
+/// whose decoder is configured for JSON:API.
 pub async fn raw_post_jsonapi(
     cfg: &Config,
     path: &str,
