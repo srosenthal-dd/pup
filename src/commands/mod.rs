@@ -45,6 +45,7 @@ pub mod incidents;
 pub mod infrastructure;
 pub mod integrations;
 pub mod investigations;
+pub mod kafka;
 pub mod llm_obs;
 pub mod logs;
 pub mod logs_restriction;
