@@ -22,10 +22,12 @@ use datadog_api_client::datadogV2::model::{
     ApplicationSecurityWafExclusionFilterUpdateRequest, RestrictionPolicyUpdateRequest,
     SecurityMonitoringRuleBulkExportAttributes, SecurityMonitoringRuleBulkExportData,
     SecurityMonitoringRuleBulkExportDataType, SecurityMonitoringRuleBulkExportPayload,
-    SecurityMonitoringRuleSort, SecurityMonitoringSignalListRequest,
-    SecurityMonitoringSignalListRequestFilter, SecurityMonitoringSignalListRequestPage,
-    SecurityMonitoringSignalsSort, SecurityMonitoringSuppressionCreateRequest,
-    SecurityMonitoringSuppressionSort, SecurityMonitoringSuppressionUpdateRequest,
+    SecurityMonitoringRuleConvertPayload, SecurityMonitoringRuleSort,
+    SecurityMonitoringSignalListRequest, SecurityMonitoringSignalListRequestFilter,
+    SecurityMonitoringSignalListRequestPage, SecurityMonitoringSignalsSort,
+    SecurityMonitoringSuppressionCreateRequest, SecurityMonitoringSuppressionSort,
+    SecurityMonitoringSuppressionUpdateRequest, SecurityMonitoringTerraformBulkExportRequest,
+    SecurityMonitoringTerraformConvertRequest, SecurityMonitoringTerraformResourceType,
 };
 
 const SCHEMA_URL: &str = "https://docs.datadoghq.com/security/guide/findings-schema.md";
@@ -296,6 +298,71 @@ pub async fn rules_bulk_export(cfg: &Config, rule_ids: Vec<String>) -> Result<()
     let output = String::from_utf8_lossy(&resp);
     println!("{output}");
     Ok(())
+}
+
+// ---- Terraform export ----
+
+fn parse_terraform_resource_type(s: &str) -> Result<SecurityMonitoringTerraformResourceType> {
+    Ok(match s {
+        "suppressions" => SecurityMonitoringTerraformResourceType::SUPPRESSIONS,
+        "critical_assets" => SecurityMonitoringTerraformResourceType::CRITICAL_ASSETS,
+        _ => {
+            anyhow::bail!("invalid resource-type '{s}' — use one of: suppressions, critical_assets")
+        }
+    })
+}
+
+pub async fn rules_to_terraform(cfg: &Config, file: &str) -> Result<()> {
+    let body: SecurityMonitoringRuleConvertPayload = util::read_json_file(file)?;
+    let api = crate::make_api!(SecurityMonitoringAPI, cfg);
+    let resp = api
+        .convert_security_monitoring_rule_from_json_to_terraform(body)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to convert rule to Terraform: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn terraform_export(cfg: &Config, resource_type: &str, resource_id: &str) -> Result<()> {
+    let rt = parse_terraform_resource_type(resource_type)?;
+    let api = crate::make_api!(SecurityMonitoringAPI, cfg);
+    let resp = api
+        .export_security_monitoring_terraform_resource(rt, resource_id.to_string())
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to export Terraform resource: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn terraform_bulk_export(
+    cfg: &Config,
+    resource_type: &str,
+    file: &str,
+    output_file: &str,
+) -> Result<()> {
+    let rt = parse_terraform_resource_type(resource_type)?;
+    let body: SecurityMonitoringTerraformBulkExportRequest = util::read_json_file(file)?;
+    let api = crate::make_api!(SecurityMonitoringAPI, cfg);
+    let bytes = api
+        .bulk_export_security_monitoring_terraform_resources(rt, body)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to bulk export Terraform resources: {e:?}"))?;
+    std::fs::write(output_file, &bytes)
+        .map_err(|e| anyhow::anyhow!("failed to write to '{output_file}': {e}"))?;
+    eprintln!(
+        "Wrote {} bytes (zip archive) to '{output_file}'.",
+        bytes.len()
+    );
+    Ok(())
+}
+
+pub async fn terraform_convert(cfg: &Config, resource_type: &str, file: &str) -> Result<()> {
+    let rt = parse_terraform_resource_type(resource_type)?;
+    let body: SecurityMonitoringTerraformConvertRequest = util::read_json_file(file)?;
+    let api = crate::make_api!(SecurityMonitoringAPI, cfg);
+    let resp = api
+        .convert_security_monitoring_terraform_resource(rt, body)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to convert Terraform resource: {e:?}"))?;
+    formatter::output(cfg, &resp)
 }
 
 // ---- Content Packs ----
@@ -768,6 +835,159 @@ mod tests {
             .await;
         let result = super::iocs_get(&cfg, "missing").await;
         assert!(result.is_err(), "expected error for 404 response");
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_security_rules_to_terraform() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let tmp = write_temp_json("pup_test_rule_to_tf.json", r#"{"rule":{}}"#);
+        let _mock = mock_any(
+            &mut server,
+            "POST",
+            r#"{"rule_id":"abc","resource":"resource \"x\" \"y\" {}"}"#,
+        )
+        .await;
+        let result = super::rules_to_terraform(&cfg, tmp.to_str().unwrap()).await;
+        assert!(
+            result.is_ok(),
+            "rules_to_terraform failed: {:?}",
+            result.err()
+        );
+        let _ = std::fs::remove_file(tmp);
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_security_terraform_export() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", r#"{}"#).await;
+        let result = super::terraform_export(&cfg, "suppressions", "abc-123").await;
+        assert!(
+            result.is_ok(),
+            "terraform_export failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_security_terraform_export_bad_resource_type() {
+        let _lock = lock_env().await;
+        let cfg = test_config("http://unused.local");
+        let result = super::terraform_export(&cfg, "bogus", "abc-123").await;
+        assert!(result.is_err(), "expected resource-type parse error");
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid resource-type"));
+    }
+
+    #[tokio::test]
+    async fn test_security_terraform_bulk_export() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let body_tmp = write_temp_json(
+            "pup_test_tf_bulk.json",
+            r#"{"data":{"type":"bulk_export_resources","attributes":{"resource_ids":["abc"]}}}"#,
+        );
+        let zip_bytes: &[u8] = b"PK\x03\x04fake-zip-bytes";
+        let _mock = server
+            .mock("POST", mockito::Matcher::Any)
+            .with_status(200)
+            .with_header("content-type", "application/zip")
+            .with_body(zip_bytes)
+            .create_async()
+            .await;
+        let out = std::env::temp_dir().join("pup_test_tf_bulk_out.zip");
+        let out_str = out.to_str().unwrap();
+        let result = super::terraform_bulk_export(
+            &cfg,
+            "critical_assets",
+            body_tmp.to_str().unwrap(),
+            out_str,
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "terraform_bulk_export failed: {:?}",
+            result.err()
+        );
+        let written = std::fs::read(&out).expect("expected output file to exist");
+        assert_eq!(written, zip_bytes);
+        let _ = std::fs::remove_file(&out);
+        let _ = std::fs::remove_file(body_tmp);
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_security_terraform_bulk_export_bad_type() {
+        let _lock = lock_env().await;
+        let cfg = test_config("http://unused.local");
+        let result = super::terraform_bulk_export(
+            &cfg,
+            "bogus",
+            "/nonexistent/path.json",
+            "/nonexistent/out.zip",
+        )
+        .await;
+        assert!(result.is_err(), "expected resource-type parse error");
+    }
+
+    #[tokio::test]
+    async fn test_security_terraform_convert() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let tmp = write_temp_json(
+            "pup_test_tf_convert.json",
+            r#"{"data":{"id":"abc","type":"convert_resource","attributes":{"resource_json":{}}}}"#,
+        );
+        let _mock = mock_any(&mut server, "POST", r#"{}"#).await;
+        let result = super::terraform_convert(&cfg, "suppressions", tmp.to_str().unwrap()).await;
+        assert!(
+            result.is_ok(),
+            "terraform_convert failed: {:?}",
+            result.err()
+        );
+        let _ = std::fs::remove_file(tmp);
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_security_terraform_convert_403() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let tmp = write_temp_json(
+            "pup_test_tf_convert_403.json",
+            r#"{"data":{"id":"abc","type":"convert_resource","attributes":{"resource_json":{}}}}"#,
+        );
+        let _mock = server
+            .mock("POST", mockito::Matcher::Any)
+            .with_status(403)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["Forbidden"]}"#)
+            .create_async()
+            .await;
+        let result = super::terraform_convert(&cfg, "suppressions", tmp.to_str().unwrap()).await;
+        assert!(result.is_err(), "expected 403 error");
+        let _ = std::fs::remove_file(tmp);
         cleanup_env();
         std::env::remove_var("DD_TOKEN_STORAGE");
     }
