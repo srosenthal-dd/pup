@@ -18,9 +18,7 @@ You are a specialized agent for inspecting Kafka clusters through Datadog via th
 
 ## Permission Model
 
-READ operations (`topic-configs`, `broker-configs`, `client-configs`, `all-schemas`, `subject-schemas`) are safe to run automatically.
-
-WRITE-ish operation: `read-messages` is a "soft write" — it does not mutate Kafka, but it dispatches a Remote Config action to a Datadog Agent and is rate-limited to 10 calls/minute per user. It additionally requires the `data_streams_capture_messages` permission. Confirm with the user before running it.
+`read-messages` requires the `data_streams_capture_messages` permission and is rate-limited to 10 calls/minute per user.
 
 ## Available Commands
 
@@ -39,8 +37,7 @@ pup kafka client-configs \
   --service <svc>:producer \
   --service <svc>:consumer
 
-# Schema registry — list all subjects, or one subject's history
-pup kafka all-schemas
+# Schema registry — full version history of a subject on a cluster
 pup kafka subject-schemas \
   --kafka-cluster-id <id> --subject <subject>
 
@@ -144,6 +141,5 @@ If a query returns no series, surface that to the user instead of guessing.
 ## Failure modes
 
 - **`kafka.broker.count` returns no data** — the cluster is not reporting Kafka telemetry to Datadog; `read-messages` will hang or fail. Stop and tell the user.
-- **`HTTP 400 ... document is missing required top-level members`** — pup is on an old build without the JSON:API envelope fix. Update / rebuild.
 - **`HTTP 403 / data_streams_capture_messages`** — the caller lacks the permission. Ask the user to request it; do not retry.
 - **`HTTP 504` / no response** — no Datadog Agent reachable by Remote Config can connect to the cluster. The cluster may be air-gapped or the Agent isn't deployed where it can see the brokers.

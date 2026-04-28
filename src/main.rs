@@ -8803,14 +8803,6 @@ enum KafkaActions {
         #[arg(long, help = "Consumer group ID to use")]
         consumer_group_id: Option<String>,
     },
-    /// List all Kafka Schema Registry schemas for the org
-    #[command(name = "all-schemas")]
-    AllSchemas {
-        #[arg(long, help = "Start time (unix seconds, optional)")]
-        start_unix: Option<i64>,
-        #[arg(long, help = "End time (unix seconds, optional)")]
-        end_unix: Option<i64>,
-    },
     /// Get all Schema Registry versions for a subject on a cluster
     #[command(name = "subject-schemas")]
     SubjectSchemas {
@@ -13835,12 +13827,6 @@ async fn main_inner() -> anyhow::Result<()> {
                         parsed.push((name.to_string(), kind.to_string()));
                     }
                     commands::kafka::client_configs(&cfg, &kafka_cluster_id, parsed).await?;
-                }
-                KafkaActions::AllSchemas {
-                    start_unix,
-                    end_unix,
-                } => {
-                    commands::kafka::all_schemas(&cfg, start_unix, end_unix).await?;
                 }
                 KafkaActions::SubjectSchemas {
                     kafka_cluster_id,

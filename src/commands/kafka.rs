@@ -18,7 +18,6 @@ const TOPIC_CONFIGS_PATH: &str = "/api/ui/data_streams/kafka_topic_configs";
 const BROKER_CONFIGS_PATH: &str = "/api/ui/data_streams/kafka_broker_configs";
 const CLIENT_CONFIGS_PATH: &str = "/api/ui/data_streams/kafka_client_configs";
 const READ_MESSAGES_PATH: &str = "/api/ui/data_streams/kafka_actions/read_messages";
-const ALL_SCHEMAS_PATH: &str = "/api/ui/data_streams/all_kafka_schemas";
 const SUBJECT_SCHEMAS_PATH: &str = "/api/ui/data_streams/subject_kafka_schemas";
 
 pub async fn topic_configs(cfg: &Config, kafka_cluster_id: &str, topic: &str) -> Result<()> {
@@ -105,28 +104,6 @@ pub async fn read_messages(
         client::raw_post_jsonapi(cfg, READ_MESSAGES_PATH, "kafka_action_read_messages", attrs)
             .await
             .map_err(|e| anyhow::anyhow!("failed to read kafka messages: {e:?}"))?;
-    formatter::output(cfg, &resp)
-}
-
-/// Every Kafka Schema Registry schema known for the org within the given time
-/// window. `start_unix` and `end_unix` are optional unix-seconds; when omitted
-/// the server defaults to roughly the last hour.
-pub async fn all_schemas(
-    cfg: &Config,
-    start_unix: Option<i64>,
-    end_unix: Option<i64>,
-) -> Result<()> {
-    let mut query: Vec<(&str, String)> = Vec::new();
-    if let Some(s) = start_unix {
-        query.push(("start_unix", s.to_string()));
-    }
-    if let Some(e) = end_unix {
-        query.push(("end_unix", e.to_string()));
-    }
-    let query_refs: Vec<(&str, &str)> = query.iter().map(|(k, v)| (*k, v.as_str())).collect();
-    let resp = client::raw_get(cfg, ALL_SCHEMAS_PATH, &query_refs)
-        .await
-        .map_err(|e| anyhow::anyhow!("failed to list kafka schema registry schemas: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
 
