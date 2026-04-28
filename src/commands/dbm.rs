@@ -48,7 +48,7 @@ pub async fn samples_search(
     limit: i32,
     sort: String,
 ) -> Result<()> {
-    cfg.validate_api_and_app_keys()?;
+    cfg.validate_auth()?;
 
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;
@@ -180,6 +180,79 @@ mod tests {
             result.is_ok(),
             "dbm samples search failed: {:?}",
             result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_dbm_samples_search_accepts_oauth_bearer_token() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let mut cfg = test_config(&server.url());
+        // Simulate OAuth-only auth: bearer token configured, no API/APP keys.
+        cfg.api_key = None;
+        cfg.app_key = None;
+        cfg.access_token = Some("oauth-bearer-token".into());
+        std::env::remove_var("DD_API_KEY");
+        std::env::remove_var("DD_APP_KEY");
+
+        let _mock = server
+            .mock("POST", "/api/v1/logs-analytics/list")
+            .match_query(mockito::Matcher::UrlEncoded(
+                "type".into(),
+                "databasequery".into(),
+            ))
+            .match_header("Authorization", "Bearer oauth-bearer-token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data":[]}"#)
+            .create_async()
+            .await;
+
+        let result = super::samples_search(
+            &cfg,
+            "service:db".into(),
+            "1h".into(),
+            "now".into(),
+            10,
+            "asc".into(),
+        )
+        .await;
+
+        assert!(
+            result.is_ok(),
+            "dbm samples search with OAuth bearer failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_dbm_samples_search_rejects_when_no_auth_configured() {
+        let _lock = lock_env().await;
+        let server = mockito::Server::new_async().await;
+        let mut cfg = test_config(&server.url());
+        cfg.api_key = None;
+        cfg.app_key = None;
+        cfg.access_token = None;
+        std::env::remove_var("DD_API_KEY");
+        std::env::remove_var("DD_APP_KEY");
+
+        let result = super::samples_search(
+            &cfg,
+            "service:db".into(),
+            "1h".into(),
+            "now".into(),
+            10,
+            "asc".into(),
+        )
+        .await;
+
+        assert!(result.is_err(), "expected auth error when no credentials");
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("authentication"),
+            "expected auth error message, got: {err}"
         );
         cleanup_env();
     }
