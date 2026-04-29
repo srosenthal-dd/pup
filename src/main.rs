@@ -4509,6 +4509,42 @@ enum SecurityActions {
         #[command(subcommand)]
         action: RestrictionPolicyActions,
     },
+    /// Export and convert security monitoring resources as Terraform
+    Terraform {
+        #[command(subcommand)]
+        action: SecurityTerraformActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum SecurityTerraformActions {
+    /// Export a single resource as Terraform
+    Export {
+        /// Resource type (suppressions, critical_assets)
+        resource_type: String,
+        /// Resource ID to export
+        resource_id: String,
+    },
+    /// Bulk export resources as a Terraform zip archive
+    #[command(name = "bulk-export")]
+    BulkExport {
+        /// Resource type (suppressions, critical_assets)
+        resource_type: String,
+        #[arg(long, help = "JSON file with the bulk export payload (required)")]
+        file: String,
+        #[arg(
+            long = "output-file",
+            help = "Path to write the zip archive to (required)"
+        )]
+        output_file: String,
+    },
+    /// Convert a JSON resource definition into Terraform
+    Convert {
+        /// Resource type (suppressions, critical_assets)
+        resource_type: String,
+        #[arg(long, help = "JSON file with the conversion payload (required)")]
+        file: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -4586,6 +4622,12 @@ enum SecurityRuleActions {
     BulkExport {
         /// Rule IDs to export
         rule_ids: Vec<String>,
+    },
+    /// Convert a JSON rule definition into a Terraform resource
+    #[command(name = "to-terraform")]
+    ToTerraform {
+        #[arg(long, help = "JSON file with the rule conversion payload (required)")]
+        file: String,
     },
 }
 
@@ -10953,6 +10995,9 @@ async fn main_inner() -> anyhow::Result<()> {
                     SecurityRuleActions::BulkExport { rule_ids } => {
                         commands::security::rules_bulk_export(&cfg, rule_ids).await?;
                     }
+                    SecurityRuleActions::ToTerraform { file } => {
+                        commands::security::rules_to_terraform(&cfg, &file).await?;
+                    }
                 },
                 SecurityActions::Signals { action } => match action {
                     SecuritySignalActions::List {
@@ -11111,6 +11156,34 @@ async fn main_inner() -> anyhow::Result<()> {
                     }
                     RestrictionPolicyActions::Delete { resource_id } => {
                         commands::security::restriction_policy_delete(&cfg, &resource_id).await?;
+                    }
+                },
+                SecurityActions::Terraform { action } => match action {
+                    SecurityTerraformActions::Export {
+                        resource_type,
+                        resource_id,
+                    } => {
+                        commands::security::terraform_export(&cfg, &resource_type, &resource_id)
+                            .await?;
+                    }
+                    SecurityTerraformActions::BulkExport {
+                        resource_type,
+                        file,
+                        output_file,
+                    } => {
+                        commands::security::terraform_bulk_export(
+                            &cfg,
+                            &resource_type,
+                            &file,
+                            &output_file,
+                        )
+                        .await?;
+                    }
+                    SecurityTerraformActions::Convert {
+                        resource_type,
+                        file,
+                    } => {
+                        commands::security::terraform_convert(&cfg, &resource_type, &file).await?;
                     }
                 },
             }
