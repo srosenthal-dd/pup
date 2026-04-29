@@ -8299,6 +8299,27 @@ enum LlmObsSpansActions {
         #[arg(long, help = "Pagination cursor from a previous response")]
         cursor: Option<String>,
     },
+    /// Get detailed metadata and token/cost metrics for one or more spans
+    Details {
+        #[arg(long, help = "Trace ID (required)")]
+        trace_id: String,
+        #[arg(
+            long,
+            help = "Span ID(s) to fetch details for (repeat for multiple)",
+            required = true
+        )]
+        span_id: Vec<String>,
+        #[arg(
+            long,
+            help = "Start time: 1h, 5min, 2hours, RFC3339, Unix timestamp, or 'now'"
+        )]
+        from: Option<String>,
+        #[arg(
+            long,
+            help = "End time: 1h, 5min, 2hours, RFC3339, Unix timestamp, or 'now'"
+        )]
+        to: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -13868,6 +13889,15 @@ async fn main_inner() -> anyhow::Result<()> {
                             cursor,
                         )
                         .await?;
+                    }
+                    LlmObsSpansActions::Details {
+                        trace_id,
+                        span_id,
+                        from,
+                        to,
+                    } => {
+                        commands::llm_obs::spans_details(&cfg, trace_id, span_id, from, to)
+                            .await?;
                     }
                 },
                 LlmObsActions::AnnotationQueues { action } => match action {
