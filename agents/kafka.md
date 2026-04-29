@@ -18,7 +18,7 @@ You are a specialized agent for inspecting Kafka clusters through Datadog via th
 
 ## Permission Model
 
-`read-messages` requires the `data_streams_capture_messages` permission and is rate-limited to 10 calls/minute per user.
+`read-messages` requires the `data_streams_monitoring_capture_messages` permission and is rate-limited to 10 calls/minute per user.
 
 ## Available Commands
 
@@ -141,5 +141,5 @@ If a query returns no series, surface that to the user instead of guessing.
 ## Failure modes
 
 - **`kafka.broker.count` returns no data** — the cluster is not reporting Kafka telemetry to Datadog; `read-messages` will hang or fail. Stop and tell the user.
-- **`HTTP 403 / data_streams_capture_messages`** — the caller lacks the permission. Ask the user to request it; do not retry.
+- **`HTTP 403 / data_streams_monitoring_capture_messages`** — the caller lacks the permission. Ask the user to request it; do not retry.
 - **`HTTP 504` / no response** — no Datadog Agent reachable by Remote Config can connect to the cluster. The cluster may be air-gapped or the Agent isn't deployed where it can see the brokers.

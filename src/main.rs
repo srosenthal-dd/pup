@@ -1585,7 +1585,7 @@ enum Commands {
     /// AUTHENTICATION:
     ///   Requires OAuth2 bearer token (`pup auth login`). API keys are not
     ///   accepted by these endpoints. `read-messages` additionally requires
-    ///   the `data_streams_capture_messages` permission on the calling user
+    ///   the `data_streams_monitoring_capture_messages` permission on the calling user
     ///   and a Datadog Agent reachable via Remote Config.
     #[command(verbatim_doc_comment)]
     Kafka {
@@ -9075,7 +9075,7 @@ enum KafkaActions {
     /// Read messages from a Kafka cluster / topic via the Datadog Agent
     ///
     /// Dispatches a read-messages action via Remote Config and polls for the
-    /// agent's response. Requires the `data_streams_capture_messages`
+    /// agent's response. Requires the `data_streams_monitoring_capture_messages`
     /// permission and a Datadog Agent connected to the target cluster.
     /// Rate-limited to 10 calls/minute per user.
     #[command(name = "read-messages", verbatim_doc_comment)]
