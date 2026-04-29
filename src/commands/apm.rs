@@ -99,3 +99,64 @@ pub async fn troubleshooting_list(
     let data = client::raw_get(cfg, path, &query).await?;
     formatter::output(cfg, &data)
 }
+
+pub async fn service_remapping_list(cfg: &Config) -> Result<()> {
+    let data = client::raw_get(cfg, "/api/v2/service-naming-rules", &[]).await?;
+    formatter::output(cfg, &data)
+}
+
+pub async fn service_remapping_create(
+    cfg: &Config,
+    name: String,
+    filter: String,
+    rule_type: i64,
+    value: String,
+) -> Result<()> {
+    let body = serde_json::json!({
+        "data": {
+            "type": "rule",
+            "attributes": {
+                "name": name,
+                "filter": filter,
+                "rule_type": rule_type,
+                "rewrite_tag_rules": [{"destination_tag_name": "service", "value": value}]
+            }
+        }
+    });
+    let data = client::raw_post(cfg, "/api/v2/service-naming-rules", body).await?;
+    formatter::output(cfg, &data)
+}
+
+pub async fn service_remapping_get(cfg: &Config, id: String) -> Result<()> {
+    let data = client::raw_get(cfg, &format!("/api/v2/service-naming-rules/{id}"), &[]).await?;
+    formatter::output(cfg, &data)
+}
+
+pub async fn service_remapping_update(
+    cfg: &Config,
+    id: String,
+    name: String,
+    filter: String,
+    rule_type: i64,
+    value: String,
+    version: i64,
+) -> Result<()> {
+    let body = serde_json::json!({
+        "data": {
+            "type": "rule",
+            "attributes": {
+                "name": name,
+                "filter": filter,
+                "rule_type": rule_type,
+                "rewrite_tag_rules": [{"destination_tag_name": "service", "value": value}],
+                "version": version
+            }
+        }
+    });
+    let data = client::raw_put(cfg, &format!("/api/v2/service-naming-rules/{id}"), body).await?;
+    formatter::output(cfg, &data)
+}
+
+pub async fn service_remapping_delete(cfg: &Config, id: String, version: i64) -> Result<()> {
+    client::raw_delete(cfg, &format!("/api/v2/service-naming-rules/{id}/{version}")).await
+}
