@@ -3,12 +3,15 @@ use datadog_api_client::datadogV1::api_synthetics::{
     ListTestsOptionalParams, SearchTestsOptionalParams, SyntheticsAPI,
 };
 use datadog_api_client::datadogV2::api_synthetics::{
-    GetSyntheticsTestVersionOptionalParams, ListSyntheticsTestVersionsOptionalParams,
+    GetSyntheticsBrowserTestResultOptionalParams, GetSyntheticsTestResultOptionalParams,
+    GetSyntheticsTestVersionOptionalParams, ListSyntheticsBrowserTestLatestResultsOptionalParams,
+    ListSyntheticsTestLatestResultsOptionalParams, ListSyntheticsTestVersionsOptionalParams,
     SearchSuitesOptionalParams, SyntheticsAPI as SyntheticsV2API,
 };
 use datadog_api_client::datadogV2::model::{
     DeletedSuitesRequestDelete, DeletedSuitesRequestDeleteAttributes,
-    DeletedSuitesRequestDeleteRequest, SuiteCreateEditRequest,
+    DeletedSuitesRequestDeleteRequest, SuiteCreateEditRequest, SyntheticsTestResultRunType,
+    SyntheticsTestResultStatus,
 };
 
 use crate::config::Config;
@@ -344,6 +347,160 @@ pub async fn tests_get_fast_result(cfg: &Config, result_id: &str) -> Result<()> 
     formatter::output(cfg, &resp)
 }
 
+fn parse_result_status(s: &str) -> Result<SyntheticsTestResultStatus> {
+    Ok(match s {
+        "passed" => SyntheticsTestResultStatus::PASSED,
+        "failed" => SyntheticsTestResultStatus::FAILED,
+        "no_data" => SyntheticsTestResultStatus::NO_DATA,
+        _ => anyhow::bail!("invalid status '{s}' — use one of: passed, failed, no_data"),
+    })
+}
+
+fn parse_result_run_type(s: &str) -> Result<SyntheticsTestResultRunType> {
+    Ok(match s {
+        "scheduled" => SyntheticsTestResultRunType::SCHEDULED,
+        "fast" => SyntheticsTestResultRunType::FAST,
+        "ci" => SyntheticsTestResultRunType::CI,
+        "triggered" => SyntheticsTestResultRunType::TRIGGERED,
+        _ => anyhow::bail!("invalid run-type '{s}' — use one of: scheduled, fast, ci, triggered"),
+    })
+}
+
+pub async fn tests_get_result(
+    cfg: &Config,
+    public_id: &str,
+    result_id: &str,
+    event_id: Option<String>,
+    timestamp: Option<i64>,
+) -> Result<()> {
+    let api = crate::make_api!(SyntheticsV2API, cfg);
+    let mut params = GetSyntheticsTestResultOptionalParams::default();
+    if let Some(e) = event_id {
+        params.event_id = Some(e);
+    }
+    if let Some(t) = timestamp {
+        params.timestamp = Some(t);
+    }
+    let resp = api
+        .get_synthetics_test_result(public_id.to_string(), result_id.to_string(), params)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to get test result: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn tests_get_browser_result(
+    cfg: &Config,
+    public_id: &str,
+    result_id: &str,
+    event_id: Option<String>,
+    timestamp: Option<i64>,
+) -> Result<()> {
+    let api = crate::make_api!(SyntheticsV2API, cfg);
+    let mut params = GetSyntheticsBrowserTestResultOptionalParams::default();
+    if let Some(e) = event_id {
+        params.event_id = Some(e);
+    }
+    if let Some(t) = timestamp {
+        params.timestamp = Some(t);
+    }
+    let resp = api
+        .get_synthetics_browser_test_result(public_id.to_string(), result_id.to_string(), params)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to get browser test result: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn tests_list_latest_results(
+    cfg: &Config,
+    public_id: &str,
+    from_ts: Option<i64>,
+    to_ts: Option<i64>,
+    status: Option<String>,
+    run_type: Option<String>,
+    probe_dc: Option<Vec<String>>,
+    device_id: Option<Vec<String>>,
+) -> Result<()> {
+    let api = crate::make_api!(SyntheticsV2API, cfg);
+    let mut params = ListSyntheticsTestLatestResultsOptionalParams::default();
+    if let Some(t) = from_ts {
+        params.from_ts = Some(t);
+    }
+    if let Some(t) = to_ts {
+        params.to_ts = Some(t);
+    }
+    if let Some(s) = status {
+        params.status = Some(parse_result_status(&s)?);
+    }
+    if let Some(r) = run_type {
+        params.run_type = Some(parse_result_run_type(&r)?);
+    }
+    if let Some(p) = probe_dc {
+        params.probe_dc = Some(p);
+    }
+    if let Some(d) = device_id {
+        params.device_id = Some(d);
+    }
+    let resp = api
+        .list_synthetics_test_latest_results(public_id.to_string(), params)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to list latest test results: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn tests_list_latest_browser_results(
+    cfg: &Config,
+    public_id: &str,
+    from_ts: Option<i64>,
+    to_ts: Option<i64>,
+    status: Option<String>,
+    run_type: Option<String>,
+    probe_dc: Option<Vec<String>>,
+    device_id: Option<Vec<String>>,
+) -> Result<()> {
+    let api = crate::make_api!(SyntheticsV2API, cfg);
+    let mut params = ListSyntheticsBrowserTestLatestResultsOptionalParams::default();
+    if let Some(t) = from_ts {
+        params.from_ts = Some(t);
+    }
+    if let Some(t) = to_ts {
+        params.to_ts = Some(t);
+    }
+    if let Some(s) = status {
+        params.status = Some(parse_result_status(&s)?);
+    }
+    if let Some(r) = run_type {
+        params.run_type = Some(parse_result_run_type(&r)?);
+    }
+    if let Some(p) = probe_dc {
+        params.probe_dc = Some(p);
+    }
+    if let Some(d) = device_id {
+        params.device_id = Some(d);
+    }
+    let resp = api
+        .list_synthetics_browser_test_latest_results(public_id.to_string(), params)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to list latest browser test results: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn tests_poll_results(cfg: &Config, result_ids: Vec<String>) -> Result<()> {
+    if result_ids.is_empty() {
+        anyhow::bail!("at least one result-id is required");
+    }
+    // The endpoint takes a JSON-encoded array as a query string parameter.
+    let encoded = serde_json::to_string(&result_ids)
+        .map_err(|e| anyhow::anyhow!("failed to encode result IDs: {e}"))?;
+    let api = crate::make_api!(SyntheticsV2API, cfg);
+    let resp = api
+        .poll_synthetics_test_results(encoded)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to poll test results: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
 pub async fn tests_get_version(
     cfg: &Config,
     public_id: &str,
@@ -436,5 +593,231 @@ mod tests {
         mock_all(&mut s, r#"{"locations": []}"#).await;
         let _ = super::locations_list(&cfg).await;
         cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_synthetics_tests_get_result() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        let _mock = mock_any(&mut s, "GET", r#"{}"#).await;
+        let result = super::tests_get_result(&cfg, "abc-def-ghi", "result-1", None, None).await;
+        assert!(
+            result.is_ok(),
+            "tests_get_result failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_synthetics_tests_get_result_with_params() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        let _mock = mock_any(&mut s, "GET", r#"{}"#).await;
+        let result = super::tests_get_result(
+            &cfg,
+            "abc-def-ghi",
+            "result-1",
+            Some("evt-1".into()),
+            Some(1700000000),
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "tests_get_result with params failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_synthetics_tests_get_result_404() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("GET", mockito::Matcher::Any)
+            .with_status(404)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["not found"]}"#)
+            .create_async()
+            .await;
+        let result = super::tests_get_result(&cfg, "abc-def-ghi", "missing", None, None).await;
+        assert!(result.is_err(), "expected 404 error");
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_synthetics_tests_get_browser_result() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        let _mock = mock_any(&mut s, "GET", r#"{}"#).await;
+        let result =
+            super::tests_get_browser_result(&cfg, "abc-def-ghi", "result-1", None, None).await;
+        assert!(
+            result.is_ok(),
+            "tests_get_browser_result failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_synthetics_tests_list_latest_results() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        let _mock = mock_any(&mut s, "GET", r#"{}"#).await;
+        let result = super::tests_list_latest_results(
+            &cfg,
+            "abc-def-ghi",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "tests_list_latest_results failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_synthetics_tests_list_latest_results_with_filters() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        let _mock = mock_any(&mut s, "GET", r#"{}"#).await;
+        let result = super::tests_list_latest_results(
+            &cfg,
+            "abc-def-ghi",
+            Some(1700000000000),
+            Some(1700001000000),
+            Some("passed".into()),
+            Some("scheduled".into()),
+            Some(vec!["aws:us-east-1".into()]),
+            Some(vec!["chrome.laptop_large".into()]),
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "tests_list_latest_results with filters failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_synthetics_tests_list_latest_results_bad_status() {
+        let _lock = lock_env().await;
+        let cfg = test_config("http://unused.local");
+        let result = super::tests_list_latest_results(
+            &cfg,
+            "abc-def-ghi",
+            None,
+            None,
+            Some("bogus".into()),
+            None,
+            None,
+            None,
+        )
+        .await;
+        assert!(result.is_err(), "expected status parse error");
+        assert!(result.unwrap_err().to_string().contains("invalid status"));
+    }
+
+    #[tokio::test]
+    async fn test_synthetics_tests_list_latest_results_bad_run_type() {
+        let _lock = lock_env().await;
+        let cfg = test_config("http://unused.local");
+        let result = super::tests_list_latest_results(
+            &cfg,
+            "abc-def-ghi",
+            None,
+            None,
+            None,
+            Some("bogus".into()),
+            None,
+            None,
+        )
+        .await;
+        assert!(result.is_err(), "expected run-type parse error");
+        assert!(result.unwrap_err().to_string().contains("invalid run-type"));
+    }
+
+    #[tokio::test]
+    async fn test_synthetics_tests_list_latest_browser_results() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        let _mock = mock_any(&mut s, "GET", r#"{}"#).await;
+        let result = super::tests_list_latest_browser_results(
+            &cfg,
+            "abc-def-ghi",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "tests_list_latest_browser_results failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_synthetics_tests_poll_results() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        let _mock = mock_any(&mut s, "GET", r#"{}"#).await;
+        let result = super::tests_poll_results(&cfg, vec!["r1".into(), "r2".into()]).await;
+        assert!(
+            result.is_ok(),
+            "tests_poll_results failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_synthetics_tests_poll_results_empty() {
+        let _lock = lock_env().await;
+        let cfg = test_config("http://unused.local");
+        let result = super::tests_poll_results(&cfg, vec![]).await;
+        assert!(result.is_err(), "expected empty result_ids error");
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("at least one result-id"));
     }
 }

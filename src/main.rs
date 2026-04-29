@@ -3581,6 +3581,89 @@ enum SyntheticsTestActions {
         /// Result ID
         result_id: String,
     },
+    /// Get a specific full result for an API Synthetic test
+    #[command(name = "get-result")]
+    GetResult {
+        /// Public ID of the test
+        public_id: String,
+        /// Result ID
+        result_id: String,
+        /// Look up by event ID instead of result ID
+        #[arg(long = "event-id")]
+        event_id: Option<String>,
+        /// Look up by timestamp (seconds)
+        #[arg(long)]
+        timestamp: Option<i64>,
+    },
+    /// Get a specific full result for a browser Synthetic test
+    #[command(name = "get-browser-result")]
+    GetBrowserResult {
+        /// Public ID of the test
+        public_id: String,
+        /// Result ID
+        result_id: String,
+        /// Look up by event ID instead of result ID
+        #[arg(long = "event-id")]
+        event_id: Option<String>,
+        /// Look up by timestamp (seconds)
+        #[arg(long)]
+        timestamp: Option<i64>,
+    },
+    /// List the latest API test result summaries for a test
+    #[command(name = "list-latest-results")]
+    ListLatestResults {
+        /// Public ID of the test
+        public_id: String,
+        /// Start timestamp in milliseconds
+        #[arg(long = "from-ts")]
+        from_ts: Option<i64>,
+        /// End timestamp in milliseconds
+        #[arg(long = "to-ts")]
+        to_ts: Option<i64>,
+        /// Filter by status (passed, failed, no_data)
+        #[arg(long)]
+        status: Option<String>,
+        /// Filter by run type (scheduled, fast, ci, triggered)
+        #[arg(long = "run-type")]
+        run_type: Option<String>,
+        /// Filter by location (private location ID or public location). Can be repeated.
+        #[arg(long = "probe-dc")]
+        probe_dc: Option<Vec<String>>,
+        /// Filter by device ID. Can be repeated.
+        #[arg(long = "device-id")]
+        device_id: Option<Vec<String>>,
+    },
+    /// List the latest browser test result summaries for a test
+    #[command(name = "list-latest-browser-results")]
+    ListLatestBrowserResults {
+        /// Public ID of the test
+        public_id: String,
+        /// Start timestamp in milliseconds
+        #[arg(long = "from-ts")]
+        from_ts: Option<i64>,
+        /// End timestamp in milliseconds
+        #[arg(long = "to-ts")]
+        to_ts: Option<i64>,
+        /// Filter by status (passed, failed, no_data)
+        #[arg(long)]
+        status: Option<String>,
+        /// Filter by run type (scheduled, fast, ci, triggered)
+        #[arg(long = "run-type")]
+        run_type: Option<String>,
+        /// Filter by location. Can be repeated.
+        #[arg(long = "probe-dc")]
+        probe_dc: Option<Vec<String>>,
+        /// Filter by device ID. Can be repeated.
+        #[arg(long = "device-id")]
+        device_id: Option<Vec<String>>,
+    },
+    /// Poll for results given a list of result IDs (typical CI/CD use)
+    #[command(name = "poll-results")]
+    PollResults {
+        /// One or more result IDs
+        #[arg(required = true)]
+        result_ids: Vec<String>,
+    },
     /// Get a specific version of a synthetic test
     GetVersion {
         /// Public ID of the test
@@ -10500,6 +10583,59 @@ async fn main_inner() -> anyhow::Result<()> {
                     }
                     SyntheticsTestActions::GetFastResult { result_id } => {
                         commands::synthetics::tests_get_fast_result(&cfg, &result_id).await?;
+                    }
+                    SyntheticsTestActions::GetResult {
+                        public_id,
+                        result_id,
+                        event_id,
+                        timestamp,
+                    } => {
+                        commands::synthetics::tests_get_result(
+                            &cfg, &public_id, &result_id, event_id, timestamp,
+                        )
+                        .await?;
+                    }
+                    SyntheticsTestActions::GetBrowserResult {
+                        public_id,
+                        result_id,
+                        event_id,
+                        timestamp,
+                    } => {
+                        commands::synthetics::tests_get_browser_result(
+                            &cfg, &public_id, &result_id, event_id, timestamp,
+                        )
+                        .await?;
+                    }
+                    SyntheticsTestActions::ListLatestResults {
+                        public_id,
+                        from_ts,
+                        to_ts,
+                        status,
+                        run_type,
+                        probe_dc,
+                        device_id,
+                    } => {
+                        commands::synthetics::tests_list_latest_results(
+                            &cfg, &public_id, from_ts, to_ts, status, run_type, probe_dc, device_id,
+                        )
+                        .await?;
+                    }
+                    SyntheticsTestActions::ListLatestBrowserResults {
+                        public_id,
+                        from_ts,
+                        to_ts,
+                        status,
+                        run_type,
+                        probe_dc,
+                        device_id,
+                    } => {
+                        commands::synthetics::tests_list_latest_browser_results(
+                            &cfg, &public_id, from_ts, to_ts, status, run_type, probe_dc, device_id,
+                        )
+                        .await?;
+                    }
+                    SyntheticsTestActions::PollResults { result_ids } => {
+                        commands::synthetics::tests_poll_results(&cfg, result_ids).await?;
                     }
                     SyntheticsTestActions::GetVersion {
                         public_id,
