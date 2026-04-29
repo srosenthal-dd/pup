@@ -19,7 +19,7 @@ Search, process, and archive logs with cost awareness.
 Datadog Pup (dd-pup/pup) should already be installed:
 
 ```bash
-go install github.com/datadog-labs/pup@latest
+go install github.com/datadog/pup@latest
 ```
 
 ## Quick Start
