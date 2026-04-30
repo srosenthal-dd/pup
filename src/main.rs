@@ -4013,7 +4013,12 @@ enum TagActions {
 #[derive(Subcommand)]
 enum UserActions {
     /// List users
-    List,
+    List {
+        #[arg(long, default_value_t = 10, help = "Results per page (max 100)")]
+        page_size: i64,
+        #[arg(long, default_value_t = 0, help = "Page number (0-indexed)")]
+        page_number: i64,
+    },
     /// Get user details
     Get { user_id: String },
     /// Manage roles
@@ -10837,7 +10842,10 @@ async fn main_inner() -> anyhow::Result<()> {
         Commands::Users { action } => {
             cfg.validate_auth()?;
             match action {
-                UserActions::List => commands::users::list(&cfg).await?,
+                UserActions::List {
+                    page_size,
+                    page_number,
+                } => commands::users::list(&cfg, page_size, page_number).await?,
                 UserActions::Get { user_id } => commands::users::get(&cfg, &user_id).await?,
                 UserActions::Roles { action } => match action {
                     UserRoleActions::List => commands::users::roles_list(&cfg).await?,
