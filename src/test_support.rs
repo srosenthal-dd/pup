@@ -26,6 +26,7 @@ pub(crate) fn test_config(mock_url: &str) -> Config {
         app_key: Some("test-app-key".into()),
         access_token: None,
         site: "datadoghq.com".into(),
+        site_explicit: false,
         org: None,
         output_format: OutputFormat::Json,
         auto_approve: false,
