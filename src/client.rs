@@ -116,6 +116,12 @@ pub fn make_dd_config(cfg: &Config) -> datadog_api_client::datadog::Configuratio
         // ap1, ap2, eu, gov). Server index 2 uses the same URL template but with
         // no enum restriction, so it works for any site including staging
         // (datad0g.com). Use index 2 for non-standard sites.
+        //
+        // The SDK populates `server_variables["site"]` from the DD_SITE env var
+        // at Configuration::default() time. We override it with `cfg.site` so
+        // programmatic site resolution (e.g. `--org` picking up a saved site
+        // from the session registry) reaches the SDK without requiring the
+        // user to also set DD_SITE.
         static STANDARD_SITES: &[&str] = &[
             "datadoghq.com",
             "us3.datadoghq.com",
@@ -125,10 +131,12 @@ pub fn make_dd_config(cfg: &Config) -> datadog_api_client::datadog::Configuratio
             "datadoghq.eu",
             "ddog-gov.com",
         ];
-        let site = std::env::var("DD_SITE").unwrap_or_default();
-        if !site.is_empty() && !STANDARD_SITES.contains(&site.as_str()) {
+        if !STANDARD_SITES.contains(&cfg.site.as_str()) {
             dd_cfg.server_index = 2;
         }
+        dd_cfg
+            .server_variables
+            .insert("site".into(), cfg.site.clone());
     }
 
     dd_cfg
@@ -1047,6 +1055,70 @@ mod tests {
         cfg.api_key = None;
         cfg.app_key = None;
         assert_eq!(get_auth_type(&cfg), AuthType::None);
+    }
+
+    /// `make_dd_config` must propagate `cfg.site` into the SDK's `site`
+    /// server variable, otherwise programmatic site resolution (e.g.
+    /// `--org` picking up a saved staging site) silently routes API calls
+    /// to api.datadoghq.com.
+    #[test]
+    fn test_make_dd_config_uses_cfg_site_for_non_standard() {
+        let _guard = ENV_LOCK.blocking_lock();
+        std::env::remove_var("PUP_MOCK_SERVER");
+        std::env::remove_var("DD_SITE");
+
+        let mut cfg = test_cfg();
+        cfg.site = "datad0g.com".into();
+
+        let dd_cfg = make_dd_config(&cfg);
+
+        assert_eq!(dd_cfg.server_index, 2);
+        assert_eq!(
+            dd_cfg.server_variables.get("site").map(String::as_str),
+            Some("datad0g.com")
+        );
+    }
+
+    #[test]
+    fn test_make_dd_config_uses_cfg_site_for_standard() {
+        let _guard = ENV_LOCK.blocking_lock();
+        std::env::remove_var("PUP_MOCK_SERVER");
+        std::env::remove_var("DD_SITE");
+
+        let mut cfg = test_cfg();
+        cfg.site = "datadoghq.eu".into();
+
+        let dd_cfg = make_dd_config(&cfg);
+
+        assert_eq!(dd_cfg.server_index, 0);
+        assert_eq!(
+            dd_cfg.server_variables.get("site").map(String::as_str),
+            Some("datadoghq.eu")
+        );
+    }
+
+    /// `cfg.site` (e.g. resolved from a saved org session) must override any
+    /// stale `DD_SITE` env var the user happens to have set in their shell —
+    /// otherwise `pup --org staging-org` would silently route to the env's
+    /// site instead of the org's saved site.
+    #[test]
+    fn test_make_dd_config_cfg_site_overrides_env_dd_site() {
+        let _guard = ENV_LOCK.blocking_lock();
+        std::env::remove_var("PUP_MOCK_SERVER");
+        std::env::set_var("DD_SITE", "datadoghq.com");
+
+        let mut cfg = test_cfg();
+        cfg.site = "datad0g.com".into();
+
+        let dd_cfg = make_dd_config(&cfg);
+
+        std::env::remove_var("DD_SITE");
+
+        assert_eq!(dd_cfg.server_index, 2);
+        assert_eq!(
+            dd_cfg.server_variables.get("site").map(String::as_str),
+            Some("datad0g.com")
+        );
     }
 
     #[test]
