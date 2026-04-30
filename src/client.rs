@@ -520,20 +520,6 @@ static OAUTH_EXCLUDED_ENDPOINTS: &[EndpointRequirement] = &[
         path: "/api/v2/cost/gcp_uc_config/",
         method: "DELETE",
     },
-    // Service Remapping writes (3) — reads use OAuth (apm_read), writes need API keys until
-    // apm_service_renaming_write is registered as an OAuth scope in dd-source defaults.go
-    EndpointRequirement {
-        path: "/api/v2/service-naming-rules",
-        method: "POST",
-    },
-    EndpointRequirement {
-        path: "/api/v2/service-naming-rules/",
-        method: "PUT",
-    },
-    EndpointRequirement {
-        path: "/api/v2/service-naming-rules/",
-        method: "DELETE",
-    },
 ];
 
 // ---------------------------------------------------------------------------
@@ -950,7 +936,7 @@ mod tests {
 
     #[test]
     fn test_oauth_excluded_count() {
-        assert_eq!(OAUTH_EXCLUDED_ENDPOINTS.len(), 48);
+        assert_eq!(OAUTH_EXCLUDED_ENDPOINTS.len(), 45);
     }
 
     #[test]
