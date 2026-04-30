@@ -8,7 +8,6 @@ use datadog_api_client::datadogV2::model::{
     SpansListRequestType, SpansQueryFilter, SpansSort,
 };
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
@@ -18,8 +17,7 @@ use crate::util;
 // ---------------------------------------------------------------------------
 
 pub async fn metrics_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = SpansMetricsAPI::with_config(dd_cfg);
+    let api = crate::make_api_no_auth!(SpansMetricsAPI, cfg);
     let resp = api
         .list_spans_metrics()
         .await
@@ -28,8 +26,7 @@ pub async fn metrics_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn metrics_get(cfg: &Config, metric_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = SpansMetricsAPI::with_config(dd_cfg);
+    let api = crate::make_api_no_auth!(SpansMetricsAPI, cfg);
     let resp = api
         .get_spans_metric(metric_id.to_string())
         .await
@@ -40,8 +37,7 @@ pub async fn metrics_get(cfg: &Config, metric_id: &str) -> Result<()> {
 pub async fn metrics_create(cfg: &Config, file: &str) -> Result<()> {
     let body: datadog_api_client::datadogV2::model::SpansMetricCreateRequest =
         util::read_json_file(file)?;
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = SpansMetricsAPI::with_config(dd_cfg);
+    let api = crate::make_api_no_auth!(SpansMetricsAPI, cfg);
     let resp = api
         .create_spans_metric(body)
         .await
@@ -52,8 +48,7 @@ pub async fn metrics_create(cfg: &Config, file: &str) -> Result<()> {
 pub async fn metrics_update(cfg: &Config, metric_id: &str, file: &str) -> Result<()> {
     let body: datadog_api_client::datadogV2::model::SpansMetricUpdateRequest =
         util::read_json_file(file)?;
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = SpansMetricsAPI::with_config(dd_cfg);
+    let api = crate::make_api_no_auth!(SpansMetricsAPI, cfg);
     let resp = api
         .update_spans_metric(metric_id.to_string(), body)
         .await
@@ -62,8 +57,7 @@ pub async fn metrics_update(cfg: &Config, metric_id: &str, file: &str) -> Result
 }
 
 pub async fn metrics_delete(cfg: &Config, metric_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = SpansMetricsAPI::with_config(dd_cfg);
+    let api = crate::make_api_no_auth!(SpansMetricsAPI, cfg);
     api.delete_spans_metric(metric_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete spans metric: {e:?}"))?;

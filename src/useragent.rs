@@ -96,8 +96,26 @@ pub fn get() -> String {
     get_with_command(None)
 }
 
+/// Returns the underlying Datadog SDK's `name/version` token (e.g.
+/// `datadog-api-client-rust/0.30.0`) for inclusion in pup's User-Agent.
+/// `None` when the SDK isn't compiled in (any non-default-feature build).
+#[cfg(any(feature = "native", feature = "wasi", feature = "browser"))]
+fn sdk_token() -> Option<&'static str> {
+    datadog_api_client::datadog::DEFAULT_USER_AGENT
+        .as_str()
+        .split_whitespace()
+        .next()
+}
+
+#[cfg(not(any(feature = "native", feature = "wasi", feature = "browser")))]
+fn sdk_token() -> Option<&'static str> {
+    None
+}
+
 /// Build the User-Agent string, optionally including a command identifier
 /// so that audit logs can differentiate which pup command made the request.
+///
+/// Format: `pup/<ver> (rust; os <os>; arch <arch>[; ai-agent <name>][; sdk <sdk_name/ver>][; cmd <cmd>])`
 pub fn get_with_command(command: Option<&str>) -> String {
     let agent = detect_agent_info();
     let base = format!(
@@ -111,10 +129,14 @@ pub fn get_with_command(command: Option<&str>) -> String {
     } else {
         base
     };
+    let with_sdk = match sdk_token() {
+        Some(sdk) => format!("{}; sdk {}", with_agent, sdk),
+        None => with_agent,
+    };
     if let Some(cmd) = command {
-        format!("{}; cmd {})", with_agent, cmd)
+        format!("{}; cmd {})", with_sdk, cmd)
     } else {
-        format!("{})", with_agent)
+        format!("{})", with_sdk)
     }
 }
 

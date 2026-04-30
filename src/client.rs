@@ -36,6 +36,38 @@ impl Middleware for BearerAuthMiddleware {
 }
 
 // ---------------------------------------------------------------------------
+// User-Agent override middleware
+//
+// The `datadog-api-client` SDK sets its own `User-Agent` header on every
+// request (`datadog-api-client-rust/<ver>...`) and exposes no way to override
+// it from outside the crate. This middleware runs after the SDK builds the
+// request and replaces the header with pup's branded UA so audit logs and
+// telemetry attribute traffic to pup, not the underlying SDK.
+// ---------------------------------------------------------------------------
+
+#[cfg(not(target_arch = "wasm32"))]
+struct UserAgentMiddleware;
+
+#[cfg(not(target_arch = "wasm32"))]
+#[async_trait]
+impl Middleware for UserAgentMiddleware {
+    async fn handle(
+        &self,
+        mut req: reqwest_middleware::reqwest::Request,
+        extensions: &mut Extensions,
+        next: Next<'_>,
+    ) -> reqwest_middleware::Result<reqwest_middleware::reqwest::Response> {
+        if let Ok(ua) =
+            reqwest_middleware::reqwest::header::HeaderValue::from_str(&crate::useragent::get())
+        {
+            req.headers_mut()
+                .insert(reqwest_middleware::reqwest::header::USER_AGENT, ua);
+        }
+        next.run(req, extensions).await
+    }
+}
+
+// ---------------------------------------------------------------------------
 // DD Configuration builder
 // ---------------------------------------------------------------------------
 
@@ -113,20 +145,50 @@ pub fn make_dd_config(cfg: &Config) -> datadog_api_client::datadog::Configuratio
     dd_cfg
 }
 
-/// Creates a reqwest middleware client that injects a bearer token on every
-/// request. Returns `None` if no bearer token is configured, or on WASM
-/// targets where the token-injection middleware is unavailable.
-pub fn make_bearer_client(cfg: &Config) -> Option<ClientWithMiddleware> {
+/// Creates a reqwest middleware client for SDK API calls. Always installs the
+/// `UserAgentMiddleware` so requests are tagged with pup's branded `User-Agent`
+/// (see `useragent::get()`) instead of the SDK's default
+/// `datadog-api-client-rust/...`. If a bearer token is configured, also installs
+/// `BearerAuthMiddleware` to inject `Authorization: Bearer ...` per request.
+///
+/// Returns `None` on WASM targets where the middleware stack is unavailable;
+/// callers fall back to the SDK's default client (which sends the SDK UA).
+pub fn make_dd_client(cfg: &Config) -> Option<ClientWithMiddleware> {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let token = cfg.access_token.as_ref()?.clone();
         let reqwest_client = reqwest_middleware::reqwest::Client::builder()
             .build()
             .expect("failed to build reqwest client");
-        let client = ClientBuilder::new(reqwest_client)
-            .with(BearerAuthMiddleware { token })
-            .build();
-        return Some(client);
+        let mut builder = ClientBuilder::new(reqwest_client).with(UserAgentMiddleware);
+        if let Some(token) = cfg.access_token.as_ref() {
+            builder = builder.with(BearerAuthMiddleware {
+                token: token.clone(),
+            });
+        }
+        return Some(builder.build());
+    }
+    #[allow(unreachable_code)]
+    {
+        let _ = cfg;
+        None
+    }
+}
+
+/// Like `make_dd_client` but never installs `BearerAuthMiddleware`. Use for
+/// endpoints that don't support OAuth bearer tokens (see
+/// `OAUTH_EXCLUDED_ENDPOINTS`); the SDK still injects API key/app key auth
+/// headers from the `Configuration`.
+pub fn make_dd_client_no_auth() -> Option<ClientWithMiddleware> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let reqwest_client = reqwest_middleware::reqwest::Client::builder()
+            .build()
+            .expect("failed to build reqwest client");
+        return Some(
+            ClientBuilder::new(reqwest_client)
+                .with(UserAgentMiddleware)
+                .build(),
+        );
     }
     #[allow(unreachable_code)]
     None
@@ -137,7 +199,21 @@ macro_rules! make_api {
     ($api:ty, $cfg:expr) => {{
         let cfg = $cfg;
         let dd_cfg = $crate::client::make_dd_config(cfg);
-        match $crate::client::make_bearer_client(cfg) {
+        match $crate::client::make_dd_client(cfg) {
+            Some(c) => <$api>::with_client_and_config(dd_cfg, c),
+            None => <$api>::with_config(dd_cfg),
+        }
+    }};
+}
+
+/// Same as `make_api!` but uses a UA-only client (no bearer). For OAuth-
+/// incompatible endpoints; SDK still applies API key auth from `Configuration`.
+#[macro_export]
+macro_rules! make_api_no_auth {
+    ($api:ty, $cfg:expr) => {{
+        let cfg = $cfg;
+        let dd_cfg = $crate::client::make_dd_config(cfg);
+        match $crate::client::make_dd_client_no_auth() {
             Some(c) => <$api>::with_client_and_config(dd_cfg, c),
             None => <$api>::with_config(dd_cfg),
         }
@@ -1077,16 +1153,17 @@ mod tests {
     }
 
     #[test]
-    fn test_make_bearer_client_none_without_token() {
+    fn test_make_dd_client_some_without_token() {
+        // UA middleware is always installed, so the client is always Some on native.
         let cfg = test_cfg();
-        assert!(make_bearer_client(&cfg).is_none());
+        assert!(make_dd_client(&cfg).is_some());
     }
 
     #[test]
-    fn test_make_bearer_client_some_with_token() {
+    fn test_make_dd_client_some_with_token() {
         let mut cfg = test_cfg();
         cfg.access_token = Some("test-token".into());
-        assert!(make_bearer_client(&cfg).is_some());
+        assert!(make_dd_client(&cfg).is_some());
     }
 
     #[test]
@@ -1314,6 +1391,88 @@ mod tests {
             "GET",
             "/api/ui/profiling/profiles/abc/download"
         ));
+    }
+
+    /// Verifies that requests built via `make_api!` carry pup's branded
+    /// `User-Agent` rather than the SDK's default `datadog-api-client-rust/...`.
+    /// The mock only matches when the header starts with `pup/`; if the
+    /// middleware fails to override, mockito returns 501 and the SDK call fails.
+    ///
+    /// Holds the std `ENV_LOCK` only for the sync env-var setup so it
+    /// serializes with sibling sync tests like `test_make_dd_config_with_mock_server`.
+    /// The mockito URL is captured into the `Configuration` struct, so the env
+    /// var is no longer needed once `api` has been built.
+    #[tokio::test]
+    async fn test_make_api_sends_pup_user_agent() {
+        use datadog_api_client::datadogV1::api_monitors::{
+            ListMonitorsOptionalParams, MonitorsAPI,
+        };
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", mockito::Matcher::Any)
+            .match_header("User-Agent", mockito::Matcher::Regex("^pup/".into()))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body("[]")
+            .expect(1)
+            .create_async()
+            .await;
+
+        let api: MonitorsAPI = {
+            let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+            let cfg = test_config(&server.url());
+            crate::make_api!(MonitorsAPI, &cfg)
+        };
+
+        let resp = api
+            .list_monitors(ListMonitorsOptionalParams::default())
+            .await;
+        assert!(
+            resp.is_ok(),
+            "make_api! request did not carry pup/ User-Agent: {:?}",
+            resp.err()
+        );
+        mock.assert_async().await;
+
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        cleanup_env();
+    }
+
+    /// Same coverage for the no-auth variant used by OAuth-incompatible endpoints.
+    #[tokio::test]
+    async fn test_make_api_no_auth_sends_pup_user_agent() {
+        use datadog_api_client::datadogV2::api_authn_mappings::{
+            AuthNMappingsAPI, ListAuthNMappingsOptionalParams,
+        };
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", mockito::Matcher::Any)
+            .match_header("User-Agent", mockito::Matcher::Regex("^pup/".into()))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data":[]}"#)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let api: AuthNMappingsAPI = {
+            let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+            let cfg = test_config(&server.url());
+            crate::make_api_no_auth!(AuthNMappingsAPI, &cfg)
+        };
+
+        let resp = api
+            .list_authn_mappings(ListAuthNMappingsOptionalParams::default())
+            .await;
+        assert!(
+            resp.is_ok(),
+            "make_api_no_auth! request did not carry pup/ User-Agent: {:?}",
+            resp.err()
+        );
+        mock.assert_async().await;
+
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        cleanup_env();
     }
 
     /// Verifies that raw_request attaches query parameters and returns Ok when the
