@@ -9,10 +9,6 @@ use reqwest_middleware::{Middleware, Next};
 
 use crate::config::Config;
 
-// ---------------------------------------------------------------------------
-// Bearer token middleware (native only — requires task-local-extensions)
-// ---------------------------------------------------------------------------
-
 #[cfg(not(target_arch = "wasm32"))]
 struct BearerAuthMiddleware {
     token: String,
@@ -35,16 +31,9 @@ impl Middleware for BearerAuthMiddleware {
     }
 }
 
-// ---------------------------------------------------------------------------
-// User-Agent override middleware
-//
-// The `datadog-api-client` SDK sets its own `User-Agent` header on every
-// request (`datadog-api-client-rust/<ver>...`) and exposes no way to override
-// it from outside the crate. This middleware runs after the SDK builds the
-// request and replaces the header with pup's branded UA so audit logs and
-// telemetry attribute traffic to pup, not the underlying SDK.
-// ---------------------------------------------------------------------------
-
+// The `datadog-api-client` SDK's `Configuration.user_agent` is `pub(crate)`
+// with no setter, so the only way to override it from outside the crate is
+// via middleware that mutates the header after the SDK builds the request.
 #[cfg(not(target_arch = "wasm32"))]
 struct UserAgentMiddleware;
 
@@ -145,53 +134,36 @@ pub fn make_dd_config(cfg: &Config) -> datadog_api_client::datadog::Configuratio
     dd_cfg
 }
 
-/// Creates a reqwest middleware client for SDK API calls. Always installs the
-/// `UserAgentMiddleware` so requests are tagged with pup's branded `User-Agent`
-/// (see `useragent::get()`) instead of the SDK's default
-/// `datadog-api-client-rust/...`. If a bearer token is configured, also installs
-/// `BearerAuthMiddleware` to inject `Authorization: Bearer ...` per request.
+/// Builds a reqwest middleware client for SDK API calls. Always installs
+/// `UserAgentMiddleware` so requests carry pup's branded `User-Agent`
+/// instead of the SDK's `datadog-api-client-rust/...` default. When
+/// `send_bearer` is true and the config has an access token, also installs
+/// `BearerAuthMiddleware`. OAuth-incompatible endpoints (see
+/// `OAUTH_EXCLUDED_ENDPOINTS`) pass `false` so the SDK falls back to API key
+/// headers from the `Configuration`.
 ///
-/// Returns `None` on WASM targets where the middleware stack is unavailable;
-/// callers fall back to the SDK's default client (which sends the SDK UA).
-pub fn make_dd_client(cfg: &Config) -> Option<ClientWithMiddleware> {
+/// Returns `None` on WASM targets; callers use the SDK default client there.
+pub fn make_dd_client(cfg: &Config, send_bearer: bool) -> Option<ClientWithMiddleware> {
     #[cfg(not(target_arch = "wasm32"))]
     {
         let reqwest_client = reqwest_middleware::reqwest::Client::builder()
             .build()
             .expect("failed to build reqwest client");
         let mut builder = ClientBuilder::new(reqwest_client).with(UserAgentMiddleware);
-        if let Some(token) = cfg.access_token.as_ref() {
-            builder = builder.with(BearerAuthMiddleware {
-                token: token.clone(),
-            });
+        if send_bearer {
+            if let Some(token) = cfg.access_token.as_ref() {
+                builder = builder.with(BearerAuthMiddleware {
+                    token: token.clone(),
+                });
+            }
         }
         return Some(builder.build());
     }
     #[allow(unreachable_code)]
     {
-        let _ = cfg;
+        let _ = (cfg, send_bearer);
         None
     }
-}
-
-/// Like `make_dd_client` but never installs `BearerAuthMiddleware`. Use for
-/// endpoints that don't support OAuth bearer tokens (see
-/// `OAUTH_EXCLUDED_ENDPOINTS`); the SDK still injects API key/app key auth
-/// headers from the `Configuration`.
-pub fn make_dd_client_no_auth() -> Option<ClientWithMiddleware> {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let reqwest_client = reqwest_middleware::reqwest::Client::builder()
-            .build()
-            .expect("failed to build reqwest client");
-        return Some(
-            ClientBuilder::new(reqwest_client)
-                .with(UserAgentMiddleware)
-                .build(),
-        );
-    }
-    #[allow(unreachable_code)]
-    None
 }
 
 #[macro_export]
@@ -199,21 +171,20 @@ macro_rules! make_api {
     ($api:ty, $cfg:expr) => {{
         let cfg = $cfg;
         let dd_cfg = $crate::client::make_dd_config(cfg);
-        match $crate::client::make_dd_client(cfg) {
+        match $crate::client::make_dd_client(cfg, true) {
             Some(c) => <$api>::with_client_and_config(dd_cfg, c),
             None => <$api>::with_config(dd_cfg),
         }
     }};
 }
 
-/// Same as `make_api!` but uses a UA-only client (no bearer). For OAuth-
-/// incompatible endpoints; SDK still applies API key auth from `Configuration`.
+/// `make_api!` variant that skips bearer auth — for OAuth-incompatible endpoints.
 #[macro_export]
 macro_rules! make_api_no_auth {
     ($api:ty, $cfg:expr) => {{
         let cfg = $cfg;
         let dd_cfg = $crate::client::make_dd_config(cfg);
-        match $crate::client::make_dd_client_no_auth() {
+        match $crate::client::make_dd_client(cfg, false) {
             Some(c) => <$api>::with_client_and_config(dd_cfg, c),
             None => <$api>::with_config(dd_cfg),
         }
@@ -1156,14 +1127,16 @@ mod tests {
     fn test_make_dd_client_some_without_token() {
         // UA middleware is always installed, so the client is always Some on native.
         let cfg = test_cfg();
-        assert!(make_dd_client(&cfg).is_some());
+        assert!(make_dd_client(&cfg, true).is_some());
+        assert!(make_dd_client(&cfg, false).is_some());
     }
 
     #[test]
     fn test_make_dd_client_some_with_token() {
         let mut cfg = test_cfg();
         cfg.access_token = Some("test-token".into());
-        assert!(make_dd_client(&cfg).is_some());
+        assert!(make_dd_client(&cfg, true).is_some());
+        assert!(make_dd_client(&cfg, false).is_some());
     }
 
     #[test]
