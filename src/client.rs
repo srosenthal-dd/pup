@@ -1019,6 +1019,7 @@ mod tests {
             app_key: Some("test".into()),
             access_token: None,
             site: "datadoghq.com".into(),
+            site_explicit: false,
             org: None,
             output_format: crate::config::OutputFormat::Json,
             auto_approve: false,

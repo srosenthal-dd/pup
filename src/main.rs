@@ -10073,17 +10073,14 @@ async fn main_inner() -> anyhow::Result<()> {
     if cfg.agent_mode {
         cfg.auto_approve = true;
     }
-    // Apply --org flag (higher priority than DD_ORG env var / config file)
+    // Apply --org flag (higher priority than DD_ORG env var / config file).
+    // Site for this org and access token are also resolved here.
     if let Some(org) = cli.org {
-        cfg.org = Some(org);
-        // Reload token from storage for this org, unless DD_ACCESS_TOKEN was explicitly set
         #[cfg(all(not(feature = "browser"), not(target_arch = "wasm32")))]
-        if std::env::var("DD_ACCESS_TOKEN")
-            .ok()
-            .filter(|s| !s.is_empty())
-            .is_none()
+        config::apply_org_override(&mut cfg, org);
+        #[cfg(any(feature = "browser", target_arch = "wasm32"))]
         {
-            cfg.access_token = config::load_token_from_storage(&cfg.site, cfg.org.as_deref());
+            cfg.org = Some(org);
         }
     }
 
@@ -13632,7 +13629,7 @@ async fn main_inner() -> anyhow::Result<()> {
                 subdomain,
             } => {
                 if let Some(s) = site {
-                    cfg.site = s;
+                    cfg.set_site_explicit(s);
                 }
                 let is_read_only = read_only || cfg.read_only;
                 let resolved =
@@ -13642,7 +13639,7 @@ async fn main_inner() -> anyhow::Result<()> {
             AuthActions::Logout => commands::auth::logout(&cfg).await?,
             AuthActions::Status { site } => {
                 if let Some(s) = site {
-                    cfg.site = s;
+                    cfg.set_site_explicit(s);
                 }
                 commands::auth::status(&cfg)?
             }
