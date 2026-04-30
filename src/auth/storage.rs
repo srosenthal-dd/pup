@@ -1212,9 +1212,7 @@ mod tests {
 
     #[test]
     fn test_session_registry_empty() {
-        let _lock = crate::test_utils::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let _lock = crate::test_utils::ENV_LOCK.blocking_lock();
         let tmp = TempDir::new("sess_empty");
         std::env::set_var("PUP_CONFIG_DIR", tmp.path());
         let sessions = list_sessions().unwrap();
@@ -1224,9 +1222,7 @@ mod tests {
 
     #[test]
     fn test_session_registry_save_and_list() {
-        let _lock = crate::test_utils::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let _lock = crate::test_utils::ENV_LOCK.blocking_lock();
         let tmp = TempDir::new("sess_save");
         std::env::set_var("PUP_CONFIG_DIR", tmp.path());
 
@@ -1246,9 +1242,7 @@ mod tests {
 
     #[test]
     fn test_session_registry_dedup() {
-        let _lock = crate::test_utils::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let _lock = crate::test_utils::ENV_LOCK.blocking_lock();
         let tmp = TempDir::new("sess_dedup");
         std::env::set_var("PUP_CONFIG_DIR", tmp.path());
 
@@ -1262,9 +1256,7 @@ mod tests {
 
     #[test]
     fn test_session_registry_remove() {
-        let _lock = crate::test_utils::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let _lock = crate::test_utils::ENV_LOCK.blocking_lock();
         let tmp = TempDir::new("sess_remove");
         std::env::set_var("PUP_CONFIG_DIR", tmp.path());
 
@@ -1280,9 +1272,7 @@ mod tests {
 
     #[test]
     fn test_session_registry_remove_nonexistent() {
-        let _lock = crate::test_utils::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let _lock = crate::test_utils::ENV_LOCK.blocking_lock();
         let tmp = TempDir::new("sess_rm_none");
         std::env::set_var("PUP_CONFIG_DIR", tmp.path());
         let result = remove_session("datadoghq.com", Some("nonexistent"));
@@ -1299,9 +1289,7 @@ mod tests {
     #[test]
     #[cfg(not(any(target_arch = "wasm32", target_os = "macos")))]
     fn test_detect_backend_with_probe_failure_falls_back_to_file() {
-        let _lock = crate::test_utils::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let _lock = crate::test_utils::ENV_LOCK.blocking_lock();
         let tmp = TempDir::new("detect_fallback");
         std::env::set_var("PUP_CONFIG_DIR", tmp.path());
         std::env::remove_var("DD_TOKEN_STORAGE");
@@ -1316,9 +1304,7 @@ mod tests {
     #[test]
     #[cfg(not(target_arch = "wasm32"))]
     fn test_detect_backend_with_dd_keychain_panics_when_unavailable() {
-        let _lock = crate::test_utils::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let _lock = crate::test_utils::ENV_LOCK.blocking_lock();
         let tmp = TempDir::new("detect_kc_panic");
         std::env::set_var("PUP_CONFIG_DIR", tmp.path());
         std::env::set_var("DD_TOKEN_STORAGE", "keychain");
@@ -1335,9 +1321,7 @@ mod tests {
 
     #[test]
     fn test_detect_backend_dd_token_storage_file() {
-        let _lock = crate::test_utils::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let _lock = crate::test_utils::ENV_LOCK.blocking_lock();
         let tmp = TempDir::new("detect_file");
         std::env::set_var("PUP_CONFIG_DIR", tmp.path());
         std::env::set_var("DD_TOKEN_STORAGE", "file");
@@ -1352,9 +1336,7 @@ mod tests {
     fn test_detect_backend_windows_default_is_keychain() {
         // Windows defaults to KeychainStorage (chunked WinCred) now that the
         // chunked scheme keeps blobs within the 2560-byte platform limit.
-        let _lock = crate::test_utils::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let _lock = crate::test_utils::ENV_LOCK.blocking_lock();
         let tmp = TempDir::new("detect_win");
         std::env::set_var("PUP_CONFIG_DIR", tmp.path());
         std::env::remove_var("DD_TOKEN_STORAGE");
@@ -1370,9 +1352,7 @@ mod tests {
     #[test]
     #[cfg(target_os = "windows")]
     fn test_detect_backend_dd_token_storage_keychain_windows() {
-        let _lock = crate::test_utils::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let _lock = crate::test_utils::ENV_LOCK.blocking_lock();
         let tmp = TempDir::new("detect_kc_win");
         std::env::set_var("PUP_CONFIG_DIR", tmp.path());
         std::env::set_var("DD_TOKEN_STORAGE", "keychain");

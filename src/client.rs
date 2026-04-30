@@ -1142,7 +1142,7 @@ mod tests {
     #[test]
     fn test_make_api_macro_without_bearer_token() {
         use datadog_api_client::datadogV1::api_monitors::MonitorsAPI;
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_MOCK_SERVER");
         let cfg = test_cfg();
         let _api: MonitorsAPI = crate::make_api!(MonitorsAPI, &cfg);
@@ -1151,7 +1151,7 @@ mod tests {
     #[test]
     fn test_make_api_macro_with_bearer_token() {
         use datadog_api_client::datadogV1::api_monitors::MonitorsAPI;
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_MOCK_SERVER");
         let mut cfg = test_cfg();
         cfg.access_token = Some("test-token".into());
@@ -1160,7 +1160,7 @@ mod tests {
 
     #[test]
     fn test_make_dd_config_returns_valid() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         let cfg = test_cfg();
         // Ensure env vars are set for DD client
         std::env::set_var("DD_API_KEY", "test-key");
@@ -1175,7 +1175,7 @@ mod tests {
 
     #[test]
     fn test_make_dd_config_with_mock_server() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         let cfg = test_cfg();
         std::env::set_var("DD_API_KEY", "test-key");
         std::env::set_var("DD_APP_KEY", "test-app-key");
@@ -1194,7 +1194,7 @@ mod tests {
 
     #[test]
     fn test_make_dd_config_https_mock() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         let cfg = test_cfg();
         std::env::set_var("DD_API_KEY", "test-key");
         std::env::set_var("DD_APP_KEY", "test-app-key");
@@ -1370,16 +1370,12 @@ mod tests {
     /// `User-Agent` rather than the SDK's default `datadog-api-client-rust/...`.
     /// The mock only matches when the header starts with `pup/`; if the
     /// middleware fails to override, mockito returns 501 and the SDK call fails.
-    ///
-    /// Holds the std `ENV_LOCK` only for the sync env-var setup so it
-    /// serializes with sibling sync tests like `test_make_dd_config_with_mock_server`.
-    /// The mockito URL is captured into the `Configuration` struct, so the env
-    /// var is no longer needed once `api` has been built.
     #[tokio::test]
     async fn test_make_api_sends_pup_user_agent() {
         use datadog_api_client::datadogV1::api_monitors::{
             ListMonitorsOptionalParams, MonitorsAPI,
         };
+        let _lock = lock_env().await;
         let mut server = mockito::Server::new_async().await;
         let mock = server
             .mock("GET", mockito::Matcher::Any)
@@ -1391,12 +1387,8 @@ mod tests {
             .create_async()
             .await;
 
-        let api: MonitorsAPI = {
-            let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-            let cfg = test_config(&server.url());
-            crate::make_api!(MonitorsAPI, &cfg)
-        };
-
+        let cfg = test_config(&server.url());
+        let api: MonitorsAPI = crate::make_api!(MonitorsAPI, &cfg);
         let resp = api
             .list_monitors(ListMonitorsOptionalParams::default())
             .await;
@@ -1406,21 +1398,59 @@ mod tests {
             resp.err()
         );
         mock.assert_async().await;
-
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         cleanup_env();
     }
 
-    /// Same coverage for the no-auth variant used by OAuth-incompatible endpoints.
+    /// Like `test_make_api_sends_pup_user_agent`, but with an OAuth bearer
+    /// token configured — verifies that the UA middleware coexists with the
+    /// bearer middleware (both headers land on the same request).
+    #[tokio::test]
+    async fn test_make_api_sends_pup_user_agent_with_bearer() {
+        use datadog_api_client::datadogV1::api_monitors::{
+            ListMonitorsOptionalParams, MonitorsAPI,
+        };
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", mockito::Matcher::Any)
+            .match_header("User-Agent", mockito::Matcher::Regex("^pup/".into()))
+            .match_header("Authorization", "Bearer test-bearer-token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body("[]")
+            .expect(1)
+            .create_async()
+            .await;
+
+        let mut cfg = test_config(&server.url());
+        cfg.access_token = Some("test-bearer-token".into());
+        let api: MonitorsAPI = crate::make_api!(MonitorsAPI, &cfg);
+        let resp = api
+            .list_monitors(ListMonitorsOptionalParams::default())
+            .await;
+        assert!(
+            resp.is_ok(),
+            "make_api! with bearer didn't carry both UA and Authorization: {:?}",
+            resp.err()
+        );
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    /// Same coverage for the no-auth variant. Asserts the UA is overridden
+    /// AND that no `Authorization` header leaks through, even when a bearer
+    /// token exists in the config — that's the contract of `make_api_no_auth!`.
     #[tokio::test]
     async fn test_make_api_no_auth_sends_pup_user_agent() {
         use datadog_api_client::datadogV2::api_authn_mappings::{
             AuthNMappingsAPI, ListAuthNMappingsOptionalParams,
         };
+        let _lock = lock_env().await;
         let mut server = mockito::Server::new_async().await;
         let mock = server
             .mock("GET", mockito::Matcher::Any)
             .match_header("User-Agent", mockito::Matcher::Regex("^pup/".into()))
+            .match_header("Authorization", mockito::Matcher::Missing)
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(r#"{"data":[]}"#)
@@ -1428,23 +1458,20 @@ mod tests {
             .create_async()
             .await;
 
-        let api: AuthNMappingsAPI = {
-            let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-            let cfg = test_config(&server.url());
-            crate::make_api_no_auth!(AuthNMappingsAPI, &cfg)
-        };
-
+        let mut cfg = test_config(&server.url());
+        // Set a token so the Authorization-absent assertion meaningfully
+        // exercises that `make_api_no_auth!` actively suppresses bearer.
+        cfg.access_token = Some("test-bearer-token".into());
+        let api: AuthNMappingsAPI = crate::make_api_no_auth!(AuthNMappingsAPI, &cfg);
         let resp = api
             .list_authn_mappings(ListAuthNMappingsOptionalParams::default())
             .await;
         assert!(
             resp.is_ok(),
-            "make_api_no_auth! request did not carry pup/ User-Agent: {:?}",
+            "make_api_no_auth! request leaked Authorization or wrong UA: {:?}",
             resp.err()
         );
         mock.assert_async().await;
-
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         cleanup_env();
     }
 

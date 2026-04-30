@@ -531,7 +531,7 @@ mod tests {
 
     #[test]
     fn test_api_host_standard() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_MOCK_SERVER");
         let cfg = make_cfg(None, None, Some("t"));
         assert_eq!(cfg.api_host(), "api.datadoghq.com");
@@ -539,7 +539,7 @@ mod tests {
 
     #[test]
     fn test_api_host_eu() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_MOCK_SERVER");
         let mut cfg = make_cfg(None, None, Some("t"));
         cfg.site = "datadoghq.eu".into();
@@ -548,7 +548,7 @@ mod tests {
 
     #[test]
     fn test_api_host_oncall() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_MOCK_SERVER");
         let mut cfg = make_cfg(None, None, Some("t"));
         cfg.site = "navy.oncall.datadoghq.com".into();
@@ -642,7 +642,7 @@ mod tests {
 
     #[test]
     fn test_api_host_app_prefix_us1() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_MOCK_SERVER");
         let mut cfg = make_cfg(None, None, Some("t"));
         cfg.site = normalize_site("app.datadoghq.com");
@@ -651,7 +651,7 @@ mod tests {
 
     #[test]
     fn test_api_host_app_prefix_eu() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_MOCK_SERVER");
         let mut cfg = make_cfg(None, None, Some("t"));
         cfg.site = normalize_site("app.datadoghq.eu");
@@ -660,7 +660,7 @@ mod tests {
 
     #[test]
     fn test_api_host_app_prefix_gov() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_MOCK_SERVER");
         let mut cfg = make_cfg(None, None, Some("t"));
         cfg.site = normalize_site("app.ddog-gov.com");
@@ -669,7 +669,7 @@ mod tests {
 
     #[test]
     fn test_api_host_app_prefix_staging() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_MOCK_SERVER");
         let mut cfg = make_cfg(None, None, Some("t"));
         cfg.site = normalize_site("app.datad0g.com");
@@ -678,7 +678,7 @@ mod tests {
 
     #[test]
     fn test_api_host_region_us3() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_MOCK_SERVER");
         let mut cfg = make_cfg(None, None, Some("t"));
         cfg.site = normalize_site("us3.datadoghq.com");
@@ -687,7 +687,7 @@ mod tests {
 
     #[test]
     fn test_api_host_app_region_us3() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_MOCK_SERVER");
         let mut cfg = make_cfg(None, None, Some("t"));
         cfg.site = normalize_site("app.us3.datadoghq.com");
@@ -709,7 +709,7 @@ mod tests {
 
     #[test]
     fn test_api_base_url_standard() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_MOCK_SERVER");
         let cfg = make_cfg(None, None, Some("t"));
         assert_eq!(cfg.api_base_url(), "https://api.datadoghq.com");
@@ -717,7 +717,7 @@ mod tests {
 
     #[test]
     fn test_api_base_url_eu() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_MOCK_SERVER");
         let mut cfg = make_cfg(None, None, Some("t"));
         cfg.site = "datadoghq.eu".into();
@@ -726,7 +726,7 @@ mod tests {
 
     #[test]
     fn test_api_base_url_oncall() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_MOCK_SERVER");
         let mut cfg = make_cfg(None, None, Some("t"));
         cfg.site = "navy.oncall.datadoghq.com".into();
@@ -735,7 +735,7 @@ mod tests {
 
     #[test]
     fn test_api_base_url_mock_server() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::set_var("PUP_MOCK_SERVER", "http://127.0.0.1:1234");
         let cfg = make_cfg(None, None, Some("t"));
         assert_eq!(cfg.api_base_url(), "http://127.0.0.1:1234");
@@ -744,7 +744,7 @@ mod tests {
 
     #[test]
     fn test_api_host_mock_server() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::set_var("PUP_MOCK_SERVER", "http://127.0.0.1:5678");
         let cfg = make_cfg(None, None, Some("t"));
         assert_eq!(cfg.api_host(), "127.0.0.1:5678");
@@ -779,7 +779,7 @@ mod tests {
 
     #[test]
     fn test_config_dir_returns_path() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_CONFIG_DIR");
         let dir = config_dir();
         // On native builds, dirs::config_dir() should return Some
@@ -789,7 +789,7 @@ mod tests {
 
     #[test]
     fn test_config_dir_respects_override() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::set_var("PUP_CONFIG_DIR", "/tmp/pup_test_override");
         let dir = config_dir();
         std::env::remove_var("PUP_CONFIG_DIR");
@@ -828,7 +828,7 @@ mod tests {
 
     #[test]
     fn test_read_only_from_env() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("DD_READ_ONLY");
         std::env::remove_var("DD_CLI_READ_ONLY");
         std::env::set_var("PUP_CONFIG_DIR", "/tmp/pup_test_nonexistent");
