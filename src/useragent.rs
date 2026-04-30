@@ -96,13 +96,39 @@ pub fn get() -> String {
     get_with_command(None)
 }
 
+/// Returns the underlying Datadog SDK's `name/version` token (e.g.
+/// `datadog-api-client-rust/0.30.0`) for inclusion in pup's User-Agent.
+/// `None` when the SDK isn't compiled in (any non-default-feature build).
+#[cfg(any(feature = "native", feature = "wasi", feature = "browser"))]
+fn sdk_token() -> Option<&'static str> {
+    datadog_api_client::datadog::DEFAULT_USER_AGENT
+        .as_str()
+        .split_whitespace()
+        .next()
+}
+
+#[cfg(not(any(feature = "native", feature = "wasi", feature = "browser")))]
+fn sdk_token() -> Option<&'static str> {
+    None
+}
+
 /// Build the User-Agent string, optionally including a command identifier
 /// so that audit logs can differentiate which pup command made the request.
+///
+/// Format: `pup/<ver> (rust <rustver>; os <os>; arch <arch>[; ai-agent <name>][; sdk <sdk_name/ver>][; cmd <cmd>])`
+///
+/// Each parenthesized comment must be a `key value` 2-tuple so the
+/// smart-edge audit logger's `client_telemetry` metric parser accepts it
+/// (see `dd-source/.../web_traffic_dashboard/client_sdk_info.go`). A bare
+/// token like `rust` (without a version) causes the parser to reject the
+/// entire UA, dropping all pup product-version telemetry — that's why we
+/// always emit `rust <version>` (falling back to `rust unknown`).
 pub fn get_with_command(command: Option<&str>) -> String {
     let agent = detect_agent_info();
     let base = format!(
-        "pup/{} (rust; os {}; arch {}",
+        "pup/{} (rust {}; os {}; arch {}",
         version::VERSION,
+        version::rustc_version(),
         std::env::consts::OS,
         std::env::consts::ARCH,
     );
@@ -111,10 +137,14 @@ pub fn get_with_command(command: Option<&str>) -> String {
     } else {
         base
     };
+    let with_sdk = match sdk_token() {
+        Some(sdk) => format!("{}; sdk {}", with_agent, sdk),
+        None => with_agent,
+    };
     if let Some(cmd) = command {
-        format!("{}; cmd {})", with_agent, cmd)
+        format!("{}; cmd {})", with_sdk, cmd)
     } else {
-        format!("{})", with_agent)
+        format!("{})", with_sdk)
     }
 }
 
@@ -157,6 +187,43 @@ mod tests {
         let ua = get_with_command(Some("security-findings-analyze"));
         assert!(ua.starts_with("pup/"));
         assert!(ua.contains("; cmd security-findings-analyze)"));
+    }
+
+    /// Mirrors the smart-edge audit logger's `client_telemetry` parser
+    /// (`dd-source/.../web_traffic_dashboard/client_sdk_info.go`): each
+    /// parenthesized comment must split into exactly 2 tokens on the first
+    /// space. If this assertion fails, the metric stops firing for pup
+    /// until the UA is fixed.
+    #[test]
+    fn test_user_agent_parses_for_smart_edge_telemetry() {
+        for ua in [
+            get_with_command(None),
+            get_with_command(Some("monitors-list")),
+        ] {
+            let open = ua
+                .find('(')
+                .unwrap_or_else(|| panic!("UA missing '(' : {ua}"));
+            let close = ua
+                .rfind(')')
+                .unwrap_or_else(|| panic!("UA missing ')' : {ua}"));
+            let inside = &ua[open + 1..close];
+            for raw in inside.split(';') {
+                let trimmed = raw.trim();
+                let mut parts = trimmed.splitn(2, ' ');
+                let key = parts.next().unwrap_or("");
+                let value = parts.next();
+                assert!(
+                    value.is_some(),
+                    "smart-edge parser requires `key value` tuples — \
+                     bare comment {trimmed:?} in {ua:?} would drop the entire UA",
+                );
+                assert!(!key.is_empty(), "empty key in comment {trimmed:?}");
+                assert!(
+                    !value.unwrap().is_empty(),
+                    "empty value in comment {trimmed:?}",
+                );
+            }
+        }
     }
 
     #[test]

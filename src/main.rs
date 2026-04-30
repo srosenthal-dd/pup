@@ -26,9 +26,13 @@ mod test_support;
 /// Shared test utilities — only compiled in test builds.
 #[cfg(test)]
 pub(crate) mod test_utils {
-    use std::sync::Mutex;
+    use tokio::sync::Mutex;
     /// Serialize tests that mutate global env vars (PUP_MOCK_SERVER, DD_API_KEY, etc.).
-    pub static ENV_LOCK: Mutex<()> = Mutex::new(());
+    /// `tokio::sync::Mutex` so async tests can hold the guard across `.await`,
+    /// while sync tests acquire via `blocking_lock()`. Sharing one lock across
+    /// both flavors prevents the parallel-test races that previously required
+    /// running the suite with `--test-threads=1`.
+    pub static ENV_LOCK: Mutex<()> = Mutex::const_new(());
 }
 
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};

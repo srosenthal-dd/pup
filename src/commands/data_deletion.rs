@@ -3,14 +3,12 @@ use datadog_api_client::datadogV2::api_data_deletion::{
     DataDeletionAPI, GetDataDeletionRequestsOptionalParams,
 };
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
 fn make_api(cfg: &Config) -> DataDeletionAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    DataDeletionAPI::with_config(dd_cfg)
+    crate::make_api_no_auth!(DataDeletionAPI, cfg)
 }
 
 pub async fn requests_list(

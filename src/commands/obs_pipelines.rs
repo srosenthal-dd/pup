@@ -4,14 +4,13 @@ use datadog_api_client::datadogV2::api_observability_pipelines::{
 };
 use datadog_api_client::datadogV2::model::{ObservabilityPipeline, ObservabilityPipelineSpec};
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
 fn make_api(cfg: &Config) -> ObservabilityPipelinesAPI {
     // Observability Pipelines does not support OAuth — API key auth only.
-    ObservabilityPipelinesAPI::with_config(client::make_dd_config(cfg))
+    crate::make_api_no_auth!(ObservabilityPipelinesAPI, cfg)
 }
 
 pub async fn list(cfg: &Config, limit: i64) -> Result<()> {

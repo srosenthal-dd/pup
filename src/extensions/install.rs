@@ -629,7 +629,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("extensions")).unwrap();
 
-        let _guard = crate::test_utils::ENV_LOCK.lock().unwrap();
+        let _guard = crate::test_utils::ENV_LOCK.blocking_lock();
         std::env::set_var("PUP_CONFIG_DIR", &dir);
 
         let result = remove_extension("nonexistent");

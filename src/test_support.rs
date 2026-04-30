@@ -8,15 +8,12 @@
 #![cfg(test)]
 
 use crate::config::{Config, OutputFormat};
-use tokio::sync::Mutex;
 
-/// Global async mutex to serialize tests that modify process-wide env vars.
-/// Uses `tokio::sync::Mutex` so the guard can be held across `.await` points
-/// without tripping `clippy::await_holding_lock`.
-static ENV_MUTEX: Mutex<()> = Mutex::const_new(());
-
+/// Async lock for tests that mutate process-wide env vars. Delegates to the
+/// shared `ENV_LOCK` (tokio Mutex) so async and sync tests serialize on the
+/// same primitive — sync tests use `ENV_LOCK.blocking_lock()` directly.
 pub(crate) async fn lock_env() -> tokio::sync::MutexGuard<'static, ()> {
-    ENV_MUTEX.lock().await
+    crate::test_utils::ENV_LOCK.lock().await
 }
 
 pub(crate) fn test_config(mock_url: &str) -> Config {
