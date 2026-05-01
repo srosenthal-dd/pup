@@ -9,10 +9,14 @@ use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
-pub async fn list(cfg: &Config) -> Result<()> {
+pub async fn list(cfg: &Config, page_size: i64, page_number: i64) -> Result<()> {
     let api = crate::make_api!(UsersAPI, cfg);
     let resp = api
-        .list_users(ListUsersOptionalParams::default())
+        .list_users(
+            ListUsersOptionalParams::default()
+                .page_size(page_size)
+                .page_number(page_number),
+        )
         .await
         .map_err(|e| anyhow::anyhow!("failed to list users: {e:?}"))?;
     formatter::output(cfg, &resp)
@@ -130,7 +134,7 @@ mod tests {
         let mut s = mockito::Server::new_async().await;
         let cfg = test_config(&s.url());
         mock_all(&mut s, r#"{"data": []}"#).await;
-        let _ = super::list(&cfg).await;
+        let _ = super::list(&cfg, 10, 0).await;
         cleanup_env();
     }
 

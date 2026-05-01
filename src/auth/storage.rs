@@ -900,6 +900,39 @@ pub fn remove_session(site: &str, org: Option<&str>) -> Result<()> {
     write_sessions(&sessions)
 }
 
+/// Look up the site for a named org session. Returns None if no session exists
+/// for that org, or if multiple sessions share the same org name on different
+/// sites (ambiguous — caller must pass DD_SITE explicitly). On the ambiguous
+/// path, prints a one-line warning to stderr naming the conflicting sites so
+/// the user knows the auto-resolution gave up.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn find_session_site(org: &str) -> Option<String> {
+    let sessions = list_sessions().ok()?;
+    let mut sites: Vec<String> = sessions
+        .into_iter()
+        .filter(|s| s.org.as_deref() == Some(org))
+        .map(|s| s.site)
+        .collect();
+    sites.sort();
+    sites.dedup();
+    match sites.len() {
+        0 => None,
+        1 => sites.pop(),
+        _ => {
+            // The caller (Config::from_env / apply_org_override) handles the
+            // resulting None by leaving cfg.site at whatever it was — which
+            // may be a default, an env-set site, or a previously-resolved
+            // org's site — so we do not promise "falling back to default" here.
+            eprintln!(
+                "Warning: org '{org}' has saved sessions on multiple sites ({}); \
+                 not auto-selecting one. Set DD_SITE to disambiguate.",
+                sites.join(", ")
+            );
+            None
+        }
+    }
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 fn write_sessions(sessions: &[SessionEntry]) -> Result<()> {
     let path = match sessions_path() {
@@ -1212,9 +1245,7 @@ mod tests {
 
     #[test]
     fn test_session_registry_empty() {
-        let _lock = crate::test_utils::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let _lock = crate::test_utils::ENV_LOCK.blocking_lock();
         let tmp = TempDir::new("sess_empty");
         std::env::set_var("PUP_CONFIG_DIR", tmp.path());
         let sessions = list_sessions().unwrap();
@@ -1224,9 +1255,7 @@ mod tests {
 
     #[test]
     fn test_session_registry_save_and_list() {
-        let _lock = crate::test_utils::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let _lock = crate::test_utils::ENV_LOCK.blocking_lock();
         let tmp = TempDir::new("sess_save");
         std::env::set_var("PUP_CONFIG_DIR", tmp.path());
 
@@ -1246,9 +1275,7 @@ mod tests {
 
     #[test]
     fn test_session_registry_dedup() {
-        let _lock = crate::test_utils::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let _lock = crate::test_utils::ENV_LOCK.blocking_lock();
         let tmp = TempDir::new("sess_dedup");
         std::env::set_var("PUP_CONFIG_DIR", tmp.path());
 
@@ -1262,9 +1289,7 @@ mod tests {
 
     #[test]
     fn test_session_registry_remove() {
-        let _lock = crate::test_utils::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let _lock = crate::test_utils::ENV_LOCK.blocking_lock();
         let tmp = TempDir::new("sess_remove");
         std::env::set_var("PUP_CONFIG_DIR", tmp.path());
 
@@ -1280,14 +1305,69 @@ mod tests {
 
     #[test]
     fn test_session_registry_remove_nonexistent() {
-        let _lock = crate::test_utils::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let _lock = crate::test_utils::ENV_LOCK.blocking_lock();
         let tmp = TempDir::new("sess_rm_none");
         std::env::set_var("PUP_CONFIG_DIR", tmp.path());
         let result = remove_session("datadoghq.com", Some("nonexistent"));
         std::env::remove_var("PUP_CONFIG_DIR");
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_find_session_site_unique_match() {
+        let _lock = crate::test_utils::ENV_LOCK.blocking_lock();
+        let tmp = TempDir::new("find_sess_unique");
+        std::env::set_var("PUP_CONFIG_DIR", tmp.path());
+
+        save_session("custom.datadoghq.com", Some("prod-child")).unwrap();
+        save_session("datadoghq.com", None).unwrap();
+        let result = find_session_site("prod-child");
+        std::env::remove_var("PUP_CONFIG_DIR");
+
+        assert_eq!(result.as_deref(), Some("custom.datadoghq.com"));
+    }
+
+    #[test]
+    fn test_find_session_site_no_match() {
+        let _lock = crate::test_utils::ENV_LOCK.blocking_lock();
+        let tmp = TempDir::new("find_sess_none");
+        std::env::set_var("PUP_CONFIG_DIR", tmp.path());
+
+        save_session("datadoghq.com", Some("prod-child")).unwrap();
+        let result = find_session_site("nonexistent");
+        std::env::remove_var("PUP_CONFIG_DIR");
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_find_session_site_ambiguous_returns_none() {
+        let _lock = crate::test_utils::ENV_LOCK.blocking_lock();
+        let tmp = TempDir::new("find_sess_amb");
+        std::env::set_var("PUP_CONFIG_DIR", tmp.path());
+
+        // Same org name registered against two different sites → caller must
+        // disambiguate via DD_SITE rather than us picking one.
+        save_session("datadoghq.com", Some("shared-name")).unwrap();
+        save_session("datadoghq.eu", Some("shared-name")).unwrap();
+        let result = find_session_site("shared-name");
+        std::env::remove_var("PUP_CONFIG_DIR");
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_find_session_site_skips_default_session() {
+        let _lock = crate::test_utils::ENV_LOCK.blocking_lock();
+        let tmp = TempDir::new("find_sess_default");
+        std::env::set_var("PUP_CONFIG_DIR", tmp.path());
+
+        // The unnamed (org=None) session must not match any --org lookup.
+        save_session("datadoghq.eu", None).unwrap();
+        let result = find_session_site("anything");
+        std::env::remove_var("PUP_CONFIG_DIR");
+
+        assert!(result.is_none());
     }
 
     // --- detect_backend ---------------------------------------------------------
@@ -1299,9 +1379,7 @@ mod tests {
     #[test]
     #[cfg(not(any(target_arch = "wasm32", target_os = "macos")))]
     fn test_detect_backend_with_probe_failure_falls_back_to_file() {
-        let _lock = crate::test_utils::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let _lock = crate::test_utils::ENV_LOCK.blocking_lock();
         let tmp = TempDir::new("detect_fallback");
         std::env::set_var("PUP_CONFIG_DIR", tmp.path());
         std::env::remove_var("DD_TOKEN_STORAGE");
@@ -1316,9 +1394,7 @@ mod tests {
     #[test]
     #[cfg(not(target_arch = "wasm32"))]
     fn test_detect_backend_with_dd_keychain_panics_when_unavailable() {
-        let _lock = crate::test_utils::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let _lock = crate::test_utils::ENV_LOCK.blocking_lock();
         let tmp = TempDir::new("detect_kc_panic");
         std::env::set_var("PUP_CONFIG_DIR", tmp.path());
         std::env::set_var("DD_TOKEN_STORAGE", "keychain");
@@ -1335,9 +1411,7 @@ mod tests {
 
     #[test]
     fn test_detect_backend_dd_token_storage_file() {
-        let _lock = crate::test_utils::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let _lock = crate::test_utils::ENV_LOCK.blocking_lock();
         let tmp = TempDir::new("detect_file");
         std::env::set_var("PUP_CONFIG_DIR", tmp.path());
         std::env::set_var("DD_TOKEN_STORAGE", "file");
@@ -1352,9 +1426,7 @@ mod tests {
     fn test_detect_backend_windows_default_is_keychain() {
         // Windows defaults to KeychainStorage (chunked WinCred) now that the
         // chunked scheme keeps blobs within the 2560-byte platform limit.
-        let _lock = crate::test_utils::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let _lock = crate::test_utils::ENV_LOCK.blocking_lock();
         let tmp = TempDir::new("detect_win");
         std::env::set_var("PUP_CONFIG_DIR", tmp.path());
         std::env::remove_var("DD_TOKEN_STORAGE");
@@ -1370,9 +1442,7 @@ mod tests {
     #[test]
     #[cfg(target_os = "windows")]
     fn test_detect_backend_dd_token_storage_keychain_windows() {
-        let _lock = crate::test_utils::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let _lock = crate::test_utils::ENV_LOCK.blocking_lock();
         let tmp = TempDir::new("detect_kc_win");
         std::env::set_var("PUP_CONFIG_DIR", tmp.path());
         std::env::set_var("DD_TOKEN_STORAGE", "keychain");

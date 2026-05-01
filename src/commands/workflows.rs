@@ -6,7 +6,6 @@ use datadog_api_client::datadogV2::api_workflow_automation::{
     ListWorkflowInstancesOptionalParams, WorkflowAutomationAPI,
 };
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter::{self, Metadata};
 use crate::util;
@@ -16,8 +15,7 @@ use crate::util;
 // ---------------------------------------------------------------------------
 
 fn make_api(cfg: &Config) -> WorkflowAutomationAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    WorkflowAutomationAPI::with_config(dd_cfg)
+    crate::make_api_no_auth!(WorkflowAutomationAPI, cfg)
 }
 
 // ---------------------------------------------------------------------------
@@ -76,8 +74,7 @@ pub async fn run(
     wait: bool,
     timeout: &str,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = WorkflowAutomationAPI::with_config(dd_cfg);
+    let api = crate::make_api_no_auth!(WorkflowAutomationAPI, cfg);
 
     let input_payload: Option<BTreeMap<String, serde_json::Value>> = match (&payload, &payload_file)
     {
@@ -135,8 +132,7 @@ pub async fn run(
 
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
-        let dd_cfg = client::make_dd_config(cfg);
-        let api = WorkflowAutomationAPI::with_config(dd_cfg);
+        let api = crate::make_api_no_auth!(WorkflowAutomationAPI, cfg);
         let status = api
             .get_workflow_instance(workflow_id.to_string(), instance_id.clone())
             .await
@@ -216,8 +212,7 @@ pub async fn instance_cancel(cfg: &Config, workflow_id: &str, instance_id: &str)
 // ---------------------------------------------------------------------------
 
 fn make_connection_api(cfg: &Config) -> ActionConnectionAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    ActionConnectionAPI::with_config(dd_cfg)
+    crate::make_api_no_auth!(ActionConnectionAPI, cfg)
 }
 
 pub async fn connections_get(cfg: &Config, connection_id: &str) -> Result<()> {

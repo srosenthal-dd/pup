@@ -131,6 +131,8 @@ pub fn default_scopes() -> Vec<&'static str> {
         "dashboards_write",
         // Data Scanner
         "data_scanner_read",
+        // Data Streams
+        "data_streams_monitoring_capture_messages",
         // Error Tracking
         "error_tracking_read",
         // Events
@@ -262,7 +264,7 @@ mod tests {
     #[test]
     fn test_default_scopes() {
         let scopes = default_scopes();
-        assert_eq!(scopes.len(), 81);
+        assert_eq!(scopes.len(), 82);
         assert!(scopes.contains(&"dashboards_read"));
         assert!(scopes.contains(&"monitors_read"));
         assert!(scopes.contains(&"logs_read_data"));
