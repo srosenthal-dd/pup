@@ -1,14 +1,12 @@
 use anyhow::Result;
 use datadog_api_client::datadogV2::api_datasets::DatasetsAPI;
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
 fn make_api(cfg: &Config) -> DatasetsAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    DatasetsAPI::with_config(dd_cfg)
+    crate::make_api_no_auth!(DatasetsAPI, cfg)
 }
 
 pub async fn list(cfg: &Config) -> Result<()> {

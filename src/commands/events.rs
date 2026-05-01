@@ -138,6 +138,7 @@ mod tests {
             app_key: None,
             access_token: Some("token".into()),
             site: "datadoghq.com".into(),
+            site_explicit: false,
             org: None,
             output_format: OutputFormat::Json,
             auto_approve: false,

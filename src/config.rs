@@ -11,6 +11,11 @@ pub struct Config {
     pub app_key: Option<String>,
     pub access_token: Option<String>,
     pub site: String,
+    /// True if `site` was explicitly set via DD_SITE env var, --site flag, or
+    /// config file. False if it was derived from a stored session for the
+    /// current org or fell through to the `datadoghq.com` default. Used to
+    /// decide whether `--org` should pull the site from the session registry.
+    pub site_explicit: bool,
     pub org: Option<String>,
     pub output_format: OutputFormat,
     pub auto_approve: bool,
@@ -87,9 +92,27 @@ impl Config {
         let file_cfg = load_config_file().unwrap_or_default();
 
         let access_token = env_or("DD_ACCESS_TOKEN", file_cfg.access_token);
-        let raw_site = env_or("DD_SITE", file_cfg.site).unwrap_or_else(|| "datadoghq.com".into());
-        let site = normalize_site(&raw_site);
+        let explicit_site = env_or("DD_SITE", file_cfg.site);
+        let site_explicit = explicit_site.is_some();
         let org = env_or("DD_ORG", file_cfg.org); // flag override applied in main_inner
+
+        // Resolve site: explicit env/file > saved session for this org > default.
+        // Custom-site logins record their site in the session registry, so a
+        // bare `--org foo` (or DD_ORG=foo) should pick up that site automatically.
+        let raw_site = explicit_site
+            .or_else(|| {
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    org.as_deref()
+                        .and_then(crate::auth::storage::find_session_site)
+                }
+                #[cfg(target_arch = "wasm32")]
+                {
+                    None
+                }
+            })
+            .unwrap_or_else(|| "datadoghq.com".into());
+        let site = normalize_site(&raw_site);
 
         // If no token from env/file, try loading from keychain/storage (where `pup auth login` saves)
         #[cfg(not(target_arch = "wasm32"))]
@@ -100,6 +123,7 @@ impl Config {
             app_key: env_or("DD_APP_KEY", file_cfg.app_key),
             access_token,
             site,
+            site_explicit,
             org,
             output_format: env_or("DD_OUTPUT", file_cfg.output)
                 .and_then(|s| s.parse().ok())
@@ -130,12 +154,22 @@ impl Config {
             app_key,
             access_token,
             site: normalize_site(&site),
+            site_explicit: true,
             org: None,
             output_format: OutputFormat::Json,
             auto_approve: false,
             agent_mode: false,
             read_only: false,
         }
+    }
+
+    /// Override the site as if the user passed it via DD_SITE / `--site` /
+    /// config file. Keeps `site` and `site_explicit` in lockstep so a later
+    /// `apply_org_override` does not silently swap a user-pinned site for a
+    /// session-derived one.
+    pub fn set_site_explicit(&mut self, site: String) {
+        self.site = normalize_site(&site);
+        self.site_explicit = true;
     }
 
     /// Validate that sufficient auth credentials are configured.
@@ -275,6 +309,38 @@ pub fn parse_scopes(s: &str) -> Vec<String> {
         .filter(|s| !s.is_empty())
         .map(String::from)
         .collect()
+}
+
+/// Apply an org override (from `--org` or extension global flag) to a config.
+///
+/// Sets `cfg.org` to the new value, and — when no site was explicitly provided
+/// via DD_SITE/`--site`/config — adopts the site recorded in the session
+/// registry for that org. Then re-keys the access token to the resulting
+/// (site, org) pair from storage, unless DD_ACCESS_TOKEN is already set in
+/// the environment. May leave `cfg.access_token` at `None` if no token is
+/// stored for the new pair.
+///
+/// Centralized so the binary entry point and the extension dispatcher share
+/// one resolution path.
+#[cfg(all(not(feature = "browser"), not(target_arch = "wasm32")))]
+pub fn apply_org_override(cfg: &mut Config, org: String) {
+    cfg.org = Some(org);
+    if !cfg.site_explicit {
+        if let Some(saved_site) = cfg
+            .org
+            .as_deref()
+            .and_then(crate::auth::storage::find_session_site)
+        {
+            cfg.site = normalize_site(&saved_site);
+        }
+    }
+    if std::env::var("DD_ACCESS_TOKEN")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .is_none()
+    {
+        cfg.access_token = load_token_from_storage(&cfg.site, cfg.org.as_deref());
+    }
 }
 
 /// Try to load a valid (non-expired) access token from keychain/file storage.
@@ -424,6 +490,7 @@ mod tests {
             app_key: app_key.map(String::from),
             access_token: token.map(String::from),
             site: "datadoghq.com".into(),
+            site_explicit: false,
             org: None,
             output_format: OutputFormat::Json,
             auto_approve: false,
@@ -531,7 +598,7 @@ mod tests {
 
     #[test]
     fn test_api_host_standard() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_MOCK_SERVER");
         let cfg = make_cfg(None, None, Some("t"));
         assert_eq!(cfg.api_host(), "api.datadoghq.com");
@@ -539,7 +606,7 @@ mod tests {
 
     #[test]
     fn test_api_host_eu() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_MOCK_SERVER");
         let mut cfg = make_cfg(None, None, Some("t"));
         cfg.site = "datadoghq.eu".into();
@@ -548,7 +615,7 @@ mod tests {
 
     #[test]
     fn test_api_host_oncall() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_MOCK_SERVER");
         let mut cfg = make_cfg(None, None, Some("t"));
         cfg.site = "navy.oncall.datadoghq.com".into();
@@ -642,7 +709,7 @@ mod tests {
 
     #[test]
     fn test_api_host_app_prefix_us1() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_MOCK_SERVER");
         let mut cfg = make_cfg(None, None, Some("t"));
         cfg.site = normalize_site("app.datadoghq.com");
@@ -651,7 +718,7 @@ mod tests {
 
     #[test]
     fn test_api_host_app_prefix_eu() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_MOCK_SERVER");
         let mut cfg = make_cfg(None, None, Some("t"));
         cfg.site = normalize_site("app.datadoghq.eu");
@@ -660,7 +727,7 @@ mod tests {
 
     #[test]
     fn test_api_host_app_prefix_gov() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_MOCK_SERVER");
         let mut cfg = make_cfg(None, None, Some("t"));
         cfg.site = normalize_site("app.ddog-gov.com");
@@ -669,7 +736,7 @@ mod tests {
 
     #[test]
     fn test_api_host_app_prefix_staging() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_MOCK_SERVER");
         let mut cfg = make_cfg(None, None, Some("t"));
         cfg.site = normalize_site("app.datad0g.com");
@@ -678,7 +745,7 @@ mod tests {
 
     #[test]
     fn test_api_host_region_us3() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_MOCK_SERVER");
         let mut cfg = make_cfg(None, None, Some("t"));
         cfg.site = normalize_site("us3.datadoghq.com");
@@ -687,7 +754,7 @@ mod tests {
 
     #[test]
     fn test_api_host_app_region_us3() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_MOCK_SERVER");
         let mut cfg = make_cfg(None, None, Some("t"));
         cfg.site = normalize_site("app.us3.datadoghq.com");
@@ -709,7 +776,7 @@ mod tests {
 
     #[test]
     fn test_api_base_url_standard() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_MOCK_SERVER");
         let cfg = make_cfg(None, None, Some("t"));
         assert_eq!(cfg.api_base_url(), "https://api.datadoghq.com");
@@ -717,7 +784,7 @@ mod tests {
 
     #[test]
     fn test_api_base_url_eu() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_MOCK_SERVER");
         let mut cfg = make_cfg(None, None, Some("t"));
         cfg.site = "datadoghq.eu".into();
@@ -726,7 +793,7 @@ mod tests {
 
     #[test]
     fn test_api_base_url_oncall() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_MOCK_SERVER");
         let mut cfg = make_cfg(None, None, Some("t"));
         cfg.site = "navy.oncall.datadoghq.com".into();
@@ -735,7 +802,7 @@ mod tests {
 
     #[test]
     fn test_api_base_url_mock_server() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::set_var("PUP_MOCK_SERVER", "http://127.0.0.1:1234");
         let cfg = make_cfg(None, None, Some("t"));
         assert_eq!(cfg.api_base_url(), "http://127.0.0.1:1234");
@@ -744,7 +811,7 @@ mod tests {
 
     #[test]
     fn test_api_host_mock_server() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::set_var("PUP_MOCK_SERVER", "http://127.0.0.1:5678");
         let cfg = make_cfg(None, None, Some("t"));
         assert_eq!(cfg.api_host(), "127.0.0.1:5678");
@@ -779,7 +846,7 @@ mod tests {
 
     #[test]
     fn test_config_dir_returns_path() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("PUP_CONFIG_DIR");
         let dir = config_dir();
         // On native builds, dirs::config_dir() should return Some
@@ -789,7 +856,7 @@ mod tests {
 
     #[test]
     fn test_config_dir_respects_override() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::set_var("PUP_CONFIG_DIR", "/tmp/pup_test_override");
         let dir = config_dir();
         std::env::remove_var("PUP_CONFIG_DIR");
@@ -828,7 +895,7 @@ mod tests {
 
     #[test]
     fn test_read_only_from_env() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("DD_READ_ONLY");
         std::env::remove_var("DD_CLI_READ_ONLY");
         std::env::set_var("PUP_CONFIG_DIR", "/tmp/pup_test_nonexistent");
@@ -849,6 +916,269 @@ mod tests {
 
         std::env::remove_var("DD_ACCESS_TOKEN");
         std::env::remove_var("PUP_CONFIG_DIR");
+    }
+
+    /// Per-org session sites: when DD_ORG is set and DD_SITE is not, the saved
+    /// session's site should win over the default. site_explicit must remain
+    /// false so subsequent --org overrides can still adjust it.
+    #[test]
+    fn test_from_env_picks_up_session_site_when_org_set() {
+        let _guard = ENV_LOCK.blocking_lock();
+        std::env::remove_var("DD_SITE");
+        std::env::remove_var("DD_ACCESS_TOKEN");
+        std::env::remove_var("DD_API_KEY");
+        std::env::remove_var("DD_APP_KEY");
+
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos())
+            .unwrap_or(0);
+        let tmp = std::env::temp_dir().join(format!("pup_cfg_org_site_{nanos}"));
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::env::set_var("PUP_CONFIG_DIR", &tmp);
+
+        crate::auth::storage::save_session("custom.datadoghq.com", Some("prod-child")).unwrap();
+        std::env::set_var("DD_ORG", "prod-child");
+
+        let cfg = Config::from_env().unwrap();
+
+        std::env::remove_var("DD_ORG");
+        std::env::remove_var("PUP_CONFIG_DIR");
+        let _ = std::fs::remove_dir_all(&tmp);
+
+        assert_eq!(cfg.site, "custom.datadoghq.com");
+        assert!(!cfg.site_explicit);
+    }
+
+    /// An explicit DD_SITE always wins over a saved session site, even when
+    /// DD_ORG points at a registered session on a different site.
+    #[test]
+    fn test_from_env_explicit_site_overrides_session_site() {
+        let _guard = ENV_LOCK.blocking_lock();
+        std::env::remove_var("DD_ACCESS_TOKEN");
+        std::env::remove_var("DD_API_KEY");
+        std::env::remove_var("DD_APP_KEY");
+
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos())
+            .unwrap_or(0);
+        let tmp = std::env::temp_dir().join(format!("pup_cfg_explicit_site_{nanos}"));
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::env::set_var("PUP_CONFIG_DIR", &tmp);
+
+        crate::auth::storage::save_session("custom.datadoghq.com", Some("prod-child")).unwrap();
+        std::env::set_var("DD_ORG", "prod-child");
+        std::env::set_var("DD_SITE", "datadoghq.eu");
+
+        let cfg = Config::from_env().unwrap();
+
+        std::env::remove_var("DD_ORG");
+        std::env::remove_var("DD_SITE");
+        std::env::remove_var("PUP_CONFIG_DIR");
+        let _ = std::fs::remove_dir_all(&tmp);
+
+        assert_eq!(cfg.site, "datadoghq.eu");
+        assert!(cfg.site_explicit);
+    }
+
+    /// `--org` re-pins the site when the previous value was session-derived
+    /// (the from_env-loaded org's site sticks otherwise, leading to
+    /// orgB-token-on-orgA-site requests).
+    #[test]
+    fn test_apply_org_override_switches_site_for_new_org() {
+        let _guard = ENV_LOCK.blocking_lock();
+        std::env::remove_var("DD_ACCESS_TOKEN");
+
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos())
+            .unwrap_or(0);
+        let tmp = std::env::temp_dir().join(format!("pup_cfg_apply_override_{nanos}"));
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::env::set_var("PUP_CONFIG_DIR", &tmp);
+
+        crate::auth::storage::save_session("a.datadoghq.com", Some("org-a")).unwrap();
+        crate::auth::storage::save_session("b.datadoghq.com", Some("org-b")).unwrap();
+
+        // Simulate the post-from_env state where we resolved org-a's site via
+        // the registry (site_explicit=false because the user did not set DD_SITE).
+        let mut cfg = Config {
+            api_key: None,
+            app_key: None,
+            access_token: None,
+            site: "a.datadoghq.com".into(),
+            site_explicit: false,
+            org: Some("org-a".into()),
+            output_format: OutputFormat::Json,
+            auto_approve: false,
+            agent_mode: false,
+            read_only: false,
+        };
+
+        super::apply_org_override(&mut cfg, "org-b".into());
+
+        std::env::remove_var("PUP_CONFIG_DIR");
+        let _ = std::fs::remove_dir_all(&tmp);
+
+        assert_eq!(cfg.org.as_deref(), Some("org-b"));
+        assert_eq!(cfg.site, "b.datadoghq.com");
+    }
+
+    /// `--org` must not move the site off whatever the user explicitly pinned
+    /// (DD_SITE / --site / config file).
+    #[test]
+    fn test_apply_org_override_respects_explicit_site() {
+        let _guard = ENV_LOCK.blocking_lock();
+        std::env::remove_var("DD_ACCESS_TOKEN");
+
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos())
+            .unwrap_or(0);
+        let tmp = std::env::temp_dir().join(format!("pup_cfg_apply_explicit_{nanos}"));
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::env::set_var("PUP_CONFIG_DIR", &tmp);
+
+        crate::auth::storage::save_session("session.datadoghq.com", Some("org-a")).unwrap();
+
+        let mut cfg = Config {
+            api_key: None,
+            app_key: None,
+            access_token: None,
+            site: "explicit.datadoghq.com".into(),
+            site_explicit: true,
+            org: None,
+            output_format: OutputFormat::Json,
+            auto_approve: false,
+            agent_mode: false,
+            read_only: false,
+        };
+
+        super::apply_org_override(&mut cfg, "org-a".into());
+
+        std::env::remove_var("PUP_CONFIG_DIR");
+        let _ = std::fs::remove_dir_all(&tmp);
+
+        assert_eq!(cfg.org.as_deref(), Some("org-a"));
+        assert_eq!(cfg.site, "explicit.datadoghq.com");
+    }
+
+    /// `--org` for an org that has no saved session must not invent one — site
+    /// stays where it was on entry.
+    #[test]
+    fn test_apply_org_override_leaves_site_when_no_session() {
+        let _guard = ENV_LOCK.blocking_lock();
+        std::env::remove_var("DD_ACCESS_TOKEN");
+
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos())
+            .unwrap_or(0);
+        let tmp = std::env::temp_dir().join(format!("pup_cfg_apply_no_session_{nanos}"));
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::env::set_var("PUP_CONFIG_DIR", &tmp);
+
+        let mut cfg = Config {
+            api_key: None,
+            app_key: None,
+            access_token: None,
+            site: "datadoghq.com".into(),
+            site_explicit: false,
+            org: None,
+            output_format: OutputFormat::Json,
+            auto_approve: false,
+            agent_mode: false,
+            read_only: false,
+        };
+
+        super::apply_org_override(&mut cfg, "unknown-org".into());
+
+        std::env::remove_var("PUP_CONFIG_DIR");
+        let _ = std::fs::remove_dir_all(&tmp);
+
+        assert_eq!(cfg.org.as_deref(), Some("unknown-org"));
+        assert_eq!(cfg.site, "datadoghq.com");
+    }
+
+    /// When DD_ACCESS_TOKEN is set in the env, `--org` must not overwrite the
+    /// caller-supplied bearer with whatever happens to be in keychain storage.
+    #[test]
+    fn test_apply_org_override_respects_env_access_token() {
+        let _guard = ENV_LOCK.blocking_lock();
+
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos())
+            .unwrap_or(0);
+        let tmp = std::env::temp_dir().join(format!("pup_cfg_apply_envtoken_{nanos}"));
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::env::set_var("PUP_CONFIG_DIR", &tmp);
+        std::env::set_var("DD_ACCESS_TOKEN", "env-supplied-token");
+
+        let mut cfg = Config {
+            api_key: None,
+            app_key: None,
+            access_token: Some("env-supplied-token".into()),
+            site: "datadoghq.com".into(),
+            site_explicit: false,
+            org: None,
+            output_format: OutputFormat::Json,
+            auto_approve: false,
+            agent_mode: false,
+            read_only: false,
+        };
+
+        super::apply_org_override(&mut cfg, "any-org".into());
+
+        std::env::remove_var("DD_ACCESS_TOKEN");
+        std::env::remove_var("PUP_CONFIG_DIR");
+        let _ = std::fs::remove_dir_all(&tmp);
+
+        assert_eq!(cfg.access_token.as_deref(), Some("env-supplied-token"));
+    }
+
+    /// `set_site_explicit` keeps `site` and `site_explicit` in lockstep so a
+    /// later `--org` lookup cannot silently overwrite a user-pinned site.
+    #[test]
+    fn test_set_site_explicit_marks_site_as_user_provided() {
+        let mut cfg = Config {
+            api_key: None,
+            app_key: None,
+            access_token: None,
+            site: "datadoghq.com".into(),
+            site_explicit: false,
+            org: None,
+            output_format: OutputFormat::Json,
+            auto_approve: false,
+            agent_mode: false,
+            read_only: false,
+        };
+
+        cfg.set_site_explicit("app.datadoghq.eu".into());
+
+        assert_eq!(cfg.site, "datadoghq.eu");
+        assert!(cfg.site_explicit);
+    }
+
+    /// With no org, no env site, and no session, we fall back to the default
+    /// site and report site_explicit=false.
+    #[test]
+    fn test_from_env_default_site_when_no_org() {
+        let _guard = ENV_LOCK.blocking_lock();
+        std::env::remove_var("DD_SITE");
+        std::env::remove_var("DD_ORG");
+        std::env::remove_var("DD_ACCESS_TOKEN");
+        std::env::remove_var("DD_API_KEY");
+        std::env::remove_var("DD_APP_KEY");
+        std::env::set_var("PUP_CONFIG_DIR", "/tmp/pup_test_nonexistent");
+
+        let cfg = Config::from_env().unwrap();
+
+        std::env::remove_var("PUP_CONFIG_DIR");
+
+        assert_eq!(cfg.site, "datadoghq.com");
+        assert!(!cfg.site_explicit);
     }
 
     #[test]

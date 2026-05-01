@@ -124,17 +124,11 @@ impl PreParsedGlobals {
             cfg.read_only = true;
         }
         if let Some(ref org) = self.org {
-            cfg.org = Some(org.clone());
-            // Reload the access token from storage for this specific org,
-            // unless DD_ACCESS_TOKEN was explicitly provided via environment.
-            // This mirrors main_inner() at main.rs:6336-6346.
             #[cfg(all(not(feature = "browser"), not(target_arch = "wasm32")))]
-            if std::env::var("DD_ACCESS_TOKEN")
-                .ok()
-                .filter(|s| !s.is_empty())
-                .is_none()
+            config::apply_org_override(cfg, org.clone());
+            #[cfg(any(feature = "browser", target_arch = "wasm32"))]
             {
-                cfg.access_token = config::load_token_from_storage(&cfg.site, cfg.org.as_deref());
+                cfg.org = Some(org.clone());
             }
         }
     }

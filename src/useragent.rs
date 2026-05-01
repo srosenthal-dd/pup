@@ -58,6 +58,10 @@ static AGENT_DETECTORS: &[AgentDetector] = &[
         env_vars: &["SRC_CODY"],
     },
     AgentDetector {
+        name: "pi-dev",
+        env_vars: &["PI_CODING_AGENT"],
+    },
+    AgentDetector {
         name: "generic-agent",
         env_vars: &["AGENT"],
     },
@@ -96,13 +100,39 @@ pub fn get() -> String {
     get_with_command(None)
 }
 
+/// Returns the underlying Datadog SDK's `name/version` token (e.g.
+/// `datadog-api-client-rust/0.30.0`) for inclusion in pup's User-Agent.
+/// `None` when the SDK isn't compiled in (any non-default-feature build).
+#[cfg(any(feature = "native", feature = "wasi", feature = "browser"))]
+fn sdk_token() -> Option<&'static str> {
+    datadog_api_client::datadog::DEFAULT_USER_AGENT
+        .as_str()
+        .split_whitespace()
+        .next()
+}
+
+#[cfg(not(any(feature = "native", feature = "wasi", feature = "browser")))]
+fn sdk_token() -> Option<&'static str> {
+    None
+}
+
 /// Build the User-Agent string, optionally including a command identifier
 /// so that audit logs can differentiate which pup command made the request.
+///
+/// Format: `pup/<ver> (rust <rustver>; os <os>; arch <arch>[; ai-agent <name>][; sdk <sdk_name/ver>][; cmd <cmd>])`
+///
+/// Each parenthesized comment must be a `key value` 2-tuple so the
+/// smart-edge audit logger's `client_telemetry` metric parser accepts it
+/// (see `dd-source/.../web_traffic_dashboard/client_sdk_info.go`). A bare
+/// token like `rust` (without a version) causes the parser to reject the
+/// entire UA, dropping all pup product-version telemetry — that's why we
+/// always emit `rust <version>` (falling back to `rust unknown`).
 pub fn get_with_command(command: Option<&str>) -> String {
     let agent = detect_agent_info();
     let base = format!(
-        "pup/{} (rust; os {}; arch {}",
+        "pup/{} (rust {}; os {}; arch {}",
         version::VERSION,
+        version::rustc_version(),
         std::env::consts::OS,
         std::env::consts::ARCH,
     );
@@ -111,32 +141,41 @@ pub fn get_with_command(command: Option<&str>) -> String {
     } else {
         base
     };
+    let with_sdk = match sdk_token() {
+        Some(sdk) => format!("{}; sdk {}", with_agent, sdk),
+        None => with_agent,
+    };
     if let Some(cmd) = command {
-        format!("{}; cmd {})", with_agent, cmd)
+        format!("{}; cmd {})", with_sdk, cmd)
     } else {
-        format!("{})", with_agent)
+        format!("{})", with_sdk)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::ENV_LOCK;
+
+    fn clear_all_agent_vars() {
+        for det in AGENT_DETECTORS {
+            for var in det.env_vars {
+                std::env::remove_var(var);
+            }
+        }
+        std::env::remove_var("FORCE_AGENT_MODE");
+    }
 
     #[test]
     fn test_is_env_truthy() {
-        // These tests use env vars that shouldn't be set in normal environments
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::set_var("__PUP_TEST_TRUE__", "true");
         assert!(is_env_truthy("__PUP_TEST_TRUE__"));
-
         std::env::set_var("__PUP_TEST_ONE__", "1");
         assert!(is_env_truthy("__PUP_TEST_ONE__"));
-
         std::env::set_var("__PUP_TEST_FALSE__", "false");
         assert!(!is_env_truthy("__PUP_TEST_FALSE__"));
-
         assert!(!is_env_truthy("__PUP_TEST_NONEXISTENT__"));
-
-        // Clean up
         std::env::remove_var("__PUP_TEST_TRUE__");
         std::env::remove_var("__PUP_TEST_ONE__");
         std::env::remove_var("__PUP_TEST_FALSE__");
@@ -144,6 +183,8 @@ mod tests {
 
     #[test]
     fn test_user_agent_format() {
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
         let ua = get();
         assert!(ua.starts_with("pup/"));
         assert!(ua.contains("rust"));
@@ -154,13 +195,56 @@ mod tests {
 
     #[test]
     fn test_user_agent_with_command() {
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
         let ua = get_with_command(Some("security-findings-analyze"));
         assert!(ua.starts_with("pup/"));
         assert!(ua.contains("; cmd security-findings-analyze)"));
     }
 
+    /// Mirrors the smart-edge audit logger's `client_telemetry` parser
+    /// (`dd-source/.../web_traffic_dashboard/client_sdk_info.go`): each
+    /// parenthesized comment must split into exactly 2 tokens on the first
+    /// space. If this assertion fails, the metric stops firing for pup
+    /// until the UA is fixed.
+    #[test]
+    fn test_user_agent_parses_for_smart_edge_telemetry() {
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
+        for ua in [
+            get_with_command(None),
+            get_with_command(Some("monitors-list")),
+        ] {
+            let open = ua
+                .find('(')
+                .unwrap_or_else(|| panic!("UA missing '(' : {ua}"));
+            let close = ua
+                .rfind(')')
+                .unwrap_or_else(|| panic!("UA missing ')' : {ua}"));
+            let inside = &ua[open + 1..close];
+            for raw in inside.split(';') {
+                let trimmed = raw.trim();
+                let mut parts = trimmed.splitn(2, ' ');
+                let key = parts.next().unwrap_or("");
+                let value = parts.next();
+                assert!(
+                    value.is_some(),
+                    "smart-edge parser requires `key value` tuples — \
+                     bare comment {trimmed:?} in {ua:?} would drop the entire UA",
+                );
+                assert!(!key.is_empty(), "empty key in comment {trimmed:?}");
+                assert!(
+                    !value.unwrap().is_empty(),
+                    "empty value in comment {trimmed:?}",
+                );
+            }
+        }
+    }
+
     #[test]
     fn test_user_agent_with_no_command() {
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
         let ua = get_with_command(None);
         assert!(!ua.contains("cmd "));
         assert_eq!(ua, get());
@@ -174,14 +258,8 @@ mod tests {
 
     #[test]
     fn test_detect_agent_info_no_agent() {
-        // Clear all agent env vars
-        for det in AGENT_DETECTORS {
-            for var in det.env_vars {
-                std::env::remove_var(var);
-            }
-        }
-        std::env::remove_var("FORCE_AGENT_MODE");
-
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
         let info = detect_agent_info();
         assert!(!info.detected);
         assert!(info.name.is_empty());
@@ -189,6 +267,8 @@ mod tests {
 
     #[test]
     fn test_detect_agent_info_claude_code() {
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
         std::env::set_var("CLAUDE_CODE", "1");
         let info = detect_agent_info();
         assert!(info.detected);
@@ -198,9 +278,8 @@ mod tests {
 
     #[test]
     fn test_detect_agent_info_cursor() {
-        // Clear higher-priority detectors
-        std::env::remove_var("CLAUDECODE");
-        std::env::remove_var("CLAUDE_CODE");
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
         std::env::set_var("CURSOR_AGENT", "true");
         let info = detect_agent_info();
         assert!(info.detected);
@@ -210,6 +289,8 @@ mod tests {
 
     #[test]
     fn test_is_agent_mode_force() {
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
         std::env::set_var("FORCE_AGENT_MODE", "1");
         assert!(is_agent_mode());
         std::env::remove_var("FORCE_AGENT_MODE");
@@ -217,7 +298,8 @@ mod tests {
 
     #[test]
     fn test_is_agent_mode_via_detector() {
-        std::env::remove_var("FORCE_AGENT_MODE");
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
         std::env::set_var("CLAUDE_CODE", "true");
         assert!(is_agent_mode());
         std::env::remove_var("CLAUDE_CODE");
@@ -225,17 +307,15 @@ mod tests {
 
     #[test]
     fn test_is_agent_mode_false() {
-        std::env::remove_var("FORCE_AGENT_MODE");
-        for det in AGENT_DETECTORS {
-            for var in det.env_vars {
-                std::env::remove_var(var);
-            }
-        }
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
         assert!(!is_agent_mode());
     }
 
     #[test]
     fn test_user_agent_with_detected_agent() {
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
         std::env::set_var("CLAUDE_CODE", "1");
         let ua = get();
         assert!(
@@ -247,11 +327,8 @@ mod tests {
 
     #[test]
     fn test_user_agent_without_agent() {
-        for det in AGENT_DETECTORS {
-            for var in det.env_vars {
-                std::env::remove_var(var);
-            }
-        }
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
         let ua = get();
         assert!(
             !ua.contains("ai-agent"),
@@ -261,12 +338,30 @@ mod tests {
     }
 
     #[test]
+    fn test_detect_agent_info_pi_dev() {
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
+        std::env::set_var("PI_CODING_AGENT", "true");
+        let info = detect_agent_info();
+        assert!(info.detected);
+        assert_eq!(info.name, "pi-dev");
+        std::env::remove_var("PI_CODING_AGENT");
+    }
+
+    #[test]
+    fn test_detect_agent_info_pi_dev_falsy() {
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
+        std::env::set_var("PI_CODING_AGENT", "false");
+        let info = detect_agent_info();
+        assert!(!info.detected);
+        std::env::remove_var("PI_CODING_AGENT");
+    }
+
+    #[test]
     fn test_detect_agent_info_generic_agent() {
-        for det in AGENT_DETECTORS {
-            for var in det.env_vars {
-                std::env::remove_var(var);
-            }
-        }
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
         std::env::set_var("AGENT", "1");
         let info = detect_agent_info();
         assert!(info.detected);

@@ -136,7 +136,7 @@ mod tests {
         std::fs::write(&exe_path, "#!/bin/bash\necho hello").unwrap();
 
         // Use PUP_CONFIG_DIR to point discovery at our test dir
-        let _guard = crate::test_utils::ENV_LOCK.lock().unwrap();
+        let _guard = crate::test_utils::ENV_LOCK.blocking_lock();
         std::env::set_var("PUP_CONFIG_DIR", &dir);
 
         let result = extension_path("hello");
@@ -152,7 +152,7 @@ mod tests {
         let dir = make_test_dir("path-not-found");
         std::fs::create_dir_all(dir.join("extensions")).unwrap();
 
-        let _guard = crate::test_utils::ENV_LOCK.lock().unwrap();
+        let _guard = crate::test_utils::ENV_LOCK.blocking_lock();
         std::env::set_var("PUP_CONFIG_DIR", &dir);
 
         let result = extension_path("nonexistent");
@@ -167,7 +167,7 @@ mod tests {
         let dir = make_test_dir("list-empty");
         std::fs::create_dir_all(dir.join("extensions")).unwrap();
 
-        let _guard = crate::test_utils::ENV_LOCK.lock().unwrap();
+        let _guard = crate::test_utils::ENV_LOCK.blocking_lock();
         std::env::set_var("PUP_CONFIG_DIR", &dir);
 
         let result = list_extensions().unwrap();
@@ -194,7 +194,7 @@ mod tests {
         };
         manifest.save(&ext_dir.join("manifest.json")).unwrap();
 
-        let _guard = crate::test_utils::ENV_LOCK.lock().unwrap();
+        let _guard = crate::test_utils::ENV_LOCK.blocking_lock();
         std::env::set_var("PUP_CONFIG_DIR", &dir);
 
         let result = list_extensions().unwrap();
@@ -211,7 +211,7 @@ mod tests {
         let dir = make_test_dir("help-empty");
         std::fs::create_dir_all(dir.join("extensions")).unwrap();
 
-        let _guard = crate::test_utils::ENV_LOCK.lock().unwrap();
+        let _guard = crate::test_utils::ENV_LOCK.blocking_lock();
         std::env::set_var("PUP_CONFIG_DIR", &dir);
 
         let result = build_extensions_help_section();
@@ -241,7 +241,7 @@ mod tests {
             manifest.save(&ext_dir.join("manifest.json")).unwrap();
         }
 
-        let _guard = crate::test_utils::ENV_LOCK.lock().unwrap();
+        let _guard = crate::test_utils::ENV_LOCK.blocking_lock();
         std::env::set_var("PUP_CONFIG_DIR", &dir);
 
         let result = build_extensions_help_section();
@@ -273,7 +273,7 @@ mod tests {
         };
         manifest.save(&ext_dir.join("manifest.json")).unwrap();
 
-        let _guard = crate::test_utils::ENV_LOCK.lock().unwrap();
+        let _guard = crate::test_utils::ENV_LOCK.blocking_lock();
         std::env::set_var("PUP_CONFIG_DIR", &dir);
 
         let result = build_extensions_help_section();

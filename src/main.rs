@@ -26,9 +26,13 @@ mod test_support;
 /// Shared test utilities — only compiled in test builds.
 #[cfg(test)]
 pub(crate) mod test_utils {
-    use std::sync::Mutex;
+    use tokio::sync::Mutex;
     /// Serialize tests that mutate global env vars (PUP_MOCK_SERVER, DD_API_KEY, etc.).
-    pub static ENV_LOCK: Mutex<()> = Mutex::new(());
+    /// `tokio::sync::Mutex` so async tests can hold the guard across `.await`,
+    /// while sync tests acquire via `blocking_lock()`. Sharing one lock across
+    /// both flavors prevents the parallel-test races that previously required
+    /// running the suite with `--test-threads=1`.
+    pub static ENV_LOCK: Mutex<()> = Mutex::const_new(());
 }
 
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
@@ -1585,7 +1589,7 @@ enum Commands {
     /// AUTHENTICATION:
     ///   Requires OAuth2 bearer token (`pup auth login`). API keys are not
     ///   accepted by these endpoints. `read-messages` additionally requires
-    ///   the `data_streams_capture_messages` permission on the calling user
+    ///   the `data_streams_monitoring_capture_messages` permission on the calling user
     ///   and a Datadog Agent reachable via Remote Config.
     #[command(verbatim_doc_comment)]
     Kafka {
@@ -4009,7 +4013,12 @@ enum TagActions {
 #[derive(Subcommand)]
 enum UserActions {
     /// List users
-    List,
+    List {
+        #[arg(long, default_value_t = 10, help = "Results per page (max 100)")]
+        page_size: i64,
+        #[arg(long, default_value_t = 0, help = "Page number (0-indexed)")]
+        page_number: i64,
+    },
     /// Get user details
     Get { user_id: String },
     /// Manage roles
@@ -8299,6 +8308,27 @@ enum LlmObsSpansActions {
         #[arg(long, help = "Pagination cursor from a previous response")]
         cursor: Option<String>,
     },
+    /// Get detailed metadata and token/cost metrics for one or more spans
+    Details {
+        #[arg(long, help = "Trace ID (required)")]
+        trace_id: String,
+        #[arg(
+            long,
+            help = "Span ID(s) to fetch details for (repeat for multiple)",
+            required = true
+        )]
+        span_id: Vec<String>,
+        #[arg(
+            long,
+            help = "Start time: 1h, 5min, 2hours, RFC3339, Unix timestamp, or 'now'"
+        )]
+        from: Option<String>,
+        #[arg(
+            long,
+            help = "End time: 1h, 5min, 2hours, RFC3339, Unix timestamp, or 'now'"
+        )]
+        to: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -9075,7 +9105,7 @@ enum KafkaActions {
     /// Read messages from a Kafka cluster / topic via the Datadog Agent
     ///
     /// Dispatches a read-messages action via Remote Config and polls for the
-    /// agent's response. Requires the `data_streams_capture_messages`
+    /// agent's response. Requires the `data_streams_monitoring_capture_messages`
     /// permission and a Datadog Agent connected to the target cluster.
     /// Rate-limited to 10 calls/minute per user.
     #[command(name = "read-messages", verbatim_doc_comment)]
@@ -10069,17 +10099,14 @@ async fn main_inner() -> anyhow::Result<()> {
     if cfg.agent_mode {
         cfg.auto_approve = true;
     }
-    // Apply --org flag (higher priority than DD_ORG env var / config file)
+    // Apply --org flag (higher priority than DD_ORG env var / config file).
+    // Site for this org and access token are also resolved here.
     if let Some(org) = cli.org {
-        cfg.org = Some(org);
-        // Reload token from storage for this org, unless DD_ACCESS_TOKEN was explicitly set
         #[cfg(all(not(feature = "browser"), not(target_arch = "wasm32")))]
-        if std::env::var("DD_ACCESS_TOKEN")
-            .ok()
-            .filter(|s| !s.is_empty())
-            .is_none()
+        config::apply_org_override(&mut cfg, org);
+        #[cfg(any(feature = "browser", target_arch = "wasm32"))]
         {
-            cfg.access_token = config::load_token_from_storage(&cfg.site, cfg.org.as_deref());
+            cfg.org = Some(org);
         }
     }
 
@@ -10833,7 +10860,10 @@ async fn main_inner() -> anyhow::Result<()> {
         Commands::Users { action } => {
             cfg.validate_auth()?;
             match action {
-                UserActions::List => commands::users::list(&cfg).await?,
+                UserActions::List {
+                    page_size,
+                    page_number,
+                } => commands::users::list(&cfg, page_size, page_number).await?,
                 UserActions::Get { user_id } => commands::users::get(&cfg, &user_id).await?,
                 UserActions::Roles { action } => match action {
                     UserRoleActions::List => commands::users::roles_list(&cfg).await?,
@@ -13628,7 +13658,7 @@ async fn main_inner() -> anyhow::Result<()> {
                 subdomain,
             } => {
                 if let Some(s) = site {
-                    cfg.site = s;
+                    cfg.set_site_explicit(s);
                 }
                 let is_read_only = read_only || cfg.read_only;
                 let resolved =
@@ -13638,7 +13668,7 @@ async fn main_inner() -> anyhow::Result<()> {
             AuthActions::Logout => commands::auth::logout(&cfg).await?,
             AuthActions::Status { site } => {
                 if let Some(s) = site {
-                    cfg.site = s;
+                    cfg.set_site_explicit(s);
                 }
                 commands::auth::status(&cfg)?
             }
@@ -13868,6 +13898,14 @@ async fn main_inner() -> anyhow::Result<()> {
                             cursor,
                         )
                         .await?;
+                    }
+                    LlmObsSpansActions::Details {
+                        trace_id,
+                        span_id,
+                        from,
+                        to,
+                    } => {
+                        commands::llm_obs::spans_details(&cfg, trace_id, span_id, from, to).await?;
                     }
                 },
                 LlmObsActions::AnnotationQueues { action } => match action {
