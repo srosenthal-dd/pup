@@ -36,17 +36,12 @@ use datadog_api_client::datadogV1::model::MetricMetadata;
 use datadog_api_client::datadogV2::api_metrics::MetricsAPI as MetricsV2API;
 use datadog_api_client::datadogV2::model::MetricPayload;
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
 pub async fn list(cfg: &Config, filter: Option<String>, from: String) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => MetricsV1API::with_client_and_config(dd_cfg, c),
-        None => MetricsV1API::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(MetricsV1API, cfg);
 
     let from_ts = util::parse_time_to_unix(&from)?;
     let params = ListActiveMetricsOptionalParams::default();
@@ -76,11 +71,7 @@ pub async fn list(cfg: &Config, filter: Option<String>, from: String) -> Result<
 }
 
 pub async fn search(cfg: &Config, query: String, from: String, to: String) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => MetricsV1API::with_client_and_config(dd_cfg, c),
-        None => MetricsV1API::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(MetricsV1API, cfg);
 
     let from_ts = util::parse_time_to_unix(&from)?;
     let to_ts = util::parse_time_to_unix(&to)?;
@@ -93,11 +84,7 @@ pub async fn search(cfg: &Config, query: String, from: String, to: String) -> Re
 }
 
 pub async fn metadata_get(cfg: &Config, metric_name: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => MetricsV1API::with_client_and_config(dd_cfg, c),
-        None => MetricsV1API::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(MetricsV1API, cfg);
     let resp = api
         .get_metric_metadata(metric_name.to_string())
         .await
@@ -106,11 +93,7 @@ pub async fn metadata_get(cfg: &Config, metric_name: &str) -> Result<()> {
 }
 
 pub async fn query(cfg: &Config, query: String, from: String, to: String) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => MetricsV1API::with_client_and_config(dd_cfg, c),
-        None => MetricsV1API::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(MetricsV1API, cfg);
 
     let from_ts = util::parse_time_to_unix(&from)?;
     let to_ts = util::parse_time_to_unix(&to)?;
@@ -123,11 +106,7 @@ pub async fn query(cfg: &Config, query: String, from: String, to: String) -> Res
 }
 
 pub async fn metadata_update(cfg: &Config, metric_name: &str, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => MetricsV1API::with_client_and_config(dd_cfg, c),
-        None => MetricsV1API::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(MetricsV1API, cfg);
     let body: MetricMetadata = util::read_json_file(file)?;
     let resp = api
         .update_metric_metadata(metric_name.to_string(), body)
@@ -137,11 +116,7 @@ pub async fn metadata_update(cfg: &Config, metric_name: &str, file: &str) -> Res
 }
 
 pub async fn submit(cfg: &Config, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => MetricsV2API::with_client_and_config(dd_cfg, c),
-        None => MetricsV2API::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(MetricsV2API, cfg);
     let body: MetricPayload = util::read_json_file(file)?;
     let resp = api
         .submit_metrics(
@@ -156,11 +131,7 @@ pub async fn submit(cfg: &Config, file: &str) -> Result<()> {
 pub async fn tags_list(cfg: &Config, metric_name: &str) -> Result<()> {
     use datadog_api_client::datadogV2::api_metrics::ListTagsByMetricNameOptionalParams;
 
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => MetricsV2API::with_client_and_config(dd_cfg, c),
-        None => MetricsV2API::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(MetricsV2API, cfg);
     let resp = api
         .list_tags_by_metric_name(
             metric_name.to_string(),
@@ -173,6 +144,8 @@ pub async fn tags_list(cfg: &Config, metric_name: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::*;
+
     use super::matches_glob;
 
     #[test]
@@ -212,5 +185,66 @@ mod tests {
     fn test_glob_exact_with_dot() {
         assert!(matches_glob("system.cpu.user", "system.cpu.user"));
         assert!(!matches_glob("system.cpu.idle", "system.cpu.user"));
+    }
+
+    #[tokio::test]
+    async fn test_metrics_list() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(
+            &mut server,
+            "GET",
+            r#"{"metrics": [], "from": "2024-01-01T00:00:00Z"}"#,
+        )
+        .await;
+
+        let result = super::list(&cfg, None, "1h".into()).await;
+        assert!(result.is_ok(), "metrics list failed: {:?}", result.err());
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_metrics_query() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(
+            &mut server,
+            "GET",
+            r#"{"status": "ok", "res_type": "time_series", "series": [], "from_date": 0, "to_date": 0, "query": "avg:system.cpu.user{*}"}"#,
+        )
+        .await;
+
+        let result = super::query(
+            &cfg,
+            "avg:system.cpu.user{*}".into(),
+            "1h".into(),
+            "now".into(),
+        )
+        .await;
+        assert!(result.is_ok(), "metrics query failed: {:?}", result.err());
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_metrics_metadata_get() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(
+            &mut server,
+            "GET",
+            r#"{"type": "gauge", "description": "CPU usage", "unit": "percent"}"#,
+        )
+        .await;
+
+        let result = super::metadata_get(&cfg, "system.cpu.user").await;
+        assert!(
+            result.is_ok(),
+            "metrics metadata get failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
     }
 }

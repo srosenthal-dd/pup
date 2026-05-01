@@ -87,6 +87,16 @@ pub fn parse_time_to_unix(input: &str) -> Result<i64> {
     Ok(parse_time_to_unix_millis(input)? / 1000)
 }
 
+/// Parses a time string into a `chrono::DateTime<Utc>`.
+///
+/// Returns an `anyhow` error if the input cannot be parsed or if the resulting
+/// timestamp falls outside chrono's representable range.
+pub fn parse_time_to_datetime(input: &str) -> Result<chrono::DateTime<Utc>> {
+    let ms = parse_time_to_unix_millis(input)?;
+    chrono::DateTime::from_timestamp_millis(ms)
+        .ok_or_else(|| anyhow::anyhow!("timestamp out of valid range: {input:?}"))
+}
+
 /// Parses a human-readable duration string into milliseconds.
 ///
 /// Unlike `parse_time_to_unix_millis`, this does **not** subtract from the
@@ -129,6 +139,84 @@ pub fn read_json_file<T: serde::de::DeserializeOwned>(path: &str) -> Result<T> {
 /// Parses a UUID string, returning a descriptive error if invalid.
 pub fn parse_uuid(id: &str, label: &str) -> anyhow::Result<uuid::Uuid> {
     uuid::Uuid::parse_str(id).map_err(|e| anyhow::anyhow!("invalid {label} UUID '{id}': {e}"))
+}
+
+/// Parse a compute string like "count", "avg(@duration)", "percentile(@duration, 99)"
+/// into a (function_name, Option<metric>) pair as raw strings.
+pub(crate) fn parse_compute_raw(input: &str) -> Result<(String, Option<String>)> {
+    let input = input.trim();
+    if input.is_empty() {
+        bail!("--compute is required");
+    }
+
+    // Simple aggregations without a metric
+    if input == "count" {
+        return Ok(("count".into(), None));
+    }
+
+    // func(@field) pattern
+    if let Some(paren) = input.find('(') {
+        let func = &input[..paren];
+        let rest = input[paren + 1..].trim_end_matches(')').trim();
+
+        // Handle percentile(@field, N)
+        if func == "percentile" {
+            let parts: Vec<&str> = rest.splitn(2, ',').collect();
+            if parts.len() != 2 {
+                bail!("percentile requires field and value: percentile(@duration, 99)");
+            }
+            let metric = parts[0].trim().to_string();
+            let pct: u32 = parts[1]
+                .trim()
+                .parse()
+                .map_err(|_| anyhow::anyhow!("invalid percentile value: {}", parts[1].trim()))?;
+            let agg_name = match pct {
+                75 => "pc75",
+                90 => "pc90",
+                95 => "pc95",
+                98 => "pc98",
+                99 => "pc99",
+                _ => bail!("unsupported percentile: {pct} (supported: 75, 90, 95, 98, 99)"),
+            };
+            return Ok((agg_name.into(), Some(metric)));
+        }
+
+        let metric = rest.to_string();
+        let agg_name = match func {
+            "avg" | "sum" | "min" | "max" | "median" | "cardinality" => func.to_string(),
+            "count" => bail!("count does not accept a field argument; use just 'count'"),
+            _ => bail!("unknown aggregation function: {func}"),
+        };
+        return Ok((agg_name, Some(metric)));
+    }
+
+    bail!(
+        "invalid --compute format: {input:?}\n\
+         Expected: count, avg(@duration), sum(@duration), percentile(@duration, 99), etc."
+    )
+}
+
+/// Percent-encode a string for safe use in URL paths and query values.
+///
+/// Unreserved characters (RFC 3986 §2.3) — `A-Z a-z 0-9 - _ . ~` — are
+/// passed through; every other byte is encoded as `%XX`.  Spaces become
+/// `%20`, not `+`.
+///
+/// The implementation is intentionally hand-rolled rather than pulling in the
+/// `percent-encoding` crate: that crate is only a transitive dependency (via
+/// `url`/`reqwest`) and its `AsciiSet` API requires more boilerplate than this
+/// 8-line loop for the single RFC 3986 unreserved-character set we need.
+pub fn percent_encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for &b in s.as_bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -207,6 +295,43 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_time_to_datetime_relative() {
+        let dt = parse_time_to_datetime("1h").unwrap();
+        let expected = Utc::now().timestamp() - 3600;
+        assert!((dt.timestamp() - expected).abs() < 2);
+    }
+
+    #[test]
+    fn test_parse_time_to_datetime_long_form() {
+        let dt = parse_time_to_datetime("2hours").unwrap();
+        let expected = Utc::now().timestamp() - 7200;
+        assert!((dt.timestamp() - expected).abs() < 2);
+    }
+
+    #[test]
+    fn test_parse_time_to_datetime_unix_millis() {
+        let dt = parse_time_to_datetime("1700000000000").unwrap();
+        assert_eq!(dt.timestamp_millis(), 1700000000000);
+    }
+
+    #[test]
+    fn test_parse_time_to_datetime_rfc3339() {
+        let dt = parse_time_to_datetime("2024-01-01T00:00:00Z").unwrap();
+        assert_eq!(dt.timestamp_millis(), 1704067200000);
+    }
+
+    #[test]
+    fn test_parse_time_to_datetime_invalid_input() {
+        let err = parse_time_to_datetime("not-a-time").unwrap_err();
+        assert!(err.to_string().contains("unable to parse time"));
+    }
+
+    #[test]
+    fn test_parse_time_to_datetime_empty() {
+        assert!(parse_time_to_datetime("").is_err());
+    }
+
+    #[test]
     fn test_parse_time_to_unix_returns_seconds() {
         let secs = parse_time_to_unix("1700000000000").unwrap();
         assert_eq!(secs, 1700000000);
@@ -259,6 +384,37 @@ mod tests {
         let ms = parse_time_to_unix_millis("1week").unwrap();
         let expected = (Utc::now().timestamp() - 7 * 86400) * 1000;
         assert!((ms - expected).abs() < 2000);
+    }
+
+    #[test]
+    fn test_percent_encode_unreserved_passthrough() {
+        // RFC 3986 §2.3 unreserved characters must not be encoded.
+        assert_eq!(percent_encode("abc"), "abc");
+        assert_eq!(percent_encode("foo.bar"), "foo.bar");
+        assert_eq!(percent_encode("foo-bar_baz"), "foo-bar_baz");
+        assert_eq!(percent_encode("UPPER"), "UPPER");
+        assert_eq!(percent_encode("123"), "123");
+        assert_eq!(percent_encode("foo~bar"), "foo~bar"); // tilde is unreserved
+    }
+
+    #[test]
+    fn test_percent_encode_special_chars() {
+        assert_eq!(percent_encode("env:prod"), "env%3Aprod");
+        assert_eq!(percent_encode("k8s cluster"), "k8s%20cluster");
+        assert_eq!(percent_encode("a&b=c"), "a%26b%3Dc");
+        assert_eq!(percent_encode("path/value"), "path%2Fvalue");
+    }
+
+    #[test]
+    fn test_percent_encode_empty() {
+        assert_eq!(percent_encode(""), "");
+    }
+
+    #[test]
+    fn test_percent_encode_multibyte_utf8() {
+        // Multi-byte UTF-8 characters must be encoded byte-by-byte per RFC 3986.
+        // "é" is 0xC3 0xA9 in UTF-8.
+        assert_eq!(percent_encode("café"), "caf%C3%A9");
     }
 
     #[test]
@@ -316,5 +472,106 @@ mod tests {
     #[test]
     fn test_duration_now() {
         assert_eq!(parse_duration_to_millis("now").unwrap(), 0);
+    }
+
+    #[test]
+    fn test_parse_compute_count() {
+        let (aggregation, metric) = parse_compute_raw("count").unwrap();
+        assert_eq!(aggregation, "count");
+        assert!(metric.is_none());
+    }
+
+    #[test]
+    fn test_parse_compute_avg() {
+        let (aggregation, metric) = parse_compute_raw("avg(@duration)").unwrap();
+        assert_eq!(aggregation, "avg");
+        assert_eq!(metric.unwrap(), "@duration");
+    }
+
+    #[test]
+    fn test_parse_compute_sum() {
+        let (aggregation, metric) = parse_compute_raw("sum(@duration)").unwrap();
+        assert_eq!(aggregation, "sum");
+        assert_eq!(metric.unwrap(), "@duration");
+    }
+
+    #[test]
+    fn test_parse_compute_min() {
+        let (aggregation, metric) = parse_compute_raw("min(@duration)").unwrap();
+        assert_eq!(aggregation, "min");
+        assert_eq!(metric.unwrap(), "@duration");
+    }
+
+    #[test]
+    fn test_parse_compute_max() {
+        let (aggregation, metric) = parse_compute_raw("max(@duration)").unwrap();
+        assert_eq!(aggregation, "max");
+        assert_eq!(metric.unwrap(), "@duration");
+    }
+
+    #[test]
+    fn test_parse_compute_median() {
+        let (aggregation, metric) = parse_compute_raw("median(@duration)").unwrap();
+        assert_eq!(aggregation, "median");
+        assert_eq!(metric.unwrap(), "@duration");
+    }
+
+    #[test]
+    fn test_parse_compute_cardinality() {
+        let (aggregation, metric) = parse_compute_raw("cardinality(@usr.id)").unwrap();
+        assert_eq!(aggregation, "cardinality");
+        assert_eq!(metric.unwrap(), "@usr.id");
+    }
+
+    #[test]
+    fn test_parse_compute_percentile_99() {
+        let (aggregation, metric) = parse_compute_raw("percentile(@duration, 99)").unwrap();
+        assert_eq!(aggregation, "pc99");
+        assert_eq!(metric.unwrap(), "@duration");
+    }
+
+    #[test]
+    fn test_parse_compute_percentile_95() {
+        let (aggregation, metric) = parse_compute_raw("percentile(@duration, 95)").unwrap();
+        assert_eq!(aggregation, "pc95");
+        assert_eq!(metric.unwrap(), "@duration");
+    }
+
+    #[test]
+    fn test_parse_compute_percentile_90() {
+        let (aggregation, metric) = parse_compute_raw("percentile(@duration, 90)").unwrap();
+        assert_eq!(aggregation, "pc90");
+        assert_eq!(metric.unwrap(), "@duration");
+    }
+
+    #[test]
+    fn test_parse_compute_empty() {
+        assert!(parse_compute_raw("").is_err());
+    }
+
+    #[test]
+    fn test_parse_compute_invalid() {
+        assert!(parse_compute_raw("invalid").is_err());
+    }
+
+    #[test]
+    fn test_parse_compute_unknown_function() {
+        assert!(parse_compute_raw("foo(@bar)").is_err());
+    }
+
+    #[test]
+    fn test_parse_compute_unsupported_percentile() {
+        assert!(parse_compute_raw("percentile(@duration, 42)").is_err());
+    }
+
+    #[test]
+    fn test_parse_compute_percentile_missing_value() {
+        assert!(parse_compute_raw("percentile(@duration)").is_err());
+    }
+
+    #[test]
+    fn test_parse_compute_rejects_invalid_count_metric() {
+        let err = parse_compute_raw("count(@duration)").unwrap_err();
+        assert!(err.to_string().contains("does not accept a field"));
     }
 }

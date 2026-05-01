@@ -15,7 +15,6 @@ use datadog_api_client::datadogV2::model::{
     FlakyTestsSearchRequest, UpdateFlakyTestsRequest,
 };
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
@@ -27,11 +26,7 @@ pub async fn pipelines_list(
     to: String,
     limit: i32,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => CIVisibilityPipelinesAPI::with_client_and_config(dd_cfg, c),
-        None => CIVisibilityPipelinesAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(CIVisibilityPipelinesAPI, cfg);
 
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;
@@ -67,16 +62,10 @@ pub async fn tests_list(
     to: String,
     limit: i32,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => CIVisibilityTestsAPI::with_client_and_config(dd_cfg, c),
-        None => CIVisibilityTestsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(CIVisibilityTestsAPI, cfg);
 
-    let from_dt =
-        chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&from)?).unwrap();
-    let to_dt =
-        chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&to)?).unwrap();
+    let from_dt = util::parse_time_to_datetime(&from)?;
+    let to_dt = util::parse_time_to_datetime(&to)?;
 
     let mut params = ListCIAppTestEventsOptionalParams::default()
         .filter_from(from_dt)
@@ -100,11 +89,7 @@ pub async fn events_search(
     to: String,
     limit: i32,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => CIVisibilityPipelinesAPI::with_client_and_config(dd_cfg, c),
-        None => CIVisibilityPipelinesAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(CIVisibilityPipelinesAPI, cfg);
 
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;
@@ -134,11 +119,7 @@ pub async fn events_search(
 }
 
 pub async fn events_aggregate(cfg: &Config, query: String, from: String, to: String) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => CIVisibilityPipelinesAPI::with_client_and_config(dd_cfg, c),
-        None => CIVisibilityPipelinesAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(CIVisibilityPipelinesAPI, cfg);
 
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;
@@ -171,11 +152,7 @@ pub async fn tests_search(
     to: String,
     limit: i32,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => CIVisibilityTestsAPI::with_client_and_config(dd_cfg, c),
-        None => CIVisibilityTestsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(CIVisibilityTestsAPI, cfg);
 
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;
@@ -205,11 +182,7 @@ pub async fn tests_search(
 }
 
 pub async fn tests_aggregate(cfg: &Config, query: String, from: String, to: String) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => CIVisibilityTestsAPI::with_client_and_config(dd_cfg, c),
-        None => CIVisibilityTestsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(CIVisibilityTestsAPI, cfg);
 
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;
@@ -238,11 +211,7 @@ pub async fn tests_aggregate(cfg: &Config, query: String, from: String, to: Stri
 // ---- Pipelines Get ----
 
 pub async fn pipelines_get(cfg: &Config, pipeline_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => CIVisibilityPipelinesAPI::with_client_and_config(dd_cfg, c),
-        None => CIVisibilityPipelinesAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(CIVisibilityPipelinesAPI, cfg);
 
     let filter = CIAppPipelinesQueryFilter::new().query(pipeline_id.to_string());
 
@@ -259,11 +228,7 @@ pub async fn pipelines_get(cfg: &Config, pipeline_id: &str) -> Result<()> {
 // ---- DORA Metrics ----
 
 pub async fn dora_patch_deployment(cfg: &Config, deployment_id: &str, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => DORAMetricsAPI::with_client_and_config(dd_cfg, c),
-        None => DORAMetricsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(DORAMetricsAPI, cfg);
     let body: DORADeploymentPatchRequest = crate::util::read_json_file(file)?;
     api.patch_dora_deployment(deployment_id.to_string(), body)
         .await
@@ -279,14 +244,9 @@ pub async fn flaky_tests_search(
     query: Option<String>,
     cursor: Option<String>,
     limit: i64,
-    include_history: bool,
     sort: Option<String>,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TestOptimizationAPI::with_client_and_config(dd_cfg, c),
-        None => TestOptimizationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(TestOptimizationAPI, cfg);
 
     use datadog_api_client::datadogV2::model::{
         FlakyTestsSearchFilter, FlakyTestsSearchPageOptions, FlakyTestsSearchRequestAttributes,
@@ -302,9 +262,6 @@ pub async fn flaky_tests_search(
         page_opts = page_opts.cursor(c);
     }
     attrs = attrs.page(page_opts);
-    if include_history {
-        attrs = attrs.include_history(true);
-    }
     if let Some(s) = sort {
         let sort_val = match s.as_str() {
             "fqn" => FlakyTestsSearchSort::FQN_ASCENDING,
@@ -337,15 +294,68 @@ pub async fn flaky_tests_search(
 }
 
 pub async fn flaky_tests_update(cfg: &Config, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TestOptimizationAPI::with_client_and_config(dd_cfg, c),
-        None => TestOptimizationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(TestOptimizationAPI, cfg);
     let body: UpdateFlakyTestsRequest = crate::util::read_json_file(file)?;
     let resp = api
         .update_flaky_tests(body)
         .await
         .map_err(|e| anyhow::anyhow!("failed to update flaky tests: {e:?}"))?;
     formatter::output(cfg, &resp)
+}
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_cicd_pipelines_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::pipelines_list(&cfg, None, "1h".into(), "now".into(), 10).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_cicd_tests_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::tests_list(&cfg, None, "1h".into(), "now".into(), 10).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_cicd_flaky_tests_search() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::flaky_tests_search(
+            &cfg,
+            Some("@test.service:my-service".into()),
+            None,
+            50,
+            Some("-last_flaked".into()),
+        )
+        .await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_cicd_flaky_tests_search_invalid_sort() {
+        let _lock = lock_env().await;
+        let s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        let result = super::flaky_tests_search(&cfg, None, None, 10, Some("bogus".into())).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid sort value"));
+        cleanup_env();
+    }
 }

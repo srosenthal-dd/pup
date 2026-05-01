@@ -9,7 +9,6 @@ use datadog_api_client::datadogV2::model::{
     IssuesSearchRequestDataType,
 };
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 
@@ -20,11 +19,7 @@ pub async fn issues_search(
     track: Option<String>,
     persona: Option<String>,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => ErrorTrackingAPI::with_client_and_config(dd_cfg, c),
-        None => ErrorTrackingAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(ErrorTrackingAPI, cfg);
 
     let now = Utc::now().timestamp_millis();
     let one_day_ago = now - 86_400_000; // 24 hours in millis
@@ -75,14 +70,79 @@ pub async fn issues_search(
 }
 
 pub async fn issues_get(cfg: &Config, issue_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => ErrorTrackingAPI::with_client_and_config(dd_cfg, c),
-        None => ErrorTrackingAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(ErrorTrackingAPI, cfg);
     let resp = api
         .get_issue(issue_id.to_string(), GetIssueOptionalParams::default())
         .await
         .map_err(|e| anyhow::anyhow!("failed to get issue: {e:?}"))?;
     formatter::output(cfg, &resp)
+}
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+    use clap::CommandFactory;
+
+    #[tokio::test]
+    async fn test_error_tracking_issues_search() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::issues_search(&cfg, None, 10, Some("trace".into()), None).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_error_tracking_issues_search_persona() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::issues_search(&cfg, None, 10, None, Some("BROWSER".into())).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_error_tracking_issues_search_track_case_insensitive() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::issues_search(&cfg, None, 10, Some("RUM".into()), None).await;
+        cleanup_env();
+    }
+
+    #[test]
+    fn test_error_tracking_clap_mutual_exclusivity() {
+        let result = crate::Cli::command().try_get_matches_from([
+            "pup",
+            "error-tracking",
+            "issues",
+            "search",
+            "--track",
+            "trace",
+            "--persona",
+            "ALL",
+        ]);
+        assert!(
+            result.is_err(),
+            "expected error when both --track and --persona are provided"
+        );
+    }
+
+    #[test]
+    fn test_error_tracking_clap_neither_provided() {
+        let result = crate::Cli::command().try_get_matches_from([
+            "pup",
+            "error-tracking",
+            "issues",
+            "search",
+        ]);
+        assert!(
+            result.is_err(),
+            "expected error when neither --track nor --persona is provided"
+        );
+    }
 }

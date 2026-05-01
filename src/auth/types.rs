@@ -55,6 +55,7 @@ pub fn read_only_scopes() -> Vec<&'static str> {
         "bits_investigations_read",
         "cases_read",
         "ci_visibility_read",
+        "cloud_cost_management_read",
         "code_coverage_read",
         "test_optimization_read",
         "dashboards_read",
@@ -76,6 +77,7 @@ pub fn read_only_scopes() -> Vec<&'static str> {
         "monitors_read",
         "notebooks_read",
         "oci_configuration_read",
+        "on_call_read",
         "reference_tables_read",
         "rum_apps_read",
         "rum_retention_filters_read",
@@ -115,6 +117,9 @@ pub fn default_scopes() -> Vec<&'static str> {
         // CI Visibility
         "ci_visibility_read",
         "code_coverage_read",
+        // Cloud Cost Management
+        "cloud_cost_management_read",
+        "cloud_cost_management_write",
         "dora_metrics_write",
         "test_optimization_read",
         "test_optimization_write",
@@ -127,6 +132,8 @@ pub fn default_scopes() -> Vec<&'static str> {
         "dashboards_write",
         // Data Scanner
         "data_scanner_read",
+        // Data Streams
+        "data_streams_monitoring_capture_messages",
         // Error Tracking
         "error_tracking_read",
         // Events
@@ -170,6 +177,9 @@ pub fn default_scopes() -> Vec<&'static str> {
         "oci_configuration_edit",
         "oci_configuration_read",
         "oci_configurations_manage",
+        // On-Call
+        "on_call_read",
+        "on_call_write",
         // Organizations
         "org_management",
         // Reference Tables
@@ -255,7 +265,7 @@ mod tests {
     #[test]
     fn test_default_scopes() {
         let scopes = default_scopes();
-        assert_eq!(scopes.len(), 78);
+        assert_eq!(scopes.len(), 83);
         assert!(scopes.contains(&"dashboards_read"));
         assert!(scopes.contains(&"monitors_read"));
         assert!(scopes.contains(&"logs_read_data"));
@@ -269,6 +279,8 @@ mod tests {
         assert!(scopes.contains(&"teams_read"));
         assert!(scopes.contains(&"apm_service_catalog_read"));
         assert!(scopes.contains(&"status_pages_settings_read"));
+        assert!(scopes.contains(&"on_call_read"));
+        assert!(scopes.contains(&"on_call_write"));
     }
 
     #[test]

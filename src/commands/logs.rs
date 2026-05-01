@@ -20,6 +20,7 @@ pub struct AggregateArgs {
     pub group_by: Vec<String>,
     pub limit: i32,
     pub storage: Option<String>,
+    pub sort: String,
 }
 
 fn normalize_storage_tier(storage: Option<String>) -> Result<Option<String>> {
@@ -82,56 +83,36 @@ pub fn split_compute_args(input: &str) -> Vec<String> {
     result
 }
 
-fn parse_compute_raw(input: &str) -> Result<(String, Option<String>)> {
-    let input = input.trim();
-    if input.is_empty() {
-        bail!("--compute is required");
+const VALID_SORT_AGGREGATIONS: &[&str] = &[
+    "count",
+    "cardinality",
+    "pc75",
+    "pc90",
+    "pc95",
+    "pc98",
+    "pc99",
+    "sum",
+    "min",
+    "max",
+];
+
+fn parse_aggregate_sort(sort: &str) -> Result<serde_json::Value> {
+    let sort = sort.trim().to_lowercase();
+    if !VALID_SORT_AGGREGATIONS.contains(&sort.as_str()) {
+        bail!(
+            "unknown sort aggregation {:?}; valid values are: {}",
+            sort,
+            VALID_SORT_AGGREGATIONS.join(", ")
+        );
     }
-
-    if input == "count" {
-        return Ok(("count".into(), None));
-    }
-
-    if let Some(paren) = input.find('(') {
-        let func = &input[..paren];
-        let rest = input[paren + 1..].trim_end_matches(')').trim();
-
-        if func == "percentile" {
-            let parts: Vec<&str> = rest.splitn(2, ',').collect();
-            if parts.len() != 2 {
-                bail!("percentile requires field and value: percentile(@duration, 99)");
-            }
-            let metric = parts[0].trim().to_string();
-            let pct: u32 = parts[1]
-                .trim()
-                .parse()
-                .map_err(|_| anyhow::anyhow!("invalid percentile value: {}", parts[1].trim()))?;
-            let agg_name = match pct {
-                75 => "pc75",
-                90 => "pc90",
-                95 => "pc95",
-                98 => "pc98",
-                99 => "pc99",
-                _ => bail!("unsupported percentile: {pct} (supported: 75, 90, 95, 98, 99)"),
-            };
-            return Ok((agg_name.into(), Some(metric)));
-        }
-
-        let metric = rest.to_string();
-        let agg_name = match func {
-            "avg" | "sum" | "min" | "max" | "median" | "cardinality" => func.to_string(),
-            "count" => bail!("count does not accept a field argument; use just 'count'"),
-            _ => bail!("unknown aggregation function: {func}"),
-        };
-        return Ok((agg_name, Some(metric)));
-    }
-
-    bail!(
-        "invalid --compute format: {input:?}\n\
-         Expected: count, avg(@duration), sum(@duration), percentile(@duration, 99), etc."
-    )
+    Ok(serde_json::json!({
+        "type": "measure",
+        "order": "desc",
+        "aggregation": sort
+    }))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_aggregate_body(
     query: String,
     from_ms: i64,
@@ -140,6 +121,7 @@ fn build_aggregate_body(
     group_bys: Vec<String>,
     limit: i32,
     storage: Option<String>,
+    sort: &str,
 ) -> Result<serde_json::Value> {
     let storage_tier = normalize_storage_tier(storage)?;
 
@@ -155,7 +137,7 @@ fn build_aggregate_body(
     let compute_arr: Vec<serde_json::Value> = computes
         .iter()
         .map(|c| {
-            let (aggregation, metric) = parse_compute_raw(c)?;
+            let (aggregation, metric) = util::parse_compute_raw(c)?;
             let mut obj = serde_json::json!({ "aggregation": aggregation });
             if let Some(m) = metric {
                 obj["metric"] = serde_json::Value::String(m);
@@ -170,10 +152,11 @@ fn build_aggregate_body(
     });
 
     if !group_bys.is_empty() {
+        let sort_obj = parse_aggregate_sort(sort)?;
         let group_by_arr: Vec<serde_json::Value> = group_bys
             .iter()
             .map(|facet| {
-                let mut obj = serde_json::json!({ "facet": facet });
+                let mut obj = serde_json::json!({ "facet": facet, "sort": sort_obj });
                 if limit > 0 {
                     obj["limit"] = serde_json::json!(limit);
                 }
@@ -202,11 +185,7 @@ pub async fn search(
     sort: String,
     storage: Option<String>,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => LogsAPI::with_client_and_config(dd_cfg, c),
-        None => LogsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(LogsAPI, cfg);
 
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;
@@ -291,24 +270,23 @@ pub async fn aggregate(cfg: &Config, args: AggregateArgs) -> Result<()> {
         group_by,
         limit,
         storage,
+        sort,
     } = args;
     if compute.is_empty() {
         compute.push("count".into());
     }
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;
-    let body = build_aggregate_body(query, from_ms, to_ms, compute, group_by, limit, storage)?;
+    let body = build_aggregate_body(
+        query, from_ms, to_ms, compute, group_by, limit, storage, &sort,
+    )?;
     let data = client::raw_post(cfg, "/api/v2/logs/analytics/aggregate", body).await?;
     formatter::output(cfg, &data)?;
     Ok(())
 }
 
 pub async fn archives_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => LogsArchivesAPI::with_client_and_config(dd_cfg, c),
-        None => LogsArchivesAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(LogsArchivesAPI, cfg);
 
     let resp = api
         .list_logs_archives()
@@ -320,11 +298,7 @@ pub async fn archives_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn archives_get(cfg: &Config, archive_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => LogsArchivesAPI::with_client_and_config(dd_cfg, c),
-        None => LogsArchivesAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(LogsArchivesAPI, cfg);
 
     let resp = api
         .get_logs_archive(archive_id.to_string())
@@ -336,11 +310,7 @@ pub async fn archives_get(cfg: &Config, archive_id: &str) -> Result<()> {
 }
 
 pub async fn archives_delete(cfg: &Config, archive_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => LogsArchivesAPI::with_client_and_config(dd_cfg, c),
-        None => LogsArchivesAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(LogsArchivesAPI, cfg);
 
     api.delete_logs_archive(archive_id.to_string())
         .await
@@ -351,11 +321,7 @@ pub async fn archives_delete(cfg: &Config, archive_id: &str) -> Result<()> {
 }
 
 pub async fn custom_destinations_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => LogsCustomDestinationsAPI::with_client_and_config(dd_cfg, c),
-        None => LogsCustomDestinationsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(LogsCustomDestinationsAPI, cfg);
 
     let resp = api
         .list_logs_custom_destinations()
@@ -367,11 +333,7 @@ pub async fn custom_destinations_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn custom_destinations_get(cfg: &Config, destination_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => LogsCustomDestinationsAPI::with_client_and_config(dd_cfg, c),
-        None => LogsCustomDestinationsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(LogsCustomDestinationsAPI, cfg);
 
     let resp = api
         .get_logs_custom_destination(destination_id.to_string())
@@ -383,11 +345,7 @@ pub async fn custom_destinations_get(cfg: &Config, destination_id: &str) -> Resu
 }
 
 pub async fn metrics_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => LogsMetricsAPI::with_client_and_config(dd_cfg, c),
-        None => LogsMetricsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(LogsMetricsAPI, cfg);
 
     let resp = api
         .list_logs_metrics()
@@ -399,11 +357,7 @@ pub async fn metrics_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn metrics_get(cfg: &Config, metric_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => LogsMetricsAPI::with_client_and_config(dd_cfg, c),
-        None => LogsMetricsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(LogsMetricsAPI, cfg);
 
     let resp = api
         .get_logs_metric(metric_id.to_string())
@@ -415,11 +369,7 @@ pub async fn metrics_get(cfg: &Config, metric_id: &str) -> Result<()> {
 }
 
 pub async fn metrics_delete(cfg: &Config, metric_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => LogsMetricsAPI::with_client_and_config(dd_cfg, c),
-        None => LogsMetricsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(LogsMetricsAPI, cfg);
 
     api.delete_logs_metric(metric_id.to_string())
         .await
@@ -446,108 +396,10 @@ pub async fn restriction_queries_get(cfg: &Config, query_id: &str) -> Result<()>
 
 #[cfg(test)]
 mod tests {
+    use crate::config::{Config, OutputFormat};
+    use crate::test_support::*;
+
     use super::*;
-
-    #[test]
-    fn test_parse_compute_count() {
-        let (aggregation, metric) = parse_compute_raw("count").unwrap();
-        assert_eq!(aggregation, "count");
-        assert!(metric.is_none());
-    }
-
-    #[test]
-    fn test_parse_compute_avg() {
-        let (aggregation, metric) = parse_compute_raw("avg(@duration)").unwrap();
-        assert_eq!(aggregation, "avg");
-        assert_eq!(metric.unwrap(), "@duration");
-    }
-
-    #[test]
-    fn test_parse_compute_sum() {
-        let (aggregation, metric) = parse_compute_raw("sum(@duration)").unwrap();
-        assert_eq!(aggregation, "sum");
-        assert_eq!(metric.unwrap(), "@duration");
-    }
-
-    #[test]
-    fn test_parse_compute_min() {
-        let (aggregation, metric) = parse_compute_raw("min(@duration)").unwrap();
-        assert_eq!(aggregation, "min");
-        assert_eq!(metric.unwrap(), "@duration");
-    }
-
-    #[test]
-    fn test_parse_compute_max() {
-        let (aggregation, metric) = parse_compute_raw("max(@duration)").unwrap();
-        assert_eq!(aggregation, "max");
-        assert_eq!(metric.unwrap(), "@duration");
-    }
-
-    #[test]
-    fn test_parse_compute_median() {
-        let (aggregation, metric) = parse_compute_raw("median(@duration)").unwrap();
-        assert_eq!(aggregation, "median");
-        assert_eq!(metric.unwrap(), "@duration");
-    }
-
-    #[test]
-    fn test_parse_compute_cardinality() {
-        let (aggregation, metric) = parse_compute_raw("cardinality(@usr.id)").unwrap();
-        assert_eq!(aggregation, "cardinality");
-        assert_eq!(metric.unwrap(), "@usr.id");
-    }
-
-    #[test]
-    fn test_parse_compute_percentile_99() {
-        let (aggregation, metric) = parse_compute_raw("percentile(@duration, 99)").unwrap();
-        assert_eq!(aggregation, "pc99");
-        assert_eq!(metric.unwrap(), "@duration");
-    }
-
-    #[test]
-    fn test_parse_compute_percentile_95() {
-        let (aggregation, metric) = parse_compute_raw("percentile(@duration, 95)").unwrap();
-        assert_eq!(aggregation, "pc95");
-        assert_eq!(metric.unwrap(), "@duration");
-    }
-
-    #[test]
-    fn test_parse_compute_percentile_90() {
-        let (aggregation, metric) = parse_compute_raw("percentile(@duration, 90)").unwrap();
-        assert_eq!(aggregation, "pc90");
-        assert_eq!(metric.unwrap(), "@duration");
-    }
-
-    #[test]
-    fn test_parse_compute_empty() {
-        assert!(parse_compute_raw("").is_err());
-    }
-
-    #[test]
-    fn test_parse_compute_invalid() {
-        assert!(parse_compute_raw("invalid").is_err());
-    }
-
-    #[test]
-    fn test_parse_compute_unknown_function() {
-        assert!(parse_compute_raw("foo(@bar)").is_err());
-    }
-
-    #[test]
-    fn test_parse_compute_unsupported_percentile() {
-        assert!(parse_compute_raw("percentile(@duration, 42)").is_err());
-    }
-
-    #[test]
-    fn test_parse_compute_percentile_missing_value() {
-        assert!(parse_compute_raw("percentile(@duration)").is_err());
-    }
-
-    #[test]
-    fn test_parse_compute_rejects_invalid_count_metric() {
-        let err = parse_compute_raw("count(@duration)").unwrap_err();
-        assert!(err.to_string().contains("does not accept a field"));
-    }
 
     #[test]
     fn test_normalize_storage_tier_alias() {
@@ -565,6 +417,7 @@ mod tests {
             vec!["service".into()],
             3,
             Some("flex".into()),
+            "count",
         )
         .unwrap();
 
@@ -583,7 +436,12 @@ mod tests {
                 }],
                 "group_by": [{
                     "facet": "service",
-                    "limit": 3
+                    "limit": 3,
+                    "sort": {
+                        "type": "measure",
+                        "order": "desc",
+                        "aggregation": "count"
+                    }
                 }]
             })
         );
@@ -591,8 +449,17 @@ mod tests {
 
     #[test]
     fn test_build_aggregate_body_omits_group_by_for_plain_count() {
-        let body =
-            build_aggregate_body("*".into(), 1, 2, vec!["count".into()], vec![], 10, None).unwrap();
+        let body = build_aggregate_body(
+            "*".into(),
+            1,
+            2,
+            vec!["count".into()],
+            vec![],
+            10,
+            None,
+            "count",
+        )
+        .unwrap();
 
         assert_eq!(
             body,
@@ -623,6 +490,7 @@ mod tests {
             vec![],
             10,
             None,
+            "count",
         )
         .unwrap();
 
@@ -653,6 +521,7 @@ mod tests {
             vec!["service".into(), "status".into()],
             5,
             None,
+            "count",
         )
         .unwrap();
 
@@ -666,11 +535,80 @@ mod tests {
                 },
                 "compute": [{ "aggregation": "count" }],
                 "group_by": [
-                    { "facet": "service", "limit": 5 },
-                    { "facet": "status", "limit": 5 }
+                    { "facet": "service", "limit": 5, "sort": { "type": "measure", "order": "desc", "aggregation": "count" } },
+                    { "facet": "status", "limit": 5, "sort": { "type": "measure", "order": "desc", "aggregation": "count" } }
                 ]
             })
         );
+    }
+
+    #[test]
+    fn test_parse_aggregate_sort_valid_values() {
+        for agg in VALID_SORT_AGGREGATIONS {
+            let sort = parse_aggregate_sort(agg).unwrap();
+            assert_eq!(sort["aggregation"], *agg);
+            assert_eq!(sort["order"], "desc");
+            assert_eq!(sort["type"], "measure");
+        }
+    }
+
+    #[test]
+    fn test_parse_aggregate_sort_case_insensitive() {
+        let sort = parse_aggregate_sort("PC95").unwrap();
+        assert_eq!(sort["aggregation"], "pc95");
+    }
+
+    #[test]
+    fn test_parse_aggregate_sort_trims_whitespace() {
+        let sort = parse_aggregate_sort("  sum  ").unwrap();
+        assert_eq!(sort["aggregation"], "sum");
+    }
+
+    #[test]
+    fn test_parse_aggregate_sort_invalid() {
+        let err = parse_aggregate_sort("invalid").unwrap_err();
+        assert!(err.to_string().contains("unknown sort aggregation"));
+    }
+
+    #[test]
+    fn test_build_aggregate_body_sort_pc95() {
+        let body = build_aggregate_body(
+            "*".into(),
+            1,
+            2,
+            vec!["count".into()],
+            vec!["host".into()],
+            10,
+            None,
+            "pc95",
+        )
+        .unwrap();
+
+        assert_eq!(
+            body["group_by"][0]["sort"],
+            serde_json::json!({
+                "type": "measure",
+                "order": "desc",
+                "aggregation": "pc95"
+            })
+        );
+    }
+
+    #[test]
+    fn test_build_aggregate_body_sort_not_included_without_group_by() {
+        let body = build_aggregate_body(
+            "*".into(),
+            1,
+            2,
+            vec!["count".into()],
+            vec![],
+            10,
+            None,
+            "pc95",
+        )
+        .unwrap();
+
+        assert!(body.get("group_by").is_none());
     }
 
     #[test]
@@ -705,5 +643,299 @@ mod tests {
     #[test]
     fn test_split_compute_args_empty() {
         assert!(split_compute_args("").is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_logs_search() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "POST", r#"{"data": [], "meta": {"page": {}}}"#).await;
+
+        let result = super::search(
+            &cfg,
+            "status:error".into(),
+            "1h".into(),
+            "now".into(),
+            10,
+            "-timestamp".into(),
+            None,
+        )
+        .await;
+        assert!(result.is_ok(), "logs search failed: {:?}", result.err());
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_logs_search_with_oauth() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        std::env::set_var("PUP_MOCK_SERVER", server.url());
+
+        let cfg = Config {
+            api_key: None,
+            app_key: None,
+            access_token: Some("token".into()),
+            site: "datadoghq.com".into(),
+            site_explicit: false,
+            org: None,
+            output_format: OutputFormat::Json,
+            auto_approve: false,
+            agent_mode: false,
+            read_only: false,
+        };
+
+        let _mock = mock_any(&mut server, "POST", r#"{"data": []}"#).await;
+
+        let result = super::search(
+            &cfg,
+            "status:error".into(),
+            "1h".into(),
+            "now".into(),
+            10,
+            "-timestamp".into(),
+            None,
+        )
+        .await;
+        assert!(result.is_ok(), "logs search should work with OAuth");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_logs_aggregate() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "POST", r#"{"data": {"buckets": []}}"#).await;
+
+        let result = super::aggregate(
+            &cfg,
+            super::AggregateArgs {
+                query: "*".into(),
+                from: "1h".into(),
+                to: "now".into(),
+                compute: vec!["count".into()],
+                group_by: vec![],
+                limit: 10,
+                storage: None,
+                sort: "count".into(),
+            },
+        )
+        .await;
+        assert!(result.is_ok(), "logs aggregate failed: {:?}", result.err());
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_logs_aggregate_multiple_computes() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "POST", r#"{"data": {"buckets": []}}"#).await;
+
+        let result = super::aggregate(
+            &cfg,
+            super::AggregateArgs {
+                query: "*".into(),
+                from: "1h".into(),
+                to: "now".into(),
+                compute: super::split_compute_args(
+                    "count,avg(@duration),percentile(@duration, 95)",
+                ),
+                group_by: vec!["service".into(), "status".into()],
+                limit: 10,
+                storage: None,
+                sort: "count".into(),
+            },
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "logs aggregate with multiple computes failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_logs_search_with_flex_storage() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "POST", r#"{"data": [], "meta": {"page": {}}}"#).await;
+
+        let result = super::search(
+            &cfg,
+            "*".into(),
+            "1h".into(),
+            "now".into(),
+            10,
+            "-timestamp".into(),
+            Some("flex".into()),
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "logs search with flex failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_logs_search_with_online_archives_storage() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "POST", r#"{"data": [], "meta": {"page": {}}}"#).await;
+
+        let result = super::search(
+            &cfg,
+            "*".into(),
+            "1h".into(),
+            "now".into(),
+            10,
+            "-timestamp".into(),
+            Some("online-archives".into()),
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "logs search with online-archives failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_logs_search_with_invalid_storage_tier() {
+        let _lock = lock_env().await;
+        let server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let result = super::search(
+            &cfg,
+            "*".into(),
+            "1h".into(),
+            "now".into(),
+            10,
+            "-timestamp".into(),
+            Some("invalid-tier".into()),
+        )
+        .await;
+        assert!(
+            result.is_err(),
+            "logs search with invalid storage tier should fail"
+        );
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("unknown storage tier"),
+            "error should mention unknown storage tier"
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_logs_aggregate_with_flex_storage() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "POST", r#"{"data": {"buckets": []}}"#).await;
+
+        let result = super::aggregate(
+            &cfg,
+            super::AggregateArgs {
+                query: "*".into(),
+                from: "1h".into(),
+                to: "now".into(),
+                compute: vec!["count".into()],
+                group_by: vec![],
+                limit: 10,
+                storage: Some("flex".into()),
+                sort: "count".into(),
+            },
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "logs aggregate with flex failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_logs_archives_list() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", r#"{"data": []}"#).await;
+
+        let result = super::archives_list(&cfg).await;
+        assert!(
+            result.is_ok(),
+            "logs archives list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_logs_custom_destinations_list() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", r#"{"data": []}"#).await;
+
+        let result = super::custom_destinations_list(&cfg).await;
+        assert!(
+            result.is_ok(),
+            "logs custom destinations list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_logs_metrics_list() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", r#"{"data": []}"#).await;
+
+        let result = super::metrics_list(&cfg).await;
+        assert!(
+            result.is_ok(),
+            "logs metrics list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_logs_restriction_queries_list() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        // restriction_queries_list uses raw HTTP (not DD client), so mock specific path
+        let _mock = server
+            .mock("GET", "/api/v2/logs/config/restriction_queries")
+            .match_query(mockito::Matcher::Any)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data": []}"#)
+            .create_async()
+            .await;
+
+        let result = super::restriction_queries_list(&cfg).await;
+        assert!(
+            result.is_ok(),
+            "logs restriction queries list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
     }
 }

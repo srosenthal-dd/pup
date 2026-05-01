@@ -1,10 +1,10 @@
 # Pup - Datadog API CLI
 
-Rust-based CLI wrapper for Datadog APIs. Provides OAuth2 + API key authentication with 69 command modules and 325+ subcommands.
+Rust-based CLI wrapper for Datadog APIs. Provides OAuth2 + API key authentication across a wide range of Datadog product domains.
 
 ## Documentation Index
 
-- **[COMMANDS.md](docs/COMMANDS.md)** - Complete command reference with all 49 domains
+- **[COMMANDS.md](docs/COMMANDS.md)** - Complete command reference
 - **[CONTRIBUTING.md](docs/CONTRIBUTING.md)** - Git workflow, PR process, commit format
 - **[TESTING.md](docs/TESTING.md)** - Test strategy, coverage requirements, CI/CD
 - **[REVIEW.md](docs/REVIEW.md)** - Code review guidelines (read before submitting PRs)
@@ -170,14 +170,14 @@ See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for detailed workflow and examples.
 **Authentication:**
 - OAuth2 with PKCE (recommended): `pup auth login`
 - API keys (legacy): `DD_API_KEY` + `DD_APP_KEY` + `DD_SITE`
-- Token storage: OS keychain (primary), encrypted file (fallback)
+- Token storage: OS keychain (primary), JSON file with `0600` permissions (fallback)
 
 **Security Rules:**
 - Never commit credentials (API keys, tokens, secrets)
 - Never log or print access/refresh tokens
 - Validate all user inputs to prevent injection
 - Use PKCE S256 for OAuth2 flows
-- Encrypt fallback token storage with AES-256-GCM
+- Restrict fallback token-storage file to `0600` permissions
 
 ## Configuration Precedence
 
@@ -199,23 +199,13 @@ See [TESTING.md](docs/TESTING.md) for details.
 ## Core Dependencies
 
 - **Rust (stable)**
-- **datadog-api-client-rust** v0.28.0 - Official API client
+- **datadog-api-client-rust** - Official API client (pinned to a git rev in `Cargo.toml`)
 - **clap** v4 - CLI framework (derive macros)
 - **tokio** - Async runtime
-- **serde** + **serde_json** + **serde_yaml** - Serialization
+- **serde** + **serde_json** + **serde_norway** - Serialization
 - **keyring** v3 - OS keychain integration
 - **reqwest** - HTTP client
 
-## Implementation Status
-
-- **69 command modules** implemented (including runbooks engine)
-- **325+ subcommands** across all command groups
-- **All unit tests** passing
-- **155/155 API output** matches Go version exactly
-- **390/390 command descriptions** match Go version
-- **31% smaller binary**, 16% faster startup, 25% less memory vs Go
-
-See [BENCHMARKS.md](docs/BENCHMARKS.md) for performance details.
 
 ## License
 

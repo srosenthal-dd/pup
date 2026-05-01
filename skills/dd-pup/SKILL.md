@@ -26,7 +26,7 @@ Pup CLI for Datadog API operations. Supports OAuth2 and API key auth.
 | List hosts | `pup infrastructure hosts list` |
 | Check SLOs | `pup slos list` |
 | On-call teams | `pup on-call teams list` |
-| Security signals | `pup security signals list --from 24h` |
+| Security signals | `pup security signals list --query "*" --from 24h` |
 | Inspect runtime values | `pup debugger probes create --service my-svc --env prod --probe-location com.example.MyClass:myMethod` |
 | Find probe-able methods | `pup symdb search --service my-svc --query MyController --view probe-locations` |
 | Check auth | `pup auth status` |
@@ -98,7 +98,7 @@ pup metrics list --filter "system.*"
 pup apm services list --env production
 pup apm services stats --env production
 pup apm services operations --env production --service my-service
-pup apm services resources --env production --service my-service --operation http.request
+pup apm services resources --env production --service my-service --name http.request
 pup apm dependencies list --env production
 ```
 
@@ -155,7 +155,7 @@ pup downtime cancel abc-123-def
 ```bash
 pup infrastructure hosts list
 pup infrastructure hosts list --filter "env:prod"
-pup infrastructure hosts list --count
+pup infrastructure hosts list --count 100
 pup infrastructure hosts get <host-id>
 ```
 
@@ -177,7 +177,7 @@ pup on-call teams get <team-id>
 
 ### Security
 ```bash
-pup security signals list --from 24h
+pup security signals list --query "*" --from 24h
 pup security signals list --query "severity:critical" --from 24h
 pup security rules list
 ```
@@ -256,22 +256,22 @@ pup reference-tables batch-query --file query.json
 ### Cost Cloud Configs
 ```bash
 # AWS CUR configs
-pup cost aws-config list
-pup cost aws-config get <account-id>
-pup cost aws-config create --file config.json
-pup cost aws-config delete <account-id>
+pup costs datadog aws-config list
+pup costs datadog aws-config get <account-id>
+pup costs datadog aws-config create --file config.json
+pup costs datadog aws-config delete <account-id>
 
 # Azure UC configs
-pup cost azure-config list
-pup cost azure-config get <account-id>
-pup cost azure-config create --file config.json
-pup cost azure-config delete <account-id>
+pup costs datadog azure-config list
+pup costs datadog azure-config get <account-id>
+pup costs datadog azure-config create --file config.json
+pup costs datadog azure-config delete <account-id>
 
 # GCP usage cost configs
-pup cost gcp-config list
-pup cost gcp-config get <account-id>
-pup cost gcp-config create --file config.json
-pup cost gcp-config delete <account-id>
+pup costs datadog gcp-config list
+pup costs datadog gcp-config get <account-id>
+pup costs datadog gcp-config create --file config.json
+pup costs datadog gcp-config delete <account-id>
 ```
 
 ## Subcommand Discovery

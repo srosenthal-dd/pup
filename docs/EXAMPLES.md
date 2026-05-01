@@ -309,6 +309,37 @@ pup security findings search \
   --query="@severity:high"
 ```
 
+## APM Service Config
+
+### Get Service Instance Configuration
+```bash
+# Get service instance metadata (IDs, hostnames, config IDs)
+pup apm service-config get --service-name my-service
+
+# Filter by environment
+pup apm service-config get --service-name my-service --env prod
+
+# Filter by specific instance IDs
+pup apm service-config get --service-name my-service --service-instance-ids "id-1,id-2"
+```
+
+## APM Service Library Config
+
+### Get Service Library Configuration
+```bash
+# Get tracer configuration for a service across all instances
+pup apm service-library-config get --service-name my-service
+
+# Filter by environment
+pup apm service-library-config get --service-name my-service --env prod
+
+# Filter by language
+pup apm service-library-config get --service-name my-service --env prod --language python
+
+# Only show configs where instances disagree (useful for finding config drift)
+pup apm service-library-config get --service-name my-service --mixed
+```
+
 ## APM Troubleshooting
 
 ### List Instrumentation Errors for a Host
@@ -318,6 +349,52 @@ pup apm troubleshooting list --hostname my-host
 
 # Narrow results to a specific time window
 pup apm troubleshooting list --hostname my-host --timeframe 4h
+```
+
+## Fleet Tracers
+
+### List Tracers Across the Fleet
+```bash
+# List all tracers (telemetry-derived service names, language, runtime IDs)
+pup fleet tracers list
+
+# Filter tracers by environment
+pup fleet tracers list --filter "env:prod"
+
+# Filter tracers by hostname
+pup fleet tracers list --filter "hostname:my-host"
+
+# Paginate results
+pup fleet tracers list --filter "env:prod" --page-size 50 --page-number 0
+```
+
+### List Tracers for a Specific Agent
+```bash
+# Get tracers running on a specific agent
+pup fleet agents tracers <agent-key>
+
+# With pagination
+pup fleet agents tracers <agent-key> --page-size 20
+```
+
+### List Instrumented Pods (K8s)
+```bash
+# List pods instrumented by SSI in a cluster
+pup fleet instrumented-pods list <cluster-name>
+```
+
+## Fleet Clusters
+
+### List Kubernetes Clusters in the Fleet
+```bash
+# List all clusters
+pup fleet clusters list
+
+# Filter by cluster name
+pup fleet clusters list --filter "cluster_name:production"
+
+# Paginate
+pup fleet clusters list --filter "env:prod" --page-size 50 --page-number 0
 ```
 
 ## Live Debugger
@@ -799,6 +876,180 @@ pup idp owner payments-api
 
 # Review upstream services that may be affected
 pup idp deps payments-api
+```
+
+## Costs
+
+### Datadog Cost (Usage Metering)
+```bash
+# Projected cost for current month
+pup costs datadog projected
+
+# Cost breakdown by org for a date range
+pup costs datadog by-org --start-month="2024-01-01T00:00:00Z" --end-month="2024-03-01T00:00:00Z"
+
+# Monthly cost attribution
+pup costs datadog attribution --start="2024-01-01T00:00:00Z"
+
+# AWS CUR config management
+pup costs datadog aws-config list
+pup costs datadog aws-config get 42
+pup costs datadog aws-config create --file=aws-cur.json
+pup costs datadog aws-config delete 42
+
+# Azure UC config management
+pup costs datadog azure-config list
+
+# GCP usage cost config management
+pup costs datadog gcp-config list
+```
+
+### Cloud Cost Management (CCM)
+
+#### Custom Costs
+```bash
+# List uploaded custom cost files
+pup costs ccm custom-costs list
+
+# Filter by status or sort
+pup costs ccm custom-costs list --status=SUCCESS --sort=created_at
+
+# Get a specific custom cost file
+pup costs ccm custom-costs get <file-id>
+
+# Upload a custom cost CSV (multipart PUT)
+pup costs ccm custom-costs upload --file=costs.csv
+
+# Upload with a schema version
+pup costs ccm custom-costs upload --file=costs.csv --version=2
+
+# Delete a custom cost file
+pup costs ccm custom-costs delete <file-id>
+```
+
+#### Tag Descriptions
+```bash
+# List all tag descriptions
+pup costs ccm tag-descriptions list
+
+# Filter by cloud provider
+pup costs ccm tag-descriptions list --cloud=aws
+
+# Get description for a specific tag key
+pup costs ccm tag-descriptions get --tag-key=env
+
+# Generate an AI-suggested description for a tag
+pup costs ccm tag-descriptions generate --tag-key=team
+
+# Create or update a tag description
+pup costs ccm tag-descriptions upsert --tag-key=env --description="Deployment environment"
+
+# Delete a tag description
+pup costs ccm tag-descriptions delete --tag-key=env
+```
+
+#### Tag Metadata
+```bash
+# List all tag metadata for a month
+pup costs ccm tag-metadata list --month=2024-01
+
+# Filter by provider and metric
+pup costs ccm tag-metadata list --month=2024-01 --provider=aws --metric=aws.cost
+
+# List tag sources
+pup costs ccm tag-metadata tag-sources --month=2024-01
+
+# List available metrics
+pup costs ccm tag-metadata metrics --month=2024-01
+
+# List orchestrators
+pup costs ccm tag-metadata orchestrators --month=2024-01
+
+# List supported currencies
+pup costs ccm tag-metadata currency --month=2024-01
+```
+
+#### Tags and Tag Keys
+```bash
+# List all CCM tags
+pup costs ccm tags list
+
+# Filter by metric
+pup costs ccm tags list --metric=aws.cost
+
+# List tag keys
+pup costs ccm tag-keys list
+
+# Get details for a specific tag key
+pup costs ccm tag-keys get env
+```
+
+#### Budgets
+```bash
+# List all budgets
+pup costs ccm budgets list
+
+# Get a specific budget
+pup costs ccm budgets get <budget-id>
+
+# Get with actual and forecasted spend for a time range
+pup costs ccm budgets get <budget-id> \
+  --start="2024-01-01T00:00:00Z" \
+  --end="2024-03-01T00:00:00Z" \
+  --actual --forecast
+
+# Create or update a budget (upsert)
+pup costs ccm budgets upsert --file=budget.json
+
+# Delete a budget
+pup costs ccm budgets delete <budget-id>
+
+# Validate a budget payload without saving
+pup costs ccm budgets validate --file=budget.json
+```
+
+#### Commitment Programs (Reserved Instances & Savings Plans)
+```bash
+# Utilization of RIs over a time range
+pup costs ccm commitments utilization \
+  --provider=aws --product=EC2 \
+  --from=2024-01-01T00:00:00Z --to=2024-02-01T00:00:00Z
+
+# Coverage by Savings Plans
+pup costs ccm commitments coverage \
+  --provider=aws --product=EC2 \
+  --from=2024-01-01T00:00:00Z --to=2024-02-01T00:00:00Z \
+  --commitment-type=SP
+
+# Savings summary
+pup costs ccm commitments savings \
+  --provider=aws --product=RDS \
+  --from=2024-01-01T00:00:00Z --to=2024-02-01T00:00:00Z
+
+# On-demand hot spots (unreserved spend)
+pup costs ccm commitments hotspots \
+  --provider=aws --product=EC2 \
+  --from=2024-01-01T00:00:00Z --to=2024-02-01T00:00:00Z
+
+# Utilization time series
+pup costs ccm commitments utilization-ts \
+  --provider=aws --product=EC2 \
+  --from=2024-01-01T00:00:00Z --to=2024-02-01T00:00:00Z
+
+# Coverage time series
+pup costs ccm commitments coverage-ts \
+  --provider=aws --product=EC2 \
+  --from=2024-01-01T00:00:00Z --to=2024-02-01T00:00:00Z
+
+# Savings time series
+pup costs ccm commitments savings-ts \
+  --provider=aws --product=EC2 \
+  --from=2024-01-01T00:00:00Z --to=2024-02-01T00:00:00Z
+
+# List all commitment programs
+pup costs ccm commitments list \
+  --provider=aws --product=EC2 \
+  --from=2024-01-01T00:00:00Z --to=2024-02-01T00:00:00Z
 ```
 
 ## Output Formatting

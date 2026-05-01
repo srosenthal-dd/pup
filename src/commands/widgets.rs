@@ -2,7 +2,6 @@ use anyhow::Result;
 use datadog_api_client::datadogV2::api_widgets::{SearchWidgetsOptionalParams, WidgetsAPI};
 use datadog_api_client::datadogV2::model::WidgetExperienceType;
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
@@ -20,11 +19,7 @@ fn parse_experience_type(s: &str) -> Result<WidgetExperienceType> {
 }
 
 fn make_api(cfg: &Config) -> WidgetsAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    match client::make_bearer_client(cfg) {
-        Some(c) => WidgetsAPI::with_client_and_config(dd_cfg, c),
-        None => WidgetsAPI::with_config(dd_cfg),
-    }
+    crate::make_api!(WidgetsAPI, cfg)
 }
 
 #[allow(clippy::too_many_arguments)]

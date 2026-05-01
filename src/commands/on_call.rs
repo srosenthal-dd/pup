@@ -25,12 +25,57 @@ use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
+fn is_uuid(s: &str) -> bool {
+    uuid::Uuid::parse_str(s).is_ok()
+}
+
+/// Resolve a team identifier that may be either a UUID or a team handle.
+///
+/// If `input` parses as a UUID it is returned as-is (fast path, no API call).
+/// Otherwise, `ListTeams` is called with `filter[keyword]=<input>` and a single
+/// page of size 100. The returned teams are filtered locally for exact
+/// `attributes.handle == input` match; exactly one match returns `Ok(id)`.
+///
+/// Errors out (no silent inference):
+///   - no team matches the keyword at all,
+///   - substring matches exist but none has an exact handle,
+///   - more than one team has an exact handle (defensive; API-side invariant).
+///
+/// Note: the 100-result ceiling is deliberate; we do not loop-paginate.
+/// Handle collisions past page 1 will surface as "no exact match" rather than
+/// hiding a real team; callers can still pass the UUID directly.
+pub(crate) async fn resolve_team_id(cfg: &Config, input: &str) -> Result<String> {
+    if is_uuid(input) {
+        return Ok(input.to_string());
+    }
+
+    let api = crate::make_api!(TeamsAPI, cfg);
+    let params = ListTeamsOptionalParams::default()
+        .filter_keyword(input.to_string())
+        .page_size(100);
+    let resp = api
+        .list_teams(params)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to resolve team handle '{input}': {e:?}"))?;
+
+    let teams = resp.data.unwrap_or_default();
+    let total = teams.len();
+    let exact: Vec<&datadog_api_client::datadogV2::model::Team> = teams
+        .iter()
+        .filter(|t| t.attributes.handle == input)
+        .collect();
+
+    match exact.len() {
+        1 => Ok(exact[0].id.clone()),
+        0 if total == 0 => Err(anyhow::anyhow!("no team with handle '{input}'")),
+        _ => Err(anyhow::anyhow!(
+            "no exact handle match for '{input}' ({total} candidates matched substring)"
+        )),
+    }
+}
+
 pub async fn teams_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TeamsAPI::with_client_and_config(dd_cfg, c),
-        None => TeamsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(TeamsAPI, cfg);
     let resp = api
         .list_teams(ListTeamsOptionalParams::default())
         .await
@@ -39,37 +84,28 @@ pub async fn teams_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn teams_get(cfg: &Config, team_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TeamsAPI::with_client_and_config(dd_cfg, c),
-        None => TeamsAPI::with_config(dd_cfg),
-    };
+    let resolved = resolve_team_id(cfg, team_id).await?;
+    let api = crate::make_api!(TeamsAPI, cfg);
     let resp = api
-        .get_team(team_id.to_string())
+        .get_team(resolved)
         .await
         .map_err(|e| anyhow::anyhow!("failed to get team: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
 
 pub async fn teams_delete(cfg: &Config, team_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TeamsAPI::with_client_and_config(dd_cfg, c),
-        None => TeamsAPI::with_config(dd_cfg),
-    };
-    api.delete_team(team_id.to_string())
+    let resolved = resolve_team_id(cfg, team_id).await?;
+    let api = crate::make_api!(TeamsAPI, cfg);
+    let msg = format!("Team '{resolved}' deleted successfully.");
+    api.delete_team(resolved)
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete team: {e:?}"))?;
-    println!("Team '{team_id}' deleted successfully.");
+    println!("{msg}");
     Ok(())
 }
 
 pub async fn teams_create(cfg: &Config, name: &str, handle: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TeamsAPI::with_client_and_config(dd_cfg, c),
-        None => TeamsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(TeamsAPI, cfg);
     let attrs = TeamCreateAttributes::new(handle.to_string(), name.to_string());
     let data = TeamCreate::new(attrs, TeamType::TEAM);
     let body = TeamCreateRequest::new(data);
@@ -81,30 +117,24 @@ pub async fn teams_create(cfg: &Config, name: &str, handle: &str) -> Result<()> 
 }
 
 pub async fn teams_update(cfg: &Config, team_id: &str, name: &str, handle: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TeamsAPI::with_client_and_config(dd_cfg, c),
-        None => TeamsAPI::with_config(dd_cfg),
-    };
+    let resolved = resolve_team_id(cfg, team_id).await?;
+    let api = crate::make_api!(TeamsAPI, cfg);
     let attrs = TeamUpdateAttributes::new(handle.to_string(), name.to_string());
     let data = TeamUpdate::new(attrs, TeamType::TEAM);
     let body = TeamUpdateRequest::new(data);
     let resp = api
-        .update_team(team_id.to_string(), body)
+        .update_team(resolved, body)
         .await
         .map_err(|e| anyhow::anyhow!("failed to update team: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
 
 pub async fn memberships_list(cfg: &Config, team_id: &str, page_size: i64) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TeamsAPI::with_client_and_config(dd_cfg, c),
-        None => TeamsAPI::with_config(dd_cfg),
-    };
+    let resolved = resolve_team_id(cfg, team_id).await?;
+    let api = crate::make_api!(TeamsAPI, cfg);
     let params = GetTeamMembershipsOptionalParams::default().page_size(page_size);
     let resp = api
-        .get_team_memberships(team_id.to_string(), params)
+        .get_team_memberships(resolved, params)
         .await
         .map_err(|e| anyhow::anyhow!("failed to list memberships: {e:?}"))?;
     formatter::output(cfg, &resp)
@@ -116,11 +146,8 @@ pub async fn memberships_add(
     user_id: &str,
     role: Option<String>,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TeamsAPI::with_client_and_config(dd_cfg, c),
-        None => TeamsAPI::with_config(dd_cfg),
-    };
+    let resolved = resolve_team_id(cfg, team_id).await?;
+    let api = crate::make_api!(TeamsAPI, cfg);
     let mut attrs = UserTeamAttributes::new();
     if let Some(r) = role {
         let team_role = match r.to_lowercase().as_str() {
@@ -138,7 +165,7 @@ pub async fn memberships_add(
         .relationships(relationships);
     let body = UserTeamRequest::new(data);
     let resp = api
-        .create_team_membership(team_id.to_string(), body)
+        .create_team_membership(resolved, body)
         .await
         .map_err(|e| anyhow::anyhow!("failed to add membership: {e:?}"))?;
     formatter::output(cfg, &resp)
@@ -150,11 +177,8 @@ pub async fn memberships_update(
     user_id: &str,
     role: &str,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TeamsAPI::with_client_and_config(dd_cfg, c),
-        None => TeamsAPI::with_config(dd_cfg),
-    };
+    let resolved = resolve_team_id(cfg, team_id).await?;
+    let api = crate::make_api!(TeamsAPI, cfg);
     let team_role = match role.to_lowercase().as_str() {
         "admin" => UserTeamRole::ADMIN,
         _ => UserTeamRole::ADMIN,
@@ -163,33 +187,27 @@ pub async fn memberships_update(
     let data = UserTeamUpdate::new(UserTeamType::TEAM_MEMBERSHIPS).attributes(attrs);
     let body = UserTeamUpdateRequest::new(data);
     let resp = api
-        .update_team_membership(team_id.to_string(), user_id.to_string(), body)
+        .update_team_membership(resolved, user_id.to_string(), body)
         .await
         .map_err(|e| anyhow::anyhow!("failed to update membership: {e:?}"))?;
     formatter::output(cfg, &resp)
 }
 
 pub async fn memberships_remove(cfg: &Config, team_id: &str, user_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => TeamsAPI::with_client_and_config(dd_cfg, c),
-        None => TeamsAPI::with_config(dd_cfg),
-    };
-    api.delete_team_membership(team_id.to_string(), user_id.to_string())
+    let resolved = resolve_team_id(cfg, team_id).await?;
+    let api = crate::make_api!(TeamsAPI, cfg);
+    let msg = format!("Membership for user {user_id} removed from team {resolved}.");
+    api.delete_team_membership(resolved, user_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to remove membership: {e:?}"))?;
-    println!("Membership for user {user_id} removed from team {team_id}.");
+    println!("{msg}");
     Ok(())
 }
 
 // ---- Escalation Policies ----
 
 pub async fn escalation_policies_get(cfg: &Config, policy_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     let resp = api
         .get_on_call_escalation_policy(
             policy_id.to_string(),
@@ -201,11 +219,7 @@ pub async fn escalation_policies_get(cfg: &Config, policy_id: &str) -> Result<()
 }
 
 pub async fn escalation_policies_create(cfg: &Config, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     let body: EscalationPolicyCreateRequest = util::read_json_file(file)?;
     let resp = api
         .create_on_call_escalation_policy(
@@ -218,11 +232,7 @@ pub async fn escalation_policies_create(cfg: &Config, file: &str) -> Result<()> 
 }
 
 pub async fn escalation_policies_update(cfg: &Config, policy_id: &str, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     let body: EscalationPolicyUpdateRequest = util::read_json_file(file)?;
     let resp = api
         .update_on_call_escalation_policy(
@@ -236,11 +246,7 @@ pub async fn escalation_policies_update(cfg: &Config, policy_id: &str, file: &st
 }
 
 pub async fn escalation_policies_delete(cfg: &Config, policy_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     api.delete_on_call_escalation_policy(policy_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete escalation policy: {e:?}"))?;
@@ -251,11 +257,7 @@ pub async fn escalation_policies_delete(cfg: &Config, policy_id: &str) -> Result
 // ---- Schedules ----
 
 pub async fn schedules_get(cfg: &Config, schedule_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     let resp = api
         .get_on_call_schedule(
             schedule_id.to_string(),
@@ -267,11 +269,7 @@ pub async fn schedules_get(cfg: &Config, schedule_id: &str) -> Result<()> {
 }
 
 pub async fn schedules_create(cfg: &Config, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     let body: ScheduleCreateRequest = util::read_json_file(file)?;
     let resp = api
         .create_on_call_schedule(body, CreateOnCallScheduleOptionalParams::default())
@@ -281,11 +279,7 @@ pub async fn schedules_create(cfg: &Config, file: &str) -> Result<()> {
 }
 
 pub async fn schedules_update(cfg: &Config, schedule_id: &str, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     let body: ScheduleUpdateRequest = util::read_json_file(file)?;
     let resp = api
         .update_on_call_schedule(
@@ -299,11 +293,7 @@ pub async fn schedules_update(cfg: &Config, schedule_id: &str, file: &str) -> Re
 }
 
 pub async fn schedules_delete(cfg: &Config, schedule_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     api.delete_on_call_schedule(schedule_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete schedule: {e:?}"))?;
@@ -314,11 +304,7 @@ pub async fn schedules_delete(cfg: &Config, schedule_id: &str) -> Result<()> {
 // ---- Notification Channels ----
 
 pub async fn notification_channels_list(cfg: &Config, user_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     let resp = api
         .list_user_notification_channels(user_id.to_string())
         .await
@@ -331,11 +317,7 @@ pub async fn notification_channels_get(
     user_id: &str,
     channel_id: &str,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     let resp = api
         .get_user_notification_channel(user_id.to_string(), channel_id.to_string())
         .await
@@ -344,11 +326,7 @@ pub async fn notification_channels_get(
 }
 
 pub async fn notification_channels_create(cfg: &Config, user_id: &str, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     let body: CreateUserNotificationChannelRequest = util::read_json_file(file)?;
     let resp = api
         .create_user_notification_channel(user_id.to_string(), body)
@@ -362,11 +340,7 @@ pub async fn notification_channels_delete(
     user_id: &str,
     channel_id: &str,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     api.delete_user_notification_channel(user_id.to_string(), channel_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete notification channel: {e:?}"))?;
@@ -377,11 +351,7 @@ pub async fn notification_channels_delete(
 // ---- Notification Rules ----
 
 pub async fn notification_rules_list(cfg: &Config, user_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     let resp = api
         .list_user_notification_rules(
             user_id.to_string(),
@@ -393,11 +363,7 @@ pub async fn notification_rules_list(cfg: &Config, user_id: &str) -> Result<()> 
 }
 
 pub async fn notification_rules_get(cfg: &Config, user_id: &str, rule_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     let resp = api
         .get_user_notification_rule(
             user_id.to_string(),
@@ -410,11 +376,7 @@ pub async fn notification_rules_get(cfg: &Config, user_id: &str, rule_id: &str) 
 }
 
 pub async fn notification_rules_create(cfg: &Config, user_id: &str, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     let body: CreateOnCallNotificationRuleRequest = util::read_json_file(file)?;
     let resp = api
         .create_user_notification_rule(user_id.to_string(), body)
@@ -429,11 +391,7 @@ pub async fn notification_rules_update(
     rule_id: &str,
     file: &str,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     let body: UpdateOnCallNotificationRuleRequest = util::read_json_file(file)?;
     let resp = api
         .update_user_notification_rule(
@@ -448,11 +406,7 @@ pub async fn notification_rules_update(
 }
 
 pub async fn notification_rules_delete(cfg: &Config, user_id: &str, rule_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallAPI, cfg);
     api.delete_user_notification_rule(user_id.to_string(), rule_id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete notification rule: {e:?}"))?;
@@ -463,15 +417,420 @@ pub async fn notification_rules_delete(cfg: &Config, user_id: &str, rule_id: &st
 // ---- Pages ----
 
 pub async fn pages_create(cfg: &Config, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => OnCallPagingAPI::with_client_and_config(dd_cfg, c),
-        None => OnCallPagingAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(OnCallPagingAPI, cfg);
     let body: CreatePageRequest = util::read_json_file(file)?;
     let resp = api
         .create_on_call_page(body)
         .await
         .map_err(|e| anyhow::anyhow!("failed to create page: {e:?}"))?;
     formatter::output(cfg, &resp)
+}
+
+/// Fetches a single on-call page by ID.
+///
+/// Uses `client::raw_get` because `datadog-api-client` does not yet
+/// expose a `get_on_call_page` binding.
+pub async fn pages_get(cfg: &Config, page_id: &str) -> Result<()> {
+    let path = format!("/api/v2/on-call/pages/{}", util::percent_encode(page_id));
+    let resp = client::raw_get(cfg, &path, &[])
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to get page: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::test_support::*;
+
+    use super::*;
+
+    #[test]
+    fn test_is_uuid_accepts_canonical() {
+        assert!(is_uuid("00000000-0000-0000-0000-000000000000"));
+        assert!(is_uuid("abcdef01-2345-6789-abcd-ef0123456789"));
+        // Uppercase hex is also valid.
+        assert!(is_uuid("ABCDEF01-2345-6789-ABCD-EF0123456789"));
+    }
+
+    #[test]
+    fn test_is_uuid_rejects_handle() {
+        assert!(!is_uuid("example-team"));
+        assert!(!is_uuid("team-handle-with-dashes"));
+        assert!(!is_uuid(""));
+    }
+
+    #[test]
+    fn test_is_uuid_rejects_wrong_length() {
+        // Too short (last segment is 11 hex chars).
+        assert!(!is_uuid("00000000-0000-0000-0000-00000000000"));
+        // Too long (last segment is 13 hex chars).
+        assert!(!is_uuid("00000000-0000-0000-0000-0000000000000"));
+        // Non-hex character ('g').
+        assert!(!is_uuid("g0000000-0000-0000-0000-000000000000"));
+        // Missing dashes.
+        assert!(!is_uuid("000000000000000000000000000000000000"));
+    }
+
+    #[tokio::test]
+    async fn test_on_call_teams_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::teams_list(&cfg).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_teams_get() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {}}"#).await;
+        // Canonical UUID input takes the fast path in `resolve_team_id`, so
+        // only the `get_team` endpoint needs a mock response.
+        let _ = super::teams_get(&cfg, "00000000-0000-0000-0000-000000000000").await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_teams_get_by_handle() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        // ListTeams keyword-filter response with one exactly-matching handle.
+        let list_body = r#"{
+            "data": [
+                {
+                    "id": "00000000-0000-0000-0000-000000000000",
+                    "type": "team",
+                    "attributes": {
+                        "name": "Example Team",
+                        "handle": "example-team",
+                        "description": null,
+                        "avatar": null,
+                        "banner": null,
+                        "visible_modules": null,
+                        "hidden_modules": null,
+                        "created_at": null,
+                        "modified_at": null,
+                        "summary": null,
+                        "link_count": 0,
+                        "user_count": 0,
+                        "team_links": null
+                    }
+                }
+            ]
+        }"#;
+        let get_body = r#"{
+            "data": {
+                "id": "00000000-0000-0000-0000-000000000000",
+                "type": "team",
+                "attributes": {
+                    "name": "Example Team",
+                    "handle": "example-team"
+                }
+            }
+        }"#;
+        // `mockito` picks the first matching mock; `Matcher::Any` on the path
+        // means both GETs resolve here. We register two GET mocks; each mock
+        // is consumed once by default, so ListTeams hits the first, GetTeam
+        // the second.
+        s.mock("GET", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::Any)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(list_body)
+            .create_async()
+            .await;
+        s.mock("GET", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::Any)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(get_body)
+            .create_async()
+            .await;
+        let result = super::teams_get(&cfg, "example-team").await;
+        assert!(
+            result.is_ok(),
+            "teams_get by handle failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_teams_delete() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{}"#).await;
+        let _ = super::teams_delete(&cfg, "t1").await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_escalation_policies_get() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {"type": "policies"}}"#).await;
+        let result = super::escalation_policies_get(&cfg, "p1").await;
+        assert!(
+            result.is_ok(),
+            "escalation policies get failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_escalation_policies_delete() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{}"#).await;
+        let result = super::escalation_policies_delete(&cfg, "p1").await;
+        assert!(
+            result.is_ok(),
+            "escalation policies delete failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_escalation_policies_get_error() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        s.mock("GET", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::Any)
+            .with_status(500)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors": ["internal error"]}"#)
+            .create_async()
+            .await;
+        let result = super::escalation_policies_get(&cfg, "p1").await;
+        assert!(result.is_err(), "expected error on 500 response");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_schedules_get() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {"type": "schedules"}}"#).await;
+        let result = super::schedules_get(&cfg, "s1").await;
+        assert!(result.is_ok(), "schedules get failed: {:?}", result.err());
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_schedules_delete() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{}"#).await;
+        let result = super::schedules_delete(&cfg, "s1").await;
+        assert!(
+            result.is_ok(),
+            "schedules delete failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_schedules_get_error() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        s.mock("GET", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::Any)
+            .with_status(500)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors": ["internal error"]}"#)
+            .create_async()
+            .await;
+        let result = super::schedules_get(&cfg, "s1").await;
+        assert!(result.is_err(), "expected error on 500 response");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_notification_channels_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let result = super::notification_channels_list(&cfg, "u1").await;
+        assert!(
+            result.is_ok(),
+            "notification channels list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_notification_channels_get() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {"type": "notification_channels"}}"#).await;
+        let result = super::notification_channels_get(&cfg, "u1", "c1").await;
+        assert!(
+            result.is_ok(),
+            "notification channels get failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_notification_channels_delete() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{}"#).await;
+        let result = super::notification_channels_delete(&cfg, "u1", "c1").await;
+        assert!(
+            result.is_ok(),
+            "notification channels delete failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_notification_channels_list_error() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        s.mock("GET", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::Any)
+            .with_status(500)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors": ["internal error"]}"#)
+            .create_async()
+            .await;
+        let result = super::notification_channels_list(&cfg, "u1").await;
+        assert!(result.is_err(), "expected error on 500 response");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_notification_rules_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let result = super::notification_rules_list(&cfg, "u1").await;
+        assert!(
+            result.is_ok(),
+            "notification rules list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_notification_rules_get() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {"type": "notification_rules"}}"#).await;
+        let result = super::notification_rules_get(&cfg, "u1", "r1").await;
+        assert!(
+            result.is_ok(),
+            "notification rules get failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_notification_rules_delete() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{}"#).await;
+        let result = super::notification_rules_delete(&cfg, "u1", "r1").await;
+        assert!(
+            result.is_ok(),
+            "notification rules delete failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_notification_rules_list_error() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        s.mock("GET", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::Any)
+            .with_status(500)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors": ["internal error"]}"#)
+            .create_async()
+            .await;
+        let result = super::notification_rules_list(&cfg, "u1").await;
+        assert!(result.is_err(), "expected error on 500 response");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_pages_get() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        s.mock("GET", "/api/v2/on-call/pages/12345")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data": {"id": "12345", "type": "pages"}}"#)
+            .create_async()
+            .await;
+        let result = super::pages_get(&cfg, "12345").await;
+        assert!(result.is_ok(), "pages_get failed: {:?}", result.err());
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_on_call_pages_get_not_found() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        s.mock("GET", "/api/v2/on-call/pages/missing")
+            .with_status(404)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors": ["page not found"]}"#)
+            .create_async()
+            .await;
+        let result = super::pages_get(&cfg, "missing").await;
+        assert!(result.is_err(), "expected error on 404 response");
+        cleanup_env();
+    }
+
+    // Uses an ID with reserved URL characters ('/' and '?') so the mock's
+    // path-exact matcher only succeeds if `util::percent_encode` is actually
+    // applied. A refactor that drops the encoder would fail this test.
+    #[tokio::test]
+    async fn test_on_call_pages_get_percent_encodes_id() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        s.mock("GET", "/api/v2/on-call/pages/abc%2Fdef%3Fx")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data": {"id": "abc/def?x", "type": "pages"}}"#)
+            .create_async()
+            .await;
+        let result = super::pages_get(&cfg, "abc/def?x").await;
+        assert!(result.is_ok(), "pages_get failed: {:?}", result.err());
+        cleanup_env();
+    }
 }

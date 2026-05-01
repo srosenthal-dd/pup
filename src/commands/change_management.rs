@@ -5,17 +5,12 @@ use datadog_api_client::datadogV2::model::{
     ChangeRequestDecisionUpdateRequest, ChangeRequestUpdateRequest,
 };
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
 fn make_api(cfg: &Config) -> ChangeManagementAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    match client::make_bearer_client(cfg) {
-        Some(c) => ChangeManagementAPI::with_client_and_config(dd_cfg, c),
-        None => ChangeManagementAPI::with_config(dd_cfg),
-    }
+    crate::make_api!(ChangeManagementAPI, cfg)
 }
 
 pub async fn create(cfg: &Config, file: &str) -> Result<()> {

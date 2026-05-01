@@ -1,11 +1,11 @@
 use anyhow::Result;
 use std::collections::BTreeMap;
 
+use datadog_api_client::datadogV2::api_action_connection::ActionConnectionAPI;
 use datadog_api_client::datadogV2::api_workflow_automation::{
     ListWorkflowInstancesOptionalParams, WorkflowAutomationAPI,
 };
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter::{self, Metadata};
 use crate::util;
@@ -15,8 +15,7 @@ use crate::util;
 // ---------------------------------------------------------------------------
 
 fn make_api(cfg: &Config) -> WorkflowAutomationAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    WorkflowAutomationAPI::with_config(dd_cfg)
+    crate::make_api_no_auth!(WorkflowAutomationAPI, cfg)
 }
 
 // ---------------------------------------------------------------------------
@@ -75,8 +74,7 @@ pub async fn run(
     wait: bool,
     timeout: &str,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = WorkflowAutomationAPI::with_config(dd_cfg);
+    let api = crate::make_api_no_auth!(WorkflowAutomationAPI, cfg);
 
     let input_payload: Option<BTreeMap<String, serde_json::Value>> = match (&payload, &payload_file)
     {
@@ -134,8 +132,7 @@ pub async fn run(
 
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
-        let dd_cfg = client::make_dd_config(cfg);
-        let api = WorkflowAutomationAPI::with_config(dd_cfg);
+        let api = crate::make_api_no_auth!(WorkflowAutomationAPI, cfg);
         let status = api
             .get_workflow_instance(workflow_id.to_string(), instance_id.clone())
             .await
@@ -208,4 +205,110 @@ pub async fn instance_cancel(cfg: &Config, workflow_id: &str, instance_id: &str)
         .await
         .map_err(|e| anyhow::anyhow!("failed to cancel workflow instance: {:?}", e))?;
     formatter::output(cfg, &resp)
+}
+
+// ---------------------------------------------------------------------------
+// Action Connections
+// ---------------------------------------------------------------------------
+
+fn make_connection_api(cfg: &Config) -> ActionConnectionAPI {
+    crate::make_api_no_auth!(ActionConnectionAPI, cfg)
+}
+
+pub async fn connections_get(cfg: &Config, connection_id: &str) -> Result<()> {
+    let api = make_connection_api(cfg);
+    let resp = api
+        .get_action_connection(connection_id.to_string())
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to get action connection: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn connections_create(cfg: &Config, file: &str) -> Result<()> {
+    let body: datadog_api_client::datadogV2::model::CreateActionConnectionRequest =
+        util::read_json_file(file)?;
+    let api = make_connection_api(cfg);
+    let resp = api
+        .create_action_connection(body)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to create action connection: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn connections_update(cfg: &Config, connection_id: &str, file: &str) -> Result<()> {
+    let body: datadog_api_client::datadogV2::model::UpdateActionConnectionRequest =
+        util::read_json_file(file)?;
+    let api = make_connection_api(cfg);
+    let resp = api
+        .update_action_connection(connection_id.to_string(), body)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to update action connection: {e:?}"))?;
+    formatter::output(cfg, &resp)
+}
+
+pub async fn connections_delete(cfg: &Config, connection_id: &str) -> Result<()> {
+    let api = make_connection_api(cfg);
+    api.delete_action_connection(connection_id.to_string())
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to delete action connection: {e:?}"))?;
+    eprintln!("Action connection {connection_id} deleted.");
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_connections_get() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", r#"{}"#).await;
+        let result = super::connections_get(&cfg, "conn-id").await;
+        assert!(result.is_ok(), "connections get failed: {:?}", result.err());
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_connections_delete() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "DELETE", "").await;
+        let result = super::connections_delete(&cfg, "conn-id").await;
+        assert!(
+            result.is_ok(),
+            "connections delete failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_scorecard_rules_delete() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("DELETE", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::Any)
+            .with_status(204)
+            .create_async()
+            .await;
+        let result = crate::commands::scorecards::rules_delete(&cfg, "rule-123").await;
+        assert!(
+            result.is_ok(),
+            "scorecard rules delete failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
 }

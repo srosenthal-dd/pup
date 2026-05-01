@@ -45,7 +45,7 @@ pup <domain> <action> [options]
 pup <domain> <subgroup> <action> [options]
 
 # Examples
-pup monitors list --tag="env:prod"
+pup monitors list --tags="env:prod"
 pup logs search --query="status:error" --from="1h"
 pup metrics query --query="avg:system.cpu.user{*}" --from="1h"
 ```
@@ -107,7 +107,7 @@ pup metrics query --query="avg:system.cpu.user{*}" --from="1h" --to="now"
 pup logs search --query="status:error service:api" --from="30m"
 
 # List monitors
-pup monitors list --tag="team:backend"
+pup monitors list --tags="team:backend"
 
 # Get dashboard
 pup dashboards get abc-123-def
@@ -492,7 +492,7 @@ pup logs search --query="status:error" --from="1h"
 **Response**:
 ```bash
 # Using pup CLI
-pup monitors list --tag="env:production" --output=table
+pup monitors list --tags="env:production" --output=table
 
 # Or generate code for your application (specify language: typescript, python, java, go, rust)
 ```

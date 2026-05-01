@@ -4,17 +4,12 @@ use datadog_api_client::datadogV2::api_network_device_monitoring::{
 };
 use datadog_api_client::datadogV2::model::{ListInterfaceTagsResponse, ListTagsResponse};
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
 fn make_api(cfg: &Config) -> NetworkDeviceMonitoringAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    match client::make_bearer_client(cfg) {
-        Some(c) => NetworkDeviceMonitoringAPI::with_client_and_config(dd_cfg, c),
-        None => NetworkDeviceMonitoringAPI::with_config(dd_cfg),
-    }
+    crate::make_api!(NetworkDeviceMonitoringAPI, cfg)
 }
 
 // ---- Devices ----
@@ -99,4 +94,30 @@ pub async fn flows_list(cfg: &Config) -> Result<()> {
         }
     });
     formatter::output(cfg, &placeholder)
+}
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_network_flows_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::flows_list(&cfg).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_network_devices_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::devices_list(&cfg).await;
+        cleanup_env();
+    }
 }

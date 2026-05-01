@@ -5,7 +5,6 @@ use datadog_api_client::datadogV1::api_monitors::{
 };
 use datadog_api_client::datadogV1::model::Monitor;
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter::{self, Metadata};
 use crate::util;
@@ -16,12 +15,7 @@ pub async fn list(
     tags: Option<String>,
     limit: i32,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = if let Some(http_client) = client::make_bearer_client(cfg) {
-        MonitorsAPI::with_client_and_config(dd_cfg, http_client)
-    } else {
-        MonitorsAPI::with_config(dd_cfg)
-    };
+    let api = crate::make_api!(MonitorsAPI, cfg);
 
     let mut params = ListMonitorsOptionalParams::default();
     if let Some(name) = name {
@@ -56,12 +50,7 @@ pub async fn list(
 }
 
 pub async fn get(cfg: &Config, monitor_id: i64) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = if let Some(http_client) = client::make_bearer_client(cfg) {
-        MonitorsAPI::with_client_and_config(dd_cfg, http_client)
-    } else {
-        MonitorsAPI::with_config(dd_cfg)
-    };
+    let api = crate::make_api!(MonitorsAPI, cfg);
     let resp = api
         .get_monitor(monitor_id, GetMonitorOptionalParams::default())
         .await
@@ -77,12 +66,7 @@ pub async fn get(cfg: &Config, monitor_id: i64) -> Result<()> {
 
 pub async fn create(cfg: &Config, file: &str) -> Result<()> {
     let body: Monitor = util::read_json_file(file)?;
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = if let Some(http_client) = client::make_bearer_client(cfg) {
-        MonitorsAPI::with_client_and_config(dd_cfg, http_client)
-    } else {
-        MonitorsAPI::with_config(dd_cfg)
-    };
+    let api = crate::make_api!(MonitorsAPI, cfg);
     let resp = api
         .create_monitor(body)
         .await
@@ -93,12 +77,7 @@ pub async fn create(cfg: &Config, file: &str) -> Result<()> {
 pub async fn update(cfg: &Config, monitor_id: i64, file: &str) -> Result<()> {
     let body: datadog_api_client::datadogV1::model::MonitorUpdateRequest =
         util::read_json_file(file)?;
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = if let Some(http_client) = client::make_bearer_client(cfg) {
-        MonitorsAPI::with_client_and_config(dd_cfg, http_client)
-    } else {
-        MonitorsAPI::with_config(dd_cfg)
-    };
+    let api = crate::make_api!(MonitorsAPI, cfg);
     let resp = api
         .update_monitor(monitor_id, body)
         .await
@@ -107,12 +86,7 @@ pub async fn update(cfg: &Config, monitor_id: i64, file: &str) -> Result<()> {
 }
 
 pub async fn search(cfg: &Config, query: Option<String>) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = if let Some(http_client) = client::make_bearer_client(cfg) {
-        MonitorsAPI::with_client_and_config(dd_cfg, http_client)
-    } else {
-        MonitorsAPI::with_config(dd_cfg)
-    };
+    let api = crate::make_api!(MonitorsAPI, cfg);
 
     let mut params = SearchMonitorsOptionalParams::default();
     if let Some(q) = query {
@@ -127,15 +101,86 @@ pub async fn search(cfg: &Config, query: Option<String>) -> Result<()> {
 }
 
 pub async fn delete(cfg: &Config, monitor_id: i64) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = if let Some(http_client) = client::make_bearer_client(cfg) {
-        MonitorsAPI::with_client_and_config(dd_cfg, http_client)
-    } else {
-        MonitorsAPI::with_config(dd_cfg)
-    };
+    let api = crate::make_api!(MonitorsAPI, cfg);
     let resp = api
         .delete_monitor(monitor_id, DeleteMonitorOptionalParams::default())
         .await
         .map_err(|e| anyhow::anyhow!("failed to delete monitor: {:?}", e))?;
     formatter::output(cfg, &resp)
+}
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_monitors_list_empty() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", "[]").await;
+
+        let result = super::list(&cfg, None, None, 10).await;
+        assert!(result.is_ok(), "monitors list failed: {:?}", result.err());
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_monitors_list_with_results() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let body = r#"[{"id": 1, "name": "Test Monitor", "type": "metric alert", "query": "avg(last_5m):avg:system.cpu.user{*} > 90", "message": "CPU high", "tags": [], "options": {}}]"#;
+        let _mock = mock_any(&mut server, "GET", body).await;
+
+        let result = super::list(&cfg, Some("Test".into()), None, 10).await;
+        assert!(
+            result.is_ok(),
+            "monitors list with results failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_monitors_get() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let body = r#"{"id": 12345, "name": "Test Monitor", "type": "metric alert", "query": "avg(last_5m):avg:system.cpu.user{*} > 90", "message": "CPU high", "tags": [], "options": {}}"#;
+        let _mock = mock_any(&mut server, "GET", body).await;
+
+        let result = super::get(&cfg, 12345).await;
+        assert!(result.is_ok(), "monitors get failed: {:?}", result.err());
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_monitors_search() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let body = r#"{"monitors": [], "metadata": {"page": 0, "page_count": 0, "per_page": 30, "total_count": 0}}"#;
+        let _mock = mock_any(&mut server, "GET", body).await;
+
+        let result = super::search(&cfg, Some("cpu".into())).await;
+        assert!(result.is_ok(), "monitors search failed: {:?}", result.err());
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_monitors_delete() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "DELETE", r#"{"deleted_monitor_id": 12345}"#).await;
+
+        let result = super::delete(&cfg, 12345).await;
+        assert!(result.is_ok(), "monitors delete failed: {:?}", result.err());
+        cleanup_env();
+    }
 }

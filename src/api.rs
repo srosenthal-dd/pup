@@ -64,6 +64,7 @@ pub async fn delete(cfg: &Config, path: &str) -> Result<serde_json::Value> {
 }
 
 /// Perform a DELETE request with a JSON body.
+#[allow(dead_code)]
 pub async fn delete_with_body(
     cfg: &Config,
     path: &str,
@@ -109,4 +110,385 @@ async fn send(req: reqwest::RequestBuilder) -> Result<serde_json::Value> {
         return Ok(serde_json::json!({}));
     }
     serde_json::from_str(&body).map_err(|e| anyhow::anyhow!("failed to parse JSON response: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+
+    use crate::config::{Config, OutputFormat};
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_api_get() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        std::env::set_var("PUP_MOCK_SERVER", server.url());
+
+        let cfg = Config {
+            api_key: Some("test-key".into()),
+            app_key: Some("test-app".into()),
+            access_token: None,
+            site: "datadoghq.com".into(),
+            site_explicit: false,
+            org: None,
+            output_format: OutputFormat::Json,
+            auto_approve: false,
+            agent_mode: false,
+            read_only: false,
+        };
+
+        let mock = server
+            .mock("GET", "/api/v1/test")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"status": "ok"}"#)
+            .create_async()
+            .await;
+
+        let result = super::get(&cfg, "/api/v1/test", &[]).await;
+        assert!(result.is_ok(), "api get failed: {:?}", result.err());
+        let val = result.unwrap();
+        assert_eq!(val["status"], "ok");
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_api_get_with_query() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        std::env::set_var("PUP_MOCK_SERVER", server.url());
+
+        let cfg = Config {
+            api_key: Some("test-key".into()),
+            app_key: Some("test-app".into()),
+            access_token: None,
+            site: "datadoghq.com".into(),
+            site_explicit: false,
+            org: None,
+            output_format: OutputFormat::Json,
+            auto_approve: false,
+            agent_mode: false,
+            read_only: false,
+        };
+
+        let mock = server
+            .mock("GET", "/api/v1/search")
+            .match_query(mockito::Matcher::Any)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"results": []}"#)
+            .create_async()
+            .await;
+
+        let query = vec![("q", "test".to_string())];
+        let result = super::get(&cfg, "/api/v1/search", &query).await;
+        assert!(
+            result.is_ok(),
+            "api get with query failed: {:?}",
+            result.err()
+        );
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_api_post() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        std::env::set_var("PUP_MOCK_SERVER", server.url());
+
+        let cfg = Config {
+            api_key: Some("test-key".into()),
+            app_key: Some("test-app".into()),
+            access_token: None,
+            site: "datadoghq.com".into(),
+            site_explicit: false,
+            org: None,
+            output_format: OutputFormat::Json,
+            auto_approve: false,
+            agent_mode: false,
+            read_only: false,
+        };
+
+        let mock = server
+            .mock("POST", "/api/v2/test")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"created": true}"#)
+            .create_async()
+            .await;
+
+        let body = serde_json::json!({"name": "test"});
+        let result = super::post(&cfg, "/api/v2/test", &body).await;
+        assert!(result.is_ok(), "api post failed: {:?}", result.err());
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_api_put() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        std::env::set_var("PUP_MOCK_SERVER", server.url());
+
+        let cfg = Config {
+            api_key: Some("test-key".into()),
+            app_key: Some("test-app".into()),
+            access_token: None,
+            site: "datadoghq.com".into(),
+            site_explicit: false,
+            org: None,
+            output_format: OutputFormat::Json,
+            auto_approve: false,
+            agent_mode: false,
+            read_only: false,
+        };
+
+        let mock = server
+            .mock("PUT", "/api/v1/test/123")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"updated": true}"#)
+            .create_async()
+            .await;
+
+        let body = serde_json::json!({"name": "updated"});
+        let result = super::put(&cfg, "/api/v1/test/123", &body).await;
+        assert!(result.is_ok(), "api put failed: {:?}", result.err());
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_api_patch() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        std::env::set_var("PUP_MOCK_SERVER", server.url());
+
+        let cfg = Config {
+            api_key: Some("test-key".into()),
+            app_key: Some("test-app".into()),
+            access_token: None,
+            site: "datadoghq.com".into(),
+            site_explicit: false,
+            org: None,
+            output_format: OutputFormat::Json,
+            auto_approve: false,
+            agent_mode: false,
+            read_only: false,
+        };
+
+        let mock = server
+            .mock("PATCH", "/api/v1/test/123")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"patched": true}"#)
+            .create_async()
+            .await;
+
+        let body = serde_json::json!({"name": "patched"});
+        let result = super::patch(&cfg, "/api/v1/test/123", &body).await;
+        assert!(result.is_ok(), "api patch failed: {:?}", result.err());
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_api_delete() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        std::env::set_var("PUP_MOCK_SERVER", server.url());
+
+        let cfg = Config {
+            api_key: Some("test-key".into()),
+            app_key: Some("test-app".into()),
+            access_token: None,
+            site: "datadoghq.com".into(),
+            site_explicit: false,
+            org: None,
+            output_format: OutputFormat::Json,
+            auto_approve: false,
+            agent_mode: false,
+            read_only: false,
+        };
+
+        let mock = server
+            .mock("DELETE", "/api/v1/test/123")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"deleted": true}"#)
+            .create_async()
+            .await;
+
+        let result = super::delete(&cfg, "/api/v1/test/123").await;
+        assert!(result.is_ok(), "api delete failed: {:?}", result.err());
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_api_error_response() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        std::env::set_var("PUP_MOCK_SERVER", server.url());
+
+        let cfg = Config {
+            api_key: Some("test-key".into()),
+            app_key: Some("test-app".into()),
+            access_token: None,
+            site: "datadoghq.com".into(),
+            site_explicit: false,
+            org: None,
+            output_format: OutputFormat::Json,
+            auto_approve: false,
+            agent_mode: false,
+            read_only: false,
+        };
+
+        let mock = server
+            .mock("GET", "/api/v1/test/missing")
+            .with_status(404)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors": ["not found"]}"#)
+            .create_async()
+            .await;
+
+        let result = super::get(&cfg, "/api/v1/test/missing", &[]).await;
+        assert!(result.is_err(), "should return error for 404");
+        assert!(result.unwrap_err().to_string().contains("404"));
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_api_bearer_auth() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        std::env::set_var("PUP_MOCK_SERVER", server.url());
+
+        let cfg = Config {
+            api_key: None,
+            app_key: None,
+            access_token: Some("test-bearer-token".into()),
+            site: "datadoghq.com".into(),
+            site_explicit: false,
+            org: None,
+            output_format: OutputFormat::Json,
+            auto_approve: false,
+            agent_mode: false,
+            read_only: false,
+        };
+
+        let mock = server
+            .mock("GET", "/api/v1/test")
+            .match_header("Authorization", "Bearer test-bearer-token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"auth": "bearer"}"#)
+            .create_async()
+            .await;
+
+        let result = super::get(&cfg, "/api/v1/test", &[]).await;
+        assert!(result.is_ok(), "bearer auth failed: {:?}", result.err());
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_api_no_auth() {
+        let _lock = lock_env().await;
+
+        let cfg = Config {
+            api_key: None,
+            app_key: None,
+            access_token: None,
+            site: "datadoghq.com".into(),
+            site_explicit: false,
+            org: None,
+            output_format: OutputFormat::Json,
+            auto_approve: false,
+            agent_mode: false,
+            read_only: false,
+        };
+
+        let result = super::get(&cfg, "/api/v1/test", &[]).await;
+        assert!(result.is_err(), "should fail without auth");
+        assert!(
+            result.unwrap_err().to_string().contains("authentication"),
+            "error should mention authentication"
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_api_empty_response() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        std::env::set_var("PUP_MOCK_SERVER", server.url());
+
+        let cfg = Config {
+            api_key: Some("test-key".into()),
+            app_key: Some("test-app".into()),
+            access_token: None,
+            site: "datadoghq.com".into(),
+            site_explicit: false,
+            org: None,
+            output_format: OutputFormat::Json,
+            auto_approve: false,
+            agent_mode: false,
+            read_only: false,
+        };
+
+        let mock = server
+            .mock("DELETE", "/api/v1/test/empty")
+            .with_status(204)
+            .with_body("")
+            .create_async()
+            .await;
+
+        let result = super::delete(&cfg, "/api/v1/test/empty").await;
+        assert!(result.is_ok(), "empty response failed: {:?}", result.err());
+        let val = result.unwrap();
+        assert_eq!(val, serde_json::json!({}));
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_api_server_error() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        std::env::set_var("PUP_MOCK_SERVER", server.url());
+
+        let cfg = Config {
+            api_key: Some("test-key".into()),
+            app_key: Some("test-app".into()),
+            access_token: None,
+            site: "datadoghq.com".into(),
+            site_explicit: false,
+            org: None,
+            output_format: OutputFormat::Json,
+            auto_approve: false,
+            agent_mode: false,
+            read_only: false,
+        };
+
+        let mock = server
+            .mock("GET", "/api/v1/test")
+            .with_status(500)
+            .with_body(r#"{"errors": ["internal server error"]}"#)
+            .create_async()
+            .await;
+
+        let result = super::get(&cfg, "/api/v1/test", &[]).await;
+        assert!(
+            result.is_err(),
+            "expected error but got ok: {:?}",
+            result.ok()
+        );
+        assert!(result.unwrap_err().to_string().contains("500"));
+        mock.assert_async().await;
+        cleanup_env();
+    }
 }

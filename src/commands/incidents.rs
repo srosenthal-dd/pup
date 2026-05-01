@@ -13,7 +13,6 @@ use datadog_api_client::datadogV2::api_incidents::{
 };
 use datadog_api_client::datadogV2::model::{IncidentImportRequest, IncidentSearchSortOrder};
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
@@ -23,24 +22,21 @@ use crate::util;
 // ---------------------------------------------------------------------------
 
 fn make_api(cfg: &Config) -> IncidentsAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    match client::make_bearer_client(cfg) {
-        Some(c) => IncidentsAPI::with_client_and_config(dd_cfg, c),
-        None => IncidentsAPI::with_config(dd_cfg),
-    }
+    crate::make_api!(IncidentsAPI, cfg)
 }
 
 // ---------------------------------------------------------------------------
 // Core incident operations
 // ---------------------------------------------------------------------------
 
-pub async fn list(cfg: &Config, limit: i64) -> Result<()> {
+pub async fn list(cfg: &Config, query: Option<String>, limit: i64) -> Result<()> {
     let api = make_api(cfg);
     let params = SearchIncidentsOptionalParams::default()
         .page_size(limit)
         .sort(IncidentSearchSortOrder::CREATED_DESCENDING);
+    let q = query.unwrap_or_else(|| "state:active".to_string());
     let resp = api
-        .search_incidents("state:active".to_string(), params)
+        .search_incidents(q, params)
         .await
         .map_err(|e| anyhow::anyhow!("failed to list incidents: {:?}", e))?;
     formatter::output(cfg, &resp)?;
@@ -235,11 +231,7 @@ pub async fn postmortem_templates_delete(cfg: &Config, template_id: &str) -> Res
 // ---------------------------------------------------------------------------
 
 fn make_teams_api(cfg: &Config) -> IncidentTeamsAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    match client::make_bearer_client(cfg) {
-        Some(c) => IncidentTeamsAPI::with_client_and_config(dd_cfg, c),
-        None => IncidentTeamsAPI::with_config(dd_cfg),
-    }
+    crate::make_api!(IncidentTeamsAPI, cfg)
 }
 
 pub async fn teams_list(cfg: &Config) -> Result<()> {
@@ -297,11 +289,7 @@ pub async fn teams_delete(cfg: &Config, team_id: &str) -> Result<()> {
 // ---------------------------------------------------------------------------
 
 fn make_services_api(cfg: &Config) -> IncidentServicesAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    match client::make_bearer_client(cfg) {
-        Some(c) => IncidentServicesAPI::with_client_and_config(dd_cfg, c),
-        None => IncidentServicesAPI::with_config(dd_cfg),
-    }
+    crate::make_api!(IncidentServicesAPI, cfg)
 }
 
 pub async fn services_list(cfg: &Config) -> Result<()> {
@@ -364,4 +352,175 @@ pub async fn import(cfg: &Config, file: &str) -> Result<()> {
         .await
         .map_err(|e| anyhow::anyhow!("failed to import incident: {e:?}"))?;
     formatter::output(cfg, &resp)
+}
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_incidents_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::list(&cfg, None, 10).await;
+        cleanup_env();
+    }
+
+    /// When a `--query` is supplied, it must be forwarded as the
+    /// `query` URL parameter on the incidents-search request.
+    #[tokio::test]
+    async fn test_incidents_list_forwards_query() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+
+        // Strict mock: only matches when the request URL contains
+        // `query=state:resolved`. Any other query string falls through
+        // and the request fails.
+        let _mock = s
+            .mock("GET", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::UrlEncoded(
+                "query".into(),
+                "state:resolved".into(),
+            ))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data": {}}"#)
+            .create_async()
+            .await;
+
+        let result = super::list(&cfg, Some("state:resolved".to_string()), 10).await;
+        assert!(
+            result.is_ok(),
+            "list with --query=state:resolved should forward the query: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    /// When `--query` is omitted, the default `state:active` must still be
+    /// sent on the wire, preserving the previous CLI behavior.
+    #[tokio::test]
+    async fn test_incidents_list_defaults_to_state_active() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+
+        let _mock = s
+            .mock("GET", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::UrlEncoded(
+                "query".into(),
+                "state:active".into(),
+            ))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data": {}}"#)
+            .create_async()
+            .await;
+
+        let result = super::list(&cfg, None, 10).await;
+        assert!(
+            result.is_ok(),
+            "list with no --query should default to state:active: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_incidents_get() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {}}"#).await;
+        let _ = super::get(&cfg, "inc1").await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_incidents_settings_get() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {}}"#).await;
+        let _ = super::settings_get(&cfg).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_incidents_handles_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::handles_list(&cfg).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_incidents_postmortem_templates_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::postmortem_templates_list(&cfg).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_incident_teams_list() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", r#"{"data":[],"meta":{}}"#).await;
+        let result = super::teams_list(&cfg).await;
+        assert!(
+            result.is_ok(),
+            "incident teams list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_incident_services_list() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = mock_any(&mut server, "GET", r#"{"data":[],"meta":{}}"#).await;
+        let result = super::services_list(&cfg).await;
+        assert!(
+            result.is_ok(),
+            "incident services list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_incident_services_list_error() {
+        let _lock = lock_env().await;
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+        let _mock = server
+            .mock("GET", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::Any)
+            .with_status(403)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors":["Forbidden"]}"#)
+            .create_async()
+            .await;
+        let result = super::services_list(&cfg).await;
+        assert!(result.is_err(), "incident services list should fail on 403");
+        cleanup_env();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+    }
 }

@@ -3,16 +3,11 @@ use datadog_api_client::datadogV2::api_downtimes::{
     DowntimesAPI, GetDowntimeOptionalParams, ListDowntimesOptionalParams,
 };
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 
 pub async fn list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => DowntimesAPI::with_client_and_config(dd_cfg, c),
-        None => DowntimesAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(DowntimesAPI, cfg);
     let resp = api
         .list_downtimes(ListDowntimesOptionalParams::default())
         .await
@@ -21,11 +16,7 @@ pub async fn list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn get(cfg: &Config, id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => DowntimesAPI::with_client_and_config(dd_cfg, c),
-        None => DowntimesAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(DowntimesAPI, cfg);
     let resp = api
         .get_downtime(id.to_string(), GetDowntimeOptionalParams::default())
         .await
@@ -36,11 +27,7 @@ pub async fn get(cfg: &Config, id: &str) -> Result<()> {
 pub async fn create(cfg: &Config, file: &str) -> Result<()> {
     let body: datadog_api_client::datadogV2::model::DowntimeCreateRequest =
         crate::util::read_json_file(file)?;
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => DowntimesAPI::with_client_and_config(dd_cfg, c),
-        None => DowntimesAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(DowntimesAPI, cfg);
     let resp = api
         .create_downtime(body)
         .await
@@ -49,14 +36,36 @@ pub async fn create(cfg: &Config, file: &str) -> Result<()> {
 }
 
 pub async fn cancel(cfg: &Config, id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => DowntimesAPI::with_client_and_config(dd_cfg, c),
-        None => DowntimesAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(DowntimesAPI, cfg);
     api.cancel_downtime(id.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("failed to cancel downtime: {e:?}"))?;
     println!("Downtime {id} cancelled.");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_downtime_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::list(&cfg).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_downtime_get() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {}}"#).await;
+        let _ = super::get(&cfg, "d1").await;
+        cleanup_env();
+    }
 }

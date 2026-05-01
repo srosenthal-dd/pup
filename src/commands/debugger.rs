@@ -471,11 +471,7 @@ pub async fn probes_watch(
     };
 
     // Set up logs API
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => LogsAPI::with_client_and_config(dd_cfg, c),
-        None => LogsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(LogsAPI, cfg);
 
     let query = format!("@debugger.snapshot.probe.id:{id}");
     let mut from_ms = from_ms_init;
@@ -692,6 +688,8 @@ fn filter_context_env(data: &serde_json::Value, env_filter: &str) -> serde_json:
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::*;
+
     use super::*;
     use crate::config::{Config, OutputFormat};
 
@@ -701,6 +699,7 @@ mod tests {
             app_key: Some("test".into()),
             access_token: None,
             site: "datadoghq.com".into(),
+            site_explicit: false,
             org: None,
             output_format: OutputFormat::Json,
             auto_approve: false,
@@ -1037,5 +1036,70 @@ mod tests {
         let out = extract_context_fields(&data, "service,bogus");
         assert_eq!(out["service"], "my-service");
         assert!(out.get("bogus").is_none());
+    }
+
+    #[tokio::test]
+    async fn test_debugger_probes_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"[{"id": "probe-1", "type": "LOG_PROBE"}]"#).await;
+        let _ = super::probes_list(&cfg, None).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_debugger_probes_list_with_service() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"[{"id": "probe-1", "type": "LOG_PROBE"}]"#).await;
+        let _ = super::probes_list(&cfg, Some("my-service")).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_debugger_probes_get() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"id": "probe-1", "type": "LOG_PROBE"}"#).await;
+        let _ = super::probes_get(&cfg, "probe-1").await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_debugger_probes_create() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": {"id": "probe-new"}}"#).await;
+        let params = super::ProbeCreateParams {
+            service: "my-service",
+            env: "staging",
+            probe_location: "com.example.MyClass:myMethod",
+            language: "java",
+            template: None,
+            condition: None,
+            snapshot: true,
+            capture_expressions: vec![],
+            rate: 1,
+            budget: 1000,
+            ttl: Some("1h"),
+            depth: 3,
+            fields: None,
+        };
+        let _ = super::probes_create(&cfg, params).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_debugger_probes_delete() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#""#).await;
+        let _ = super::probes_delete(&cfg, "probe-1").await;
+        cleanup_env();
     }
 }

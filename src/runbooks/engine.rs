@@ -508,6 +508,7 @@ async fn execute_http(cfg: &Config, step: &Step, vars: &HashMap<String, String>)
             cfg,
             &method,
             &rendered_url,
+            &[],
             body_bytes,
             effective_ct.as_deref(),
             accept,

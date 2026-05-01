@@ -1,4 +1,3 @@
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
@@ -16,11 +15,7 @@ use datadog_api_client::datadogV2::model::{
 // ---- Jira ----
 
 pub async fn jira_accounts_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => JiraIntegrationAPI::with_client_and_config(dd_cfg, c),
-        None => JiraIntegrationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(JiraIntegrationAPI, cfg);
     let resp = api
         .list_jira_accounts()
         .await
@@ -29,11 +24,7 @@ pub async fn jira_accounts_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn jira_templates_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => JiraIntegrationAPI::with_client_and_config(dd_cfg, c),
-        None => JiraIntegrationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(JiraIntegrationAPI, cfg);
     let resp = api
         .list_jira_issue_templates()
         .await
@@ -42,11 +33,7 @@ pub async fn jira_templates_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn jira_templates_get(cfg: &Config, template_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => JiraIntegrationAPI::with_client_and_config(dd_cfg, c),
-        None => JiraIntegrationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(JiraIntegrationAPI, cfg);
     let uuid = util::parse_uuid(template_id, "template")?;
     let resp = api
         .get_jira_issue_template(uuid)
@@ -56,11 +43,7 @@ pub async fn jira_templates_get(cfg: &Config, template_id: &str) -> Result<()> {
 }
 
 pub async fn jira_accounts_delete(cfg: &Config, account_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => JiraIntegrationAPI::with_client_and_config(dd_cfg, c),
-        None => JiraIntegrationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(JiraIntegrationAPI, cfg);
     let uuid = util::parse_uuid(account_id, "account")?;
     api.delete_jira_account(uuid)
         .await
@@ -70,11 +53,7 @@ pub async fn jira_accounts_delete(cfg: &Config, account_id: &str) -> Result<()> 
 }
 
 pub async fn jira_templates_create(cfg: &Config, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => JiraIntegrationAPI::with_client_and_config(dd_cfg, c),
-        None => JiraIntegrationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(JiraIntegrationAPI, cfg);
     let body: JiraIssueTemplateCreateRequest = crate::util::read_json_file(file)?;
     let resp = api
         .create_jira_issue_template(body)
@@ -84,11 +63,7 @@ pub async fn jira_templates_create(cfg: &Config, file: &str) -> Result<()> {
 }
 
 pub async fn jira_templates_update(cfg: &Config, template_id: &str, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => JiraIntegrationAPI::with_client_and_config(dd_cfg, c),
-        None => JiraIntegrationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(JiraIntegrationAPI, cfg);
     let uuid = util::parse_uuid(template_id, "template")?;
     let body: JiraIssueTemplateUpdateRequest = crate::util::read_json_file(file)?;
     let resp = api
@@ -99,11 +74,7 @@ pub async fn jira_templates_update(cfg: &Config, template_id: &str, file: &str) 
 }
 
 pub async fn jira_templates_delete(cfg: &Config, template_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => JiraIntegrationAPI::with_client_and_config(dd_cfg, c),
-        None => JiraIntegrationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(JiraIntegrationAPI, cfg);
     let uuid = util::parse_uuid(template_id, "template")?;
     api.delete_jira_issue_template(uuid)
         .await
@@ -115,11 +86,7 @@ pub async fn jira_templates_delete(cfg: &Config, template_id: &str) -> Result<()
 // ---- ServiceNow ----
 
 pub async fn servicenow_instances_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => ServiceNowIntegrationAPI::with_client_and_config(dd_cfg, c),
-        None => ServiceNowIntegrationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(ServiceNowIntegrationAPI, cfg);
     let resp = api
         .list_service_now_instances()
         .await
@@ -128,11 +95,7 @@ pub async fn servicenow_instances_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn servicenow_templates_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => ServiceNowIntegrationAPI::with_client_and_config(dd_cfg, c),
-        None => ServiceNowIntegrationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(ServiceNowIntegrationAPI, cfg);
     let resp = api
         .list_service_now_templates()
         .await
@@ -141,11 +104,7 @@ pub async fn servicenow_templates_list(cfg: &Config) -> Result<()> {
 }
 
 pub async fn servicenow_templates_get(cfg: &Config, template_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => ServiceNowIntegrationAPI::with_client_and_config(dd_cfg, c),
-        None => ServiceNowIntegrationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(ServiceNowIntegrationAPI, cfg);
     let uuid = util::parse_uuid(template_id, "template")?;
     let resp = api
         .get_service_now_template(uuid)
@@ -155,11 +114,7 @@ pub async fn servicenow_templates_get(cfg: &Config, template_id: &str) -> Result
 }
 
 pub async fn servicenow_templates_create(cfg: &Config, file: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => ServiceNowIntegrationAPI::with_client_and_config(dd_cfg, c),
-        None => ServiceNowIntegrationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(ServiceNowIntegrationAPI, cfg);
     let body: ServiceNowTemplateCreateRequest = crate::util::read_json_file(file)?;
     let resp = api
         .create_service_now_template(body)
@@ -173,11 +128,7 @@ pub async fn servicenow_templates_update(
     template_id: &str,
     file: &str,
 ) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => ServiceNowIntegrationAPI::with_client_and_config(dd_cfg, c),
-        None => ServiceNowIntegrationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(ServiceNowIntegrationAPI, cfg);
     let uuid = util::parse_uuid(template_id, "template")?;
     let body: ServiceNowTemplateUpdateRequest = crate::util::read_json_file(file)?;
     let resp = api
@@ -188,11 +139,7 @@ pub async fn servicenow_templates_update(
 }
 
 pub async fn servicenow_templates_delete(cfg: &Config, template_id: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => ServiceNowIntegrationAPI::with_client_and_config(dd_cfg, c),
-        None => ServiceNowIntegrationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(ServiceNowIntegrationAPI, cfg);
     let uuid = util::parse_uuid(template_id, "template")?;
     api.delete_service_now_template(uuid)
         .await
@@ -202,11 +149,7 @@ pub async fn servicenow_templates_delete(cfg: &Config, template_id: &str) -> Res
 }
 
 pub async fn servicenow_users_list(cfg: &Config, instance_name: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => ServiceNowIntegrationAPI::with_client_and_config(dd_cfg, c),
-        None => ServiceNowIntegrationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(ServiceNowIntegrationAPI, cfg);
     let resp = api
         .list_service_now_users(util::parse_uuid(instance_name, "instance")?)
         .await
@@ -215,11 +158,7 @@ pub async fn servicenow_users_list(cfg: &Config, instance_name: &str) -> Result<
 }
 
 pub async fn servicenow_assignment_groups_list(cfg: &Config, instance_name: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => ServiceNowIntegrationAPI::with_client_and_config(dd_cfg, c),
-        None => ServiceNowIntegrationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(ServiceNowIntegrationAPI, cfg);
     let resp = api
         .list_service_now_assignment_groups(util::parse_uuid(instance_name, "instance")?)
         .await
@@ -228,11 +167,7 @@ pub async fn servicenow_assignment_groups_list(cfg: &Config, instance_name: &str
 }
 
 pub async fn servicenow_business_services_list(cfg: &Config, instance_name: &str) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => ServiceNowIntegrationAPI::with_client_and_config(dd_cfg, c),
-        None => ServiceNowIntegrationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(ServiceNowIntegrationAPI, cfg);
     let resp = api
         .list_service_now_business_services(util::parse_uuid(instance_name, "instance")?)
         .await
@@ -243,11 +178,7 @@ pub async fn servicenow_business_services_list(cfg: &Config, instance_name: &str
 // ---- Slack ----
 
 pub async fn slack_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => SlackIntegrationAPI::with_client_and_config(dd_cfg, c),
-        None => SlackIntegrationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(SlackIntegrationAPI, cfg);
     let resp = api
         .get_slack_integration_channels("main".to_string())
         .await
@@ -267,11 +198,7 @@ pub async fn pagerduty_list(_cfg: &Config) -> Result<()> {
 // ---- Webhooks ----
 
 pub async fn webhooks_list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => WebhooksIntegrationAPI::with_client_and_config(dd_cfg, c),
-        None => WebhooksIntegrationAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(WebhooksIntegrationAPI, cfg);
     let resp = api
         .get_webhooks_integration("main".to_string())
         .await
@@ -282,14 +209,76 @@ pub async fn webhooks_list(cfg: &Config) -> Result<()> {
 // ---- Integrations v2 list ----
 
 pub async fn list(cfg: &Config) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => IntegrationsAPI::with_client_and_config(dd_cfg, c),
-        None => IntegrationsAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(IntegrationsAPI, cfg);
     let resp = api
         .list_integrations()
         .await
         .map_err(|e| anyhow::anyhow!("failed to list integrations: {e:?}"))?;
     formatter::output(cfg, &resp)
+}
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_integrations_jira_accounts_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::jira_accounts_list(&cfg).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_integrations_jira_templates_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::jira_templates_list(&cfg).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_integrations_servicenow_instances_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::servicenow_instances_list(&cfg).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_integrations_servicenow_templates_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::servicenow_templates_list(&cfg).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_integrations_slack_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::slack_list(&cfg).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_integrations_webhooks_list() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::webhooks_list(&cfg).await;
+        cleanup_env();
+    }
 }

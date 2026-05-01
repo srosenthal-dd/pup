@@ -5,14 +5,12 @@ use datadog_api_client::datadogV2::api_usage_metering::{
     GetProjectedCostOptionalParams, UsageMeteringAPI as UsageMeteringV2API,
 };
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
 fn make_usage_api(cfg: &Config) -> UsageMeteringV2API {
-    // Cost/billing endpoints require API key auth — no OAuth support.
-    UsageMeteringV2API::with_config(client::make_dd_config(cfg))
+    crate::make_api!(UsageMeteringV2API, cfg)
 }
 
 pub async fn projected(cfg: &Config) -> Result<()> {
@@ -27,14 +25,11 @@ pub async fn projected(cfg: &Config) -> Result<()> {
 pub async fn by_org(cfg: &Config, start_month: String, end_month: Option<String>) -> Result<()> {
     let api = make_usage_api(cfg);
 
-    let start_dt =
-        chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&start_month)?)
-            .unwrap();
+    let start_dt = util::parse_time_to_datetime(&start_month)?;
 
     let mut params = GetCostByOrgOptionalParams::default();
     if let Some(e) = end_month {
-        let end_dt =
-            chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&e)?).unwrap();
+        let end_dt = util::parse_time_to_datetime(&e)?;
         params = params.end_month(end_dt);
     }
 
@@ -48,8 +43,7 @@ pub async fn by_org(cfg: &Config, start_month: String, end_month: Option<String>
 pub async fn attribution(cfg: &Config, start: String, fields: Option<String>) -> Result<()> {
     let api = make_usage_api(cfg);
 
-    let start_dt =
-        chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&start)?).unwrap();
+    let start_dt = util::parse_time_to_datetime(&start)?;
 
     let fields_str = fields.unwrap_or_else(|| "*".to_string());
     let params = GetMonthlyCostAttributionOptionalParams::default();
@@ -64,8 +58,7 @@ pub async fn attribution(cfg: &Config, start: String, fields: Option<String>) ->
 // ---- Cloud Cost Management — AWS CUR Config ----
 
 fn make_ccm_api(cfg: &Config) -> CloudCostManagementAPI {
-    // CCM endpoints require API key auth — no OAuth support.
-    CloudCostManagementAPI::with_config(client::make_dd_config(cfg))
+    crate::make_api!(CloudCostManagementAPI, cfg)
 }
 
 pub async fn aws_config_list(cfg: &Config) -> Result<()> {
@@ -184,4 +177,20 @@ pub async fn gcp_config_delete(cfg: &Config, id: i64) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("failed to delete GCP usage cost config: {e:?}"))?;
     eprintln!("GCP usage cost config {id} deleted.");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_cost_projected() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let _ = super::projected(&cfg).await;
+        cleanup_env();
+    }
 }

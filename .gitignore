@@ -36,3 +36,6 @@ tests/mockdd/mockdd
 tests/compare_bin
 tests/gen_commands_bin
 /tmp/
+
+# worktrees
+.claude/worktrees/

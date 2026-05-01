@@ -1,6 +1,8 @@
 # Command Reference
 
-Complete reference for all 56 command groups in Pup.
+Complete reference for the command groups in Pup. Run `pup --help` (or `pup
+agent schema --compact`) for the live, exhaustive list as built into your
+binary — the table below is curated documentation and may lag the source.
 
 ## Command Pattern
 
@@ -23,17 +25,17 @@ pup <domain> <subgroup> <action> [options] # Nested commands
 | auth | login, logout, status, refresh | src/commands/auth.rs | ✅ |
 | metrics | query, list, get, search | src/commands/metrics.rs | ✅ |
 | logs | search, list, aggregate | src/commands/logs.rs | ✅ |
-| traces | - | - | ❌ |
+| traces | metrics (list, get, create, update, delete) | src/commands/traces.rs | ✅ |
 | monitors | list, get, delete, search | src/commands/monitors.rs | ✅ |
 | dashboards | list, get, delete, url | src/commands/dashboards.rs | ✅ |
 | dbm | samples (search) | src/commands/dbm.rs | ✅ |
-| ddsql | table, time-series | src/commands/ddsql.rs | ✅ |
+| ddsql | table, time-series, spec, schema (tables, columns) | src/commands/ddsql.rs | ✅ |
 | debugger | probes (list, get, create, delete, watch) | src/commands/debugger.rs | ✅ |
 | slos | list, get, delete, status | src/commands/slos.rs | ✅ |
 | incidents | list, get, attachments, settings, handles, postmortem-templates | src/commands/incidents.rs | ✅ |
 | rum | apps, metrics, retention-filters, sessions, playlists, heatmaps | src/commands/rum.rs | ✅ |
 | cicd | pipelines, events, tests, dora, flaky-tests | src/commands/cicd.rs | ✅ |
-| static-analysis | custom-rulesets | src/commands/static_analysis.rs | ✅ |
+| static-analysis | custom-rulesets (get, update, delete), custom-rules (get, create, delete, revisions, revision) | src/commands/static_analysis.rs | ✅ |
 | downtime | list, get, cancel | src/commands/downtime.rs | ✅ |
 | tags | list, get, add, update, delete | src/commands/tags.rs | ✅ |
 | events | list, search, get | src/commands/events.rs | ✅ |
@@ -53,12 +55,15 @@ pup <domain> <subgroup> <action> [options] # Nested commands
 | service-catalog | list, get | src/commands/service_catalog.rs | ✅ |
 | idp | assist, find, owner, deps, register | src/commands/idp.rs | ✅ |
 | error-tracking | issues (search, get) | src/commands/error_tracking.rs | ✅ |
-| scorecards | list, get | src/commands/scorecards.rs | ✅ |
+| scorecards | rules (list, create, update, delete), outcomes (list, batch-create) | src/commands/scorecards.rs | ✅ |
 | usage | summary, hourly | src/commands/usage.rs | ✅ |
-| apm | services (list, stats, operations, resources), entities (list), dependencies (list), flow-map, troubleshooting (list) | src/commands/apm.rs | ✅ |
+| apm | services (list, stats, operations, resources), entities (list), dependencies (list), flow-map, troubleshooting (list), service-config (get), service-library-config (get) | src/commands/apm.rs | ✅ |
 | containers | list, images (list) | src/commands/containers.rs | ✅ |
-| cost | projected, attribution, by-org, aws-config (list, get, create, delete), azure-config (list, get, create, delete), gcp-config (list, get, create, delete) | src/commands/cost.rs | ✅ |
+| costs | datadog (projected, attribution, by-org, aws-config, azure-config, gcp-config), ccm (custom-costs, tag-descriptions, tag-metadata, tags, tag-keys, budgets, commitments) | src/commands/cost.rs, src/commands/cost_ccm.rs | ✅ |
 | product-analytics | events send | src/commands/product_analytics.rs | ✅ |
+| profiling | aggregate, analysis, analytics, breakdown, callgraph, download, fields, info, list, save-favorite, timeline | src/commands/profiling.rs | ✅ |
+| datasets | list, get, create, update, delete | src/commands/datasets.rs | ✅ |
+| data-deletion | requests (list, create, cancel) | src/commands/data_deletion.rs | ✅ |
 | data-governance | scanner-rules (list) | src/commands/data_governance.rs | ✅ |
 | obs-pipelines | list, get, create, update, delete, validate | src/commands/obs_pipelines.rs | ✅ |
 | llm-obs | projects (create, list), experiments (create, list, update, delete, summary, events (list, get), metric-values, dimension-values), datasets (create, list), spans (search) | src/commands/llm_obs.rs | ✅ |
@@ -71,19 +76,19 @@ pup <domain> <subgroup> <action> [options] # Nested commands
 | status-pages | pages, components, degradations | src/commands/status_pages.rs | ✅ |
 | code-coverage | branch-summary, commit-summary | src/commands/code_coverage.rs | ✅ |
 | hamr | connections (get, create) | src/commands/hamr.rs | ✅ |
-| fleet | agents (list, get, versions), deployments (list, get, configure, upgrade, cancel), schedules (list, get, create, update, delete, trigger) | src/commands/fleet.rs | ✅ |
+| fleet | agents (list, get, versions, tracers), deployments (list, get, configure, upgrade, cancel), schedules (list, get, create, update, delete, trigger), tracers (list), clusters (list), instrumented-pods (list) | src/commands/fleet.rs | ✅ |
 | skills | list, install, path | src/commands/skills.rs | ✅ |
 | runbooks | list, describe, run, import, validate | src/commands/runbooks.rs | ✅ |
-| workflows | get, create, update, delete, run, instances (list, get, cancel) | src/commands/workflows.rs | ✅ |
+| workflows | get, create, update, delete, run, instances (list, get, cancel), connections (get, create, update, delete) | src/commands/workflows.rs | ✅ |
 | investigations | list, get, trigger | src/commands/investigations.rs | ✅ |
 | change-requests | create, get, update, create-branch, decisions (update, delete) | src/commands/change_management.rs | ✅ |
 | app-builder | list, get, create, update, delete, delete-batch, publish, unpublish | src/commands/app_builder.rs | ✅ |
 
-**Summary:** 56 working, 0 API-blocked, 0 placeholders
-
 **Note:** RUM command is fully operational. Apps and sessions work completely. Metrics and retention-filters support list/get operations (create/update/delete operations pending due to complex API type structures).
 
 **Auth note:** All workflow commands require `DD_API_KEY` + `DD_APP_KEY`. OAuth2 bearer tokens are not supported for workflow operations.
+
+**Auth note (profiling):** All `pup profiling` commands require `DD_API_KEY` + `DD_APP_KEY`. No OAuth2 scope is declared for Continuous Profiler endpoints, so bearer tokens are not supported.
 
 ## Common Patterns
 
@@ -133,10 +138,10 @@ pup infrastructure hosts list
 - **metrics** - Time-series metrics (query, list, get, search)
 - **logs** - Log search and analysis (search, list, aggregate)
 - **dbm** - Database Monitoring query samples (samples search)
-- **traces** - APM traces (not yet implemented - use `apm` commands instead)
+- **traces** - APM spans metrics (list, get, create, update, delete)
 - **rum** - Real User Monitoring (apps, metrics, retention-filters, sessions)
 - **events** - Infrastructure events (list, search, get)
-- **ddsql** - DDSQL queries (table, csv, time-series)
+- **ddsql** - DDSQL queries and discovery (table, time-series, spec, schema)
 - **symdb** - Symbol Database queries (search scopes, probe locations)
 
 ### Monitoring & Alerting
@@ -152,10 +157,11 @@ pup infrastructure hosts list
 - **infrastructure** - Host inventory (hosts list, hosts get)
 - **network** - Network monitoring (flows list, devices list/get/interfaces/tags, interfaces list/update)
 - **tags** - Host tag management (list, get, add, update, delete)
+- **profiling** - Continuous Profiler data (aggregate, analysis, analytics, breakdown, callgraph, download, fields, info, list, save-favorite, timeline)
 
 ### Security & Compliance
 - **security** - Security monitoring (rules, signals, findings, content-packs, risk-scores)
-- **static-analysis** - Code security (ast, custom-rulesets, sca, coverage)
+- **static-analysis** - Code security (custom-rulesets, custom-rules)
 - **audit-logs** - Audit trail (list, search)
 - **data-governance** - Sensitive data scanning (scanner-rules list)
 
@@ -167,7 +173,7 @@ pup infrastructure hosts list
 - **cicd** - CI/CD visibility (pipelines, events, tests, dora, flaky-tests)
 - **code-coverage** - Code coverage summaries (branch, commit)
 - **error-tracking** - Error management (issues search, issues get)
-- **scorecards** - Service quality (list, get)
+- **scorecards** - Service quality (rules, outcomes)
 - **service-catalog** - Service registry (list, get)
 - **idp** - Service Catalog agent access (assist, find, owner, deps, register)
 - **debugger** - Live Debugger (probes list, get, create, delete, watch)
@@ -177,9 +183,9 @@ pup infrastructure hosts list
 - **on-call** - Team management (create, update, delete teams; manage memberships with roles)
 - **cases** - Case management (create, search, assign, archive, unarchive, update, projects, jira, servicenow, move)
 - **hamr** - High Availability Multi-Region connections
-- **fleet** - Fleet Automation (agents, deployments, schedules)
+- **fleet** - Fleet Automation (agents, deployments, schedules, tracers, clusters, instrumented-pods)
 - **runbooks** - Local runbook execution engine (list, describe, run, import, validate)
-- **workflows** - Workflow Automation (get, create, update, delete, run, instances)
+- **workflows** - Workflow Automation (get, create, update, delete, run, instances, connections)
 - **investigations** - Bits AI SRE investigations (list, get, trigger)
 - **change-requests** - Change request management (create, get, update, create-branch, decisions)
 
@@ -191,7 +197,7 @@ pup infrastructure hosts list
 
 ### Cost & Usage
 - **usage** - Usage and billing (summary, hourly)
-- **cost** - Cost management (projected, attribution, by-org, aws-config, azure-config, gcp-config)
+- **costs** - Cost management: `datadog` subgroup (projected, attribution, by-org, aws-config, azure-config, gcp-config) and `ccm` subgroup (custom-costs, tag-descriptions, tag-metadata, tags, tag-keys, budgets, commitments)
 
 ### Configuration & Data Management
 - **obs-pipelines** - Observability pipelines (list, get, create, update, delete, validate)
@@ -240,7 +246,7 @@ Available on all commands:
 - ✅ **llm-obs** (new) — LLM Observability: projects (create, list), experiments (create, list, update, delete, summary, events (list, get), metric-values, dimension-values), datasets (create, list), spans (search)
 - ✅ **reference-tables** (new) — Reference table management (list, get, create, batch-query)
 - ✅ **obs-pipelines** (upgraded from placeholder) — Full CRUD: list, get, create, update, delete, validate
-- **cost** — Added cloud cost configs: `aws-config`, `azure-config`, `gcp-config` (list, get, create, delete each)
+- **costs** — Added cloud cost configs: `aws-config`, `azure-config`, `gcp-config` (list, get, create, delete each)
 
 ### v0.27.0 — Major Expansion
 

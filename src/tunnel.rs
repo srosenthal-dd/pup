@@ -114,7 +114,10 @@ impl Tunnel {
             while let Some(msg) = ws_read.next().await {
                 match msg {
                     Ok(Message::Binary(data)) => {
-                        if our_write.write_all(&data).await.is_err() {
+                        // Bind result first so write_all is not a side-effecting
+                        // match guard expression; avoids clippy::collapsible_match.
+                        let result = our_write.write_all(&data).await;
+                        if result.is_err() {
                             break;
                         }
                     }

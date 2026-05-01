@@ -11,7 +11,7 @@ pub fn build_info() -> String {
     )
 }
 
-fn rustc_version() -> &'static str {
+pub fn rustc_version() -> &'static str {
     option_env!("RUSTC_VERSION").unwrap_or("unknown")
 }
 

@@ -4,25 +4,18 @@ use datadog_api_client::datadogV1::api_usage_metering::{
 };
 use datadog_api_client::datadogV1::model::HourlyUsageAttributionUsageType;
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
 pub async fn summary(cfg: &Config, start: String, end: Option<String>) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => UsageMeteringAPI::with_client_and_config(dd_cfg, c),
-        None => UsageMeteringAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(UsageMeteringAPI, cfg);
 
-    let start_dt =
-        chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&start)?).unwrap();
+    let start_dt = util::parse_time_to_datetime(&start)?;
 
     let mut params = GetUsageSummaryOptionalParams::default();
     if let Some(e) = end {
-        let end_dt =
-            chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&e)?).unwrap();
+        let end_dt = util::parse_time_to_datetime(&e)?;
         params = params.end_month(end_dt);
     }
 
@@ -34,19 +27,13 @@ pub async fn summary(cfg: &Config, start: String, end: Option<String>) -> Result
 }
 
 pub async fn hourly(cfg: &Config, start: String, end: Option<String>) -> Result<()> {
-    let dd_cfg = client::make_dd_config(cfg);
-    let api = match client::make_bearer_client(cfg) {
-        Some(c) => UsageMeteringAPI::with_client_and_config(dd_cfg, c),
-        None => UsageMeteringAPI::with_config(dd_cfg),
-    };
+    let api = crate::make_api!(UsageMeteringAPI, cfg);
 
-    let start_dt =
-        chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&start)?).unwrap();
+    let start_dt = util::parse_time_to_datetime(&start)?;
 
     let mut params = GetHourlyUsageAttributionOptionalParams::default();
     if let Some(e) = end {
-        let end_dt =
-            chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&e)?).unwrap();
+        let end_dt = util::parse_time_to_datetime(&e)?;
         params = params.end_hr(end_dt);
     }
 
@@ -55,4 +42,20 @@ pub async fn hourly(cfg: &Config, start: String, end: Option<String>) -> Result<
         .await
         .map_err(|e| anyhow::anyhow!("failed to get hourly usage: {e:?}"))?;
     formatter::output(cfg, &resp)
+}
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test_support::*;
+
+    #[tokio::test]
+    async fn test_usage_summary() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"usage": []}"#).await;
+        let _ = super::summary(&cfg, "2024-01".into(), None).await;
+        cleanup_env();
+    }
 }

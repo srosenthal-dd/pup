@@ -4,17 +4,12 @@ use datadog_api_client::datadogV2::model::{
     GoogleChatCreateOrganizationHandleRequest, GoogleChatUpdateOrganizationHandleRequest,
 };
 
-use crate::client;
 use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
 fn make_api(cfg: &Config) -> GoogleChatIntegrationAPI {
-    let dd_cfg = client::make_dd_config(cfg);
-    match client::make_bearer_client(cfg) {
-        Some(c) => GoogleChatIntegrationAPI::with_client_and_config(dd_cfg, c),
-        None => GoogleChatIntegrationAPI::with_config(dd_cfg),
-    }
+    crate::make_api!(GoogleChatIntegrationAPI, cfg)
 }
 
 pub async fn handles_list(cfg: &Config, org_id: &str) -> Result<()> {

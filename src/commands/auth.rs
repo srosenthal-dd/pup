@@ -50,12 +50,17 @@ pub async fn login(cfg: &Config, scopes: Vec<String>, subdomain: Option<&str>) -
     let existing_creds = with_storage(|store| store.load_client_credentials(site))?;
 
     let creds = match existing_creds {
-        Some(creds) => {
+        Some(creds) if creds.client_name == dcr::DCR_CLIENT_NAME => {
             eprintln!("✓ Using existing client registration");
             creds
         }
-        None => {
-            eprintln!("📝 Registering new OAuth2 client...");
+        other => {
+            if other.is_some() {
+                eprintln!("📝 Re-registering OAuth2 client (name changed)...");
+                with_storage(|store| store.delete_client_credentials(site))?;
+            } else {
+                eprintln!("📝 Registering new OAuth2 client...");
+            }
             let dcr_client = dcr::DcrClient::new(site);
             let creds = dcr_client.register(&redirect_uri, &scope_strs).await?;
             with_storage(|store| store.save_client_credentials(site, &creds))?;
@@ -348,4 +353,240 @@ pub fn list(cfg: &Config) -> Result<()> {
 #[cfg(target_arch = "wasm32")]
 pub fn list(_cfg: &Config) -> Result<()> {
     bail!("Session listing is not available in WASM builds.")
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+    use crate::config::{Config, OutputFormat};
+
+    /// Temporary directory that removes itself on drop. Mirrors the helper
+    /// used in src/auth/storage.rs tests so we don't depend on an external
+    /// tempdir crate.
+    struct TempDir(std::path::PathBuf);
+
+    impl TempDir {
+        fn new(label: &str) -> Self {
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.subsec_nanos())
+                .unwrap_or(0);
+            let dir = std::env::temp_dir().join(format!("pup_auth_cmd_test_{label}_{nanos}"));
+            std::fs::create_dir_all(&dir).unwrap();
+            TempDir(dir)
+        }
+
+        fn path(&self) -> &std::path::PathBuf {
+            &self.0
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn base_config() -> Config {
+        Config {
+            api_key: None,
+            app_key: None,
+            access_token: None,
+            site: "datadoghq.com".into(),
+            site_explicit: false,
+            org: None,
+            output_format: OutputFormat::Json,
+            auto_approve: false,
+            agent_mode: false,
+            read_only: false,
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // token() — the one function with an access_token bypass that never
+    // touches the global STORAGE singleton. Hermetic.
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_token_prints_access_token_from_config() {
+        let mut cfg = base_config();
+        cfg.access_token = Some("oauth-access-token-from-cfg".into());
+        // Positive path: cfg.access_token is Some → returns Ok without
+        // touching storage. We only assert the Result; capturing stdout
+        // would require redirecting std::io::stdout and is not necessary
+        // to verify the bypass branch runs.
+        assert!(token(&cfg).is_ok());
+    }
+
+    #[test]
+    fn test_token_empty_string_still_bypasses_storage() {
+        // An empty-string access_token is still Some(_) — the guard uses
+        // `if let Some(token)` and does not check for empty. Pin this
+        // behaviour so future refactors are intentional.
+        let mut cfg = base_config();
+        cfg.access_token = Some(String::new());
+        assert!(token(&cfg).is_ok());
+    }
+
+    // ------------------------------------------------------------------
+    // list() — empty session registry path is hermetic: when there are
+    // no sessions on disk, the .map() closure that calls with_storage
+    // never runs, so the global STORAGE singleton is not touched.
+    //
+    // All tests below use the tokio-based lock from test_support so that
+    // both sync and async tests in this module serialize against a single
+    // mutex and don't race each other for PUP_CONFIG_DIR / DD_TOKEN_STORAGE.
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_list_empty_session_registry_returns_ok() {
+        let _lock = crate::test_support::lock_env().await;
+        let tmp = TempDir::new("list_empty");
+        std::env::set_var("PUP_CONFIG_DIR", tmp.path());
+
+        let cfg = base_config();
+        let result = list(&cfg);
+
+        std::env::remove_var("PUP_CONFIG_DIR");
+        assert!(
+            result.is_ok(),
+            "list with empty session registry should be Ok"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_list_with_saved_sessions_returns_ok() {
+        // After save_session, the sessions.json file is present but we
+        // haven't stored any tokens. The storage backend is exercised but
+        // returns None → list() enriches each session with "no token"
+        // status and returns Ok. This covers the populated branch of
+        // list() without requiring real credentials.
+        let _lock = crate::test_support::lock_env().await;
+        let tmp = TempDir::new("list_populated");
+        std::env::set_var("PUP_CONFIG_DIR", tmp.path());
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+
+        storage::save_session("datadoghq.com", None).unwrap();
+        storage::save_session("datadoghq.com", Some("prod-child")).unwrap();
+
+        let cfg = base_config();
+        let result = list(&cfg);
+
+        std::env::remove_var("DD_TOKEN_STORAGE");
+        std::env::remove_var("PUP_CONFIG_DIR");
+        assert!(
+            result.is_ok(),
+            "list with saved sessions should be Ok even when no tokens stored"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // status() — reads tokens via the global STORAGE singleton. We can
+    // assert the return is Ok on the unauthenticated branch (no tokens
+    // in whatever dir STORAGE was bound to), and cannot cleanly test
+    // the authenticated branch from here without writing to STORAGE's
+    // captured base_dir (which the singleton freezes at first init and
+    // we cannot observe from outside auth/storage.rs).
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_status_returns_ok_for_unauthenticated() {
+        let _lock = crate::test_support::lock_env().await;
+        let tmp = TempDir::new("status_unauth");
+        std::env::set_var("PUP_CONFIG_DIR", tmp.path());
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+
+        let mut cfg = base_config();
+        cfg.site = "unauth-site.example.invalid".into();
+        let result = status(&cfg);
+
+        std::env::remove_var("DD_TOKEN_STORAGE");
+        std::env::remove_var("PUP_CONFIG_DIR");
+        // status() always returns Ok; it reports authentication state
+        // via printed JSON, not via the Result.
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_status_returns_ok_with_org_label() {
+        // Same contract as above but with an org set. Covers the
+        // org_label = " (org: ...)" branch in the unauthenticated arm.
+        let _lock = crate::test_support::lock_env().await;
+        let tmp = TempDir::new("status_org");
+        std::env::set_var("PUP_CONFIG_DIR", tmp.path());
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+
+        let mut cfg = base_config();
+        cfg.site = "unauth-org-site.example.invalid".into();
+        cfg.org = Some("test-org-label".into());
+        let result = status(&cfg);
+
+        std::env::remove_var("DD_TOKEN_STORAGE");
+        std::env::remove_var("PUP_CONFIG_DIR");
+        assert!(result.is_ok());
+    }
+
+    // ------------------------------------------------------------------
+    // logout() — removes tokens / credentials / session entry. All three
+    // are idempotent: deleting non-existent items returns Ok. That gives
+    // us a clean negative-space test.
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_logout_is_idempotent_when_not_logged_in() {
+        let _lock = crate::test_support::lock_env().await;
+        let tmp = TempDir::new("logout_idempotent");
+        std::env::set_var("PUP_CONFIG_DIR", tmp.path());
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+
+        let mut cfg = base_config();
+        cfg.site = "logout-clean.example.invalid".into();
+        let result = logout(&cfg).await;
+
+        std::env::remove_var("DD_TOKEN_STORAGE");
+        std::env::remove_var("PUP_CONFIG_DIR");
+        assert!(
+            result.is_ok(),
+            "logout on an un-logged-in site should be a no-op"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_logout_with_org_removes_session_entry() {
+        // save a session, then logout should remove just that org's entry
+        // from sessions.json. PUP_CONFIG_DIR is read fresh by the session
+        // registry helpers (unlike the frozen STORAGE singleton), so this
+        // assertion is hermetic.
+        let _lock = crate::test_support::lock_env().await;
+        let tmp = TempDir::new("logout_session");
+        std::env::set_var("PUP_CONFIG_DIR", tmp.path());
+        std::env::set_var("DD_TOKEN_STORAGE", "file");
+
+        let site = "logout-session.example.invalid";
+        storage::save_session(site, None).unwrap();
+        storage::save_session(site, Some("keep-me")).unwrap();
+
+        let mut cfg = base_config();
+        cfg.site = site.into();
+        cfg.org = Some("keep-me".into());
+        let result = logout(&cfg).await;
+
+        let remaining = storage::list_sessions().unwrap();
+        std::env::remove_var("DD_TOKEN_STORAGE");
+        std::env::remove_var("PUP_CONFIG_DIR");
+
+        assert!(result.is_ok());
+        // The "keep-me" org entry was removed; the default-org entry for
+        // the same site survives.
+        assert!(
+            remaining.iter().any(|s| s.site == site && s.org.is_none()),
+            "default-org session for site should remain after logging out of a different org"
+        );
+        assert!(
+            !remaining
+                .iter()
+                .any(|s| s.site == site && s.org.as_deref() == Some("keep-me")),
+            "logged-out org session should be removed"
+        );
+    }
 }

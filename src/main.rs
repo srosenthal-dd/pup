@@ -20,12 +20,19 @@ mod version;
 #[cfg(test)]
 mod test_commands;
 
+#[cfg(test)]
+mod test_support;
+
 /// Shared test utilities — only compiled in test builds.
 #[cfg(test)]
 pub(crate) mod test_utils {
-    use std::sync::Mutex;
+    use tokio::sync::Mutex;
     /// Serialize tests that mutate global env vars (PUP_MOCK_SERVER, DD_API_KEY, etc.).
-    pub static ENV_LOCK: Mutex<()> = Mutex::new(());
+    /// `tokio::sync::Mutex` so async tests can hold the guard across `.await`,
+    /// while sync tests acquire via `blocking_lock()`. Sharing one lock across
+    /// both flavors prevents the parallel-test races that previously required
+    /// running the suite with `--test-threads=1`.
+    pub static ENV_LOCK: Mutex<()> = Mutex::const_new(());
 }
 
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
@@ -42,6 +49,9 @@ pub(crate) struct Cli {
     /// Enable agent mode
     #[arg(long, global = true)]
     agent: bool,
+    /// Disable agent mode (overrides auto-detection and --agent)
+    #[arg(long, global = true)]
+    no_agent: bool,
     /// Block all write operations (create, update, delete)
     #[arg(long, global = true)]
     read_only: bool,
@@ -175,6 +185,67 @@ enum Commands {
         #[command(subcommand)]
         action: AliasActions,
     },
+    /// Make authenticated requests directly to the Datadog API
+    ///
+    /// Sends raw HTTP requests to Datadog API endpoints using the current
+    /// authentication credentials (OAuth2 token or API/APP keys). Useful
+    /// for endpoints not yet covered by a dedicated pup subcommand.
+    ///
+    /// The endpoint may be given as a relative path (v2/monitors) or an
+    /// absolute path (/api/v2/monitors). Relative paths are automatically
+    /// prefixed with /api/.
+    ///
+    /// EXAMPLES:
+    ///   # GET a list of monitors
+    ///   pup api v2/monitors
+    ///
+    ///   # POST with a JSON body from stdin
+    ///   pup api -X POST v2/cases/123/comment --input - << 'EOF'
+    ///   {"data":{"attributes":{"comment":"Hello"},"type":"case"}}
+    ///   EOF
+    ///
+    ///   # POST with key=value fields (no file needed)
+    ///   pup api -X POST v2/tags/hosts/myhost -F host=myhost -f source=web
+    ///
+    ///   # GET with query parameters
+    ///   pup api v2/monitors -F tags=env:prod -F page=0
+    ///
+    ///   # Show response status and headers
+    ///   pup api -i v2/monitors
+    ///
+    ///   # Verbose: show request and response details
+    ///   pup api --verbose v2/monitors
+    #[command(verbatim_doc_comment)]
+    Api {
+        /// API endpoint path (e.g. v2/monitors or /api/v2/monitors)
+        endpoint: String,
+        /// HTTP method (default: GET)
+        #[arg(short = 'X', long, default_value = "GET", value_name = "METHOD")]
+        method: String,
+        /// Add a typed field: int, bool, null, or string (repeatable).
+        /// For POST/PUT/PATCH: JSON body field. For GET/DELETE: query parameter.
+        #[arg(short = 'F', long, value_name = "KEY=VALUE")]
+        field: Vec<String>,
+        /// Add a custom HTTP request header (repeatable)
+        #[arg(short = 'H', long, value_name = "KEY:VALUE")]
+        header: Vec<String>,
+        /// Include HTTP response status line and headers in output
+        #[arg(short = 'i', long)]
+        include: bool,
+        /// Read request body from file, or use "-" for stdin
+        #[arg(long, value_name = "FILE")]
+        input: Option<String>,
+        /// Add a raw string field, no type coercion (repeatable).
+        /// For POST/PUT/PATCH: JSON body field. For GET/DELETE: query parameter.
+        #[arg(short = 'f', long = "raw-field", value_name = "KEY=VALUE")]
+        raw_field: Vec<String>,
+        /// Do not print the response body
+        #[arg(long)]
+        silent: bool,
+        /// Show full request URL and response headers
+        #[arg(long)]
+        verbose: bool,
+    },
     /// Manage API keys
     ///
     /// Manage Datadog API keys.
@@ -276,10 +347,10 @@ enum Commands {
     ///   pup app-builder get <app-id>
     ///
     ///   # Create an app from file
-    ///   pup app-builder create --body @app.json
+    ///   pup app-builder create --file app.json
     ///
     ///   # Update an app
-    ///   pup app-builder update <app-id> --body @updated.json
+    ///   pup app-builder update <app-id> --file updated.json
     ///
     ///   # Delete an app
     ///   pup app-builder delete <app-id>
@@ -778,30 +849,33 @@ enum Commands {
     },
     /// Manage cost and billing data
     ///
-    /// Query cost management and billing information.
+    /// Query Datadog billing and Cloud Cost Management (CCM) information.
     ///
-    /// Access projected costs, cost attribution by tags, and organizational cost breakdowns.
-    /// Cost data is typically available with 12-24 hour delay.
+    /// Use 'pup costs datadog' for projected costs, attribution, and cloud cost configs.
+    /// Use 'pup costs ccm' for custom costs, budgets, commitments, and tag management.
     ///
     /// CAPABILITIES:
-    ///   • View projected end-of-month costs
-    ///   • Get cost attribution by tags and teams
-    ///   • Query historical and estimated costs by organization
+    ///   • View projected end-of-month costs and attribution (datadog)
+    ///   • Manage AWS/Azure/GCP cloud cost configs (datadog)
+    ///   • Upload and manage custom cost files (ccm)
+    ///   • Create and track budgets (ccm)
+    ///   • Analyze commitment programs (RIs, Savings Plans) (ccm)
+    ///   • Explore cost tags, tag keys, and tag metadata (ccm)
     ///
     /// EXAMPLES:
     ///   # Get projected costs for current month
-    ///   pup cost projected
+    ///   pup costs datadog projected
     ///
-    ///   # Get cost attribution by team tag
-    ///   pup cost attribution --start-month=2024-01 --fields=team
+    ///   # List budgets
+    ///   pup costs ccm budgets list
     ///
-    ///   # Get actual costs for a specific month
-    ///   pup cost by-org --start-month=2024-01
+    ///   # View commitment utilization for AWS EC2
+    ///   pup costs ccm commitments utilization --provider aws --product EC2 --from 30d --to now
     ///
     /// AUTHENTICATION:
     ///   Requires OAuth2 (via 'pup auth login') or valid API + Application keys.
     ///   Cost management features require billing:read permissions.
-    #[command(verbatim_doc_comment)]
+    #[command(name = "costs", alias = "cost", verbatim_doc_comment)]
     Cost {
         #[command(subcommand)]
         action: CostActions,
@@ -811,21 +885,29 @@ enum Commands {
     /// Manage Cloud Security Management (Workload Protection) agent policies and rules.
     ///
     /// COMMANDS:
-    ///   agent-policies list    List agent policies
-    ///   agent-policies get     Get an agent policy
-    ///   agent-policies create  Create an agent policy from JSON
-    ///   agent-policies update  Update an agent policy
-    ///   agent-policies delete  Delete an agent policy
-    ///   agent-rules list       List agent rules
-    ///   agent-rules get        Get an agent rule
-    ///   agent-rules create     Create an agent rule from JSON
-    ///   agent-rules update     Update an agent rule
-    ///   agent-rules delete     Delete an agent rule
-    ///   policy download        Download the CSM threats policy file
+    ///   agent-policies list       List agent policies
+    ///   agent-policies get        Get an agent policy
+    ///   agent-policies create     Create an agent policy from JSON
+    ///   agent-policies update     Update an agent policy
+    ///   agent-policies delete     Delete an agent policy
+    ///   agent-rules list          List agent rules
+    ///   agent-rules get           Get an agent rule
+    ///   agent-rules create        Create an agent rule from JSON
+    ///   agent-rules update        Update an agent rule
+    ///   agent-rules delete        Delete an agent rule
+    ///   backend-rules list        List workload security backend rules
+    ///   backend-rules get         Get a backend rule
+    ///   backend-rules create      Create a backend rule from JSON
+    ///   backend-rules update      Update a backend rule
+    ///   backend-rules delete      Delete a backend rule
+    ///   backend-rules validate    Validate a backend rule from JSON
+    ///   policy download           Download the CSM threats policy file
     ///
     /// EXAMPLES:
     ///   pup csm-threats agent-policies list
     ///   pup csm-threats agent-rules create --file rule.json
+    ///   pup csm-threats backend-rules list
+    ///   pup csm-threats backend-rules create --file rule.json
     ///   pup csm-threats policy download
     #[command(verbatim_doc_comment)]
     CsmThreats {
@@ -895,6 +977,24 @@ enum Commands {
         #[command(subcommand)]
         action: DashboardActions,
     },
+    /// Manage data deletion requests
+    ///
+    /// Create, list, and cancel data deletion requests for Logs and RUM.
+    ///
+    /// COMMANDS:
+    ///   requests list    List deletion requests
+    ///   requests create  Create a deletion request from JSON
+    ///   requests cancel  Cancel a deletion request
+    ///
+    /// EXAMPLES:
+    ///   pup data-deletion requests list
+    ///   pup data-deletion requests create --product logs --file request.json
+    ///   pup data-deletion requests cancel <request-id>
+    #[command(name = "data-deletion", verbatim_doc_comment)]
+    DataDeletion {
+        #[command(subcommand)]
+        action: DataDeletionActions,
+    },
     /// Manage data governance
     ///
     /// Manage data governance, sensitive data scanning, and data deletion.
@@ -919,6 +1019,26 @@ enum Commands {
         #[command(subcommand)]
         action: DataGovActions,
     },
+    /// Manage datasets
+    ///
+    /// Create, list, get, update, and delete Restricted Datasets for data access control.
+    ///
+    /// COMMANDS:
+    ///   list              List all datasets
+    ///   get <id>          Get a dataset by ID
+    ///   create --file     Create a dataset from JSON
+    ///   update <id> -f    Update a dataset
+    ///   delete <id>       Delete a dataset
+    ///
+    /// EXAMPLES:
+    ///   pup datasets list
+    ///   pup datasets get my-dataset-id
+    ///   pup datasets create --file dataset.json
+    #[command(verbatim_doc_comment)]
+    Datasets {
+        #[command(subcommand)]
+        action: DatasetsActions,
+    },
     /// Search Database Monitoring query samples
     ///
     /// Query sample search uses Datadog's DBM logs analytics endpoint on `app.<site>`.
@@ -941,16 +1061,23 @@ enum Commands {
     /// DDSQL lets you query metrics, logs, and reference tables using SQL syntax.
     ///
     /// COMMANDS:
-    ///   table        Execute query and return table data (supports -o json/yaml/table/csv)
-    ///   time-series  Execute query and return time series data
+    ///   table         Execute query and return table data (supports -o json/yaml/table/csv)
+    ///   time-series   Execute query and return time series data
+    ///   spec          Print DDSQL reference guidance used by the editor tooling
+    ///   schema        Discover DDSQL tables and columns
     ///
     /// EXAMPLES:
     ///   pup ddsql table --query "SELECT * FROM reference_tables.offices_ips LIMIT 5"
     ///   pup ddsql table --query "SELECT * FROM reference_tables.offices_ips" -o csv > results.csv
+    ///   cat query.sql | pup ddsql table --query - -o table
     ///   pup ddsql time-series --query "SELECT avg(system.cpu.user) FROM metrics GROUP BY host" --from 1h --interval 300000
+    ///   pup ddsql spec
+    ///   pup ddsql schema tables --query ec2 --limit 100
+    ///   pup ddsql schema columns --table-id public.aws.ec2_instance
     ///
     /// AUTHENTICATION:
-    ///   Requires OAuth2 (via 'pup auth login') or API key + Application key.
+    ///   Query commands support OAuth2 (via 'pup auth login') or API key + Application key.
+    ///   Discovery commands (`spec`, `schema ...`) currently require DD_API_KEY + DD_APP_KEY.
     #[command(verbatim_doc_comment)]
     Ddsql {
         #[command(subcommand)]
@@ -1131,11 +1258,14 @@ enum Commands {
     ///
     /// Feature flags let you control the rollout of features to your users.
     /// This command group covers flag lifecycle management as well as
-    /// environment configuration and per-environment enable/disable controls.
+    /// environment configuration, per-environment enable/disable controls,
+    /// traffic allocations, and exposure schedule management.
     ///
     /// COMMAND GROUPS:
     ///   flags           Manage feature flag definitions (list, get, create, update, archive, unarchive)
     ///   environments    Manage feature flag environments (list, get, create, update, delete)
+    ///   allocations     Manage traffic allocations for a flag in an environment (create, update)
+    ///   exposure        Manage exposure schedules (start, stop, pause, resume)
     ///
     /// DIRECT COMMANDS:
     ///   enable          Enable a feature flag in an environment
@@ -1165,6 +1295,18 @@ enum Commands {
     ///
     ///   # Disable a flag in an environment
     ///   pup feature-flags disable <flag-id> <env-id>
+    ///
+    ///   # Create allocations for a flag in an environment
+    ///   pup feature-flags allocations create <flag-id> <env-id> --file=alloc.json
+    ///
+    ///   # Update (overwrite) allocations for a flag in an environment
+    ///   pup feature-flags allocations update <flag-id> <env-id> --file=alloc.json
+    ///
+    ///   # Start an exposure schedule
+    ///   pup feature-flags exposure start <schedule-id>
+    ///
+    ///   # Stop an exposure schedule
+    ///   pup feature-flags exposure stop <schedule-id>
     ///
     /// AUTHENTICATION:
     ///   Requires either OAuth2 authentication (pup auth login) or API keys
@@ -1297,8 +1439,14 @@ enum Commands {
     ///   • completed: Post-incident tasks completed (postmortem, etc.)
     ///
     /// EXAMPLES:
-    ///   # List all incidents
+    ///   # List active incidents (default)
     ///   pup incidents list
+    ///
+    ///   # List resolved incidents
+    ///   pup incidents list --query="state:resolved"
+    ///
+    ///   # Filter by severity
+    ///   pup incidents list --query="severity:SEV-2"
     ///
     ///   # Get detailed incident information
     ///   pup incidents get abc-123-def
@@ -1417,6 +1565,36 @@ enum Commands {
     Investigations {
         #[command(subcommand)]
         action: InvestigationActions,
+    },
+    /// [Experimental] Inspect Kafka clusters via Datadog
+    ///
+    /// Experimental. The API surface is not covered by Datadog's public API
+    /// compatibility guarantees and may change without notice. OAuth2 bearer
+    /// auth only.
+    ///
+    /// CAPABILITIES:
+    ///   • Inspect Kafka topic / broker configuration
+    ///   • Inspect Kafka producer / consumer client configuration
+    ///   • List Kafka Schema Registry schemas / subject history
+    ///   • Read messages from a Kafka cluster / topic (requires agent + perm)
+    ///
+    /// EXAMPLES:
+    ///   pup kafka topic-configs --kafka-cluster-id <id> --topic <t>
+    ///   pup kafka broker-configs --kafka-cluster-id <id> --broker-id <b>
+    ///   pup kafka client-configs --kafka-cluster-id <id> \
+    ///       --service web:producer --service worker:consumer
+    ///   pup kafka read-messages --cluster <id> --topic <t> \
+    ///       --bootstrap-servers <brokers>
+    ///
+    /// AUTHENTICATION:
+    ///   Requires OAuth2 bearer token (`pup auth login`). API keys are not
+    ///   accepted by these endpoints. `read-messages` additionally requires
+    ///   the `data_streams_monitoring_capture_messages` permission on the calling user
+    ///   and a Datadog Agent reachable via Remote Config.
+    #[command(verbatim_doc_comment)]
+    Kafka {
+        #[command(subcommand)]
+        action: KafkaActions,
     },
     /// Manage LLM Observability projects, experiments, and datasets
     ///
@@ -1745,20 +1923,17 @@ enum Commands {
     ///   pup notebooks get notebook-id
     ///
     ///   # Create a notebook from file
-    ///   pup notebooks create --body @notebook.json
-    ///
-    ///   # Create from stdin
-    ///   cat notebook.json | pup notebooks create --body -
+    ///   pup notebooks create --file notebook.json
     ///
     ///   # Update a notebook
-    ///   pup notebooks update 12345 --body @updated.json
+    ///   pup notebooks update 12345 --file updated.json
     ///
     ///   # Delete a notebook
     ///   pup notebooks delete 12345
     ///
     /// AUTHENTICATION:
-    ///   Requires API key authentication (DD_API_KEY + DD_APP_KEY).
-    ///   OAuth2 is not supported for this endpoint.
+    ///   Requires OAuth2 (via 'pup auth login') with notebooks_read/notebooks_write
+    ///   scopes, or API key authentication (DD_API_KEY + DD_APP_KEY).
     #[command(verbatim_doc_comment)]
     Notebooks {
         #[command(subcommand)]
@@ -1900,6 +2075,35 @@ enum Commands {
         #[command(subcommand)]
         action: ProductAnalyticsActions,
     },
+    /// Query and download continuous profiler data
+    ///
+    /// Search, analyze, and download data from the Datadog Continuous Profiler.
+    ///
+    /// CAPABILITIES:
+    ///   • List profiles with flexible query + time windows
+    ///   • Get profile metadata (info) and automatic analysis
+    ///   • Run analytics aggregations (groupBy / compute)
+    ///   • Enumerate interactive field values
+    ///   • Aggregate flamegraph, breakdown, timeline, and call graph data as JSON
+    ///   • Save favorite queries
+    ///   • Download raw profile archives
+    ///
+    /// EXAMPLES:
+    ///   pup profiling list --query="service:web env:prod" --from=1h
+    ///   pup profiling info <profile-id>
+    ///   pup profiling analytics --query="service:web" --group-by=service --compute=count
+    ///   pup profiling aggregate --query="service:web" --profile-type=cpu-time --from=1h
+    ///   pup profiling download <profile-id> -o profile.zip
+    ///
+    /// AUTHENTICATION:
+    ///   Requires DD_API_KEY + DD_APP_KEY. OAuth2 bearer tokens are not
+    ///   supported for Continuous Profiler endpoints — no OAuth scope is
+    ///   declared for them.
+    #[command(verbatim_doc_comment)]
+    Profiling {
+        #[command(subcommand)]
+        action: ProfilingActions,
+    },
     /// Manage reference tables for log enrichment
     ///
     /// Reference tables allow you to enrich logs with additional data from
@@ -2017,18 +2221,18 @@ enum Commands {
     /// Scorecards help you track and improve service quality by defining
     /// rules and measuring compliance across your services.
     ///
-    /// CAPABILITIES:
-    ///   • List scorecards
-    ///   • Get scorecard details
-    ///   • View scorecard rules
-    ///   • Track service scores
+    /// COMMANDS:
+    ///   rules list          List scorecard rules
+    ///   rules create        Create a rule from a JSON file
+    ///   rules update        Update a rule
+    ///   rules delete        Delete a rule
+    ///   outcomes list       List scorecard outcomes
+    ///   outcomes batch-create  Create outcomes in batch from a JSON file
     ///
     /// EXAMPLES:
-    ///   # List scorecards
-    ///   pup scorecards list
-    ///
-    ///   # Get scorecard details
-    ///   pup scorecards get scorecard-id
+    ///   pup scorecards rules list
+    ///   pup scorecards rules create --file rule.json
+    ///   pup scorecards outcomes list
     ///
     /// AUTHENTICATION:
     ///   Requires either OAuth2 authentication or API keys.
@@ -2041,21 +2245,40 @@ enum Commands {
     ///
     /// Manage security monitoring rules, signals, and findings.
     ///
-    /// CAPABILITIES:
-    ///   • List and manage security monitoring rules
-    ///   • View security signals and findings
-    ///   • Configure suppression rules
-    ///   • Manage security filters
+    /// CONCEPTS:
+    ///   Signals — Real-time security detections (e.g., CWS catching a suspicious
+    ///   DNS lookup). They are time-series events. Use `pup security signals`.
+    ///
+    ///   Findings — Point-in-time posture assessments (misconfigurations,
+    ///   vulnerabilities, secrets, identity risks). They represent current state.
+    ///   Use `pup security findings`.
+    ///
+    /// COMMANDS:
+    ///   Query & Investigate:
+    ///     findings           Search and analyze security findings (posture, vulns, misconfigs)
+    ///     signals            Search and analyze real-time security detections
+    ///     risk-scores        List entity risk scores
+    ///
+    ///   Configure:
+    ///     rules              Manage detection rules
+    ///     suppressions       Manage suppression rules
+    ///     content-packs      Manage security content packs
+    ///     asm-custom-rules   Manage ASM WAF custom rules
+    ///     asm-exclusions     Manage ASM WAF exclusion filters
+    ///     restriction-policies  Manage resource restriction policies
     ///
     /// EXAMPLES:
-    ///   # List security monitoring rules
-    ///   pup security rules list
-    ///
-    ///   # Get rule details
-    ///   pup security rules get rule-id
+    ///   # Analyze open findings by severity
+    ///   pup security findings analyze --query "SELECT severity, COUNT(*) as cnt
+    ///     FROM dd.security_findings(columns => ARRAY['@severity'],
+    ///     filter => '@status:open') AS (severity VARCHAR)
+    ///     GROUP BY severity ORDER BY cnt DESC"
     ///
     ///   # List security signals
-    ///   pup security signals list
+    ///   pup security signals list --query "@status:open"
+    ///
+    ///   # List detection rules
+    ///   pup security rules list
     ///
     /// AUTHENTICATION:
     ///   Requires either OAuth2 authentication or API keys.
@@ -2209,20 +2432,20 @@ enum Commands {
     },
     /// Manage static analysis
     ///
-    /// Manage static analysis for code security and quality.
+    /// Manage static analysis custom rulesets and custom rules for code security.
     ///
-    /// CAPABILITIES:
-    ///   • AST analysis results
-    ///   • Custom security rulesets
-    ///   • Software Composition Analysis (SCA)
-    ///   • Code coverage analysis
+    /// COMMANDS:
+    ///   custom-rulesets get     Get a custom ruleset
+    ///   custom-rulesets update  Update a custom ruleset from a JSON file
+    ///   custom-rulesets delete  Delete a custom ruleset
+    ///   custom-rules get        Get a custom rule
+    ///   custom-rules create     Create a custom rule from a JSON file
+    ///   custom-rules delete     Delete a custom rule
+    ///   custom-rules revisions  List revisions for a custom rule
     ///
     /// EXAMPLES:
-    ///   # List custom rulesets
-    ///   pup static-analysis custom-rulesets list
-    ///
-    ///   # Get ruleset details
-    ///   pup static-analysis custom-rulesets get abc-123
+    ///   pup static-analysis custom-rulesets get my-ruleset
+    ///   pup static-analysis custom-rules create --ruleset my-ruleset --file rule.json
     #[command(name = "static-analysis", verbatim_doc_comment)]
     StaticAnalysis {
         #[command(subcommand)]
@@ -2745,6 +2968,12 @@ enum LogActions {
         limit: i32,
         #[arg(long, help = "Storage tier: indexes, online-archives, or flex")]
         storage: Option<String>,
+        #[arg(
+            long,
+            default_value = "count",
+            help = "Sort groups by aggregation (count,cardinality,pc75,pc90,pc95,pc98,pc99,sum,min,max)"
+        )]
+        sort: String,
     },
     /// Manage log archives
     Archives {
@@ -2811,6 +3040,11 @@ enum LogMetricActions {
 enum IncidentActions {
     /// List all incidents
     List {
+        #[arg(
+            long,
+            help = "Filter incidents using Datadog incidents search syntax (e.g., 'state:resolved', 'severity:SEV-2', 'state:(active OR stable)'). Defaults to 'state:active'."
+        )]
+        query: Option<String>,
         #[arg(long, default_value_t = 50)]
         limit: i64,
     },
@@ -3351,6 +3585,89 @@ enum SyntheticsTestActions {
         /// Result ID
         result_id: String,
     },
+    /// Get a specific full result for an API Synthetic test
+    #[command(name = "get-result")]
+    GetResult {
+        /// Public ID of the test
+        public_id: String,
+        /// Result ID
+        result_id: String,
+        /// Look up by event ID instead of result ID
+        #[arg(long = "event-id")]
+        event_id: Option<String>,
+        /// Look up by timestamp (seconds)
+        #[arg(long)]
+        timestamp: Option<i64>,
+    },
+    /// Get a specific full result for a browser Synthetic test
+    #[command(name = "get-browser-result")]
+    GetBrowserResult {
+        /// Public ID of the test
+        public_id: String,
+        /// Result ID
+        result_id: String,
+        /// Look up by event ID instead of result ID
+        #[arg(long = "event-id")]
+        event_id: Option<String>,
+        /// Look up by timestamp (seconds)
+        #[arg(long)]
+        timestamp: Option<i64>,
+    },
+    /// List the latest API test result summaries for a test
+    #[command(name = "list-latest-results")]
+    ListLatestResults {
+        /// Public ID of the test
+        public_id: String,
+        /// Start timestamp in milliseconds
+        #[arg(long = "from-ts")]
+        from_ts: Option<i64>,
+        /// End timestamp in milliseconds
+        #[arg(long = "to-ts")]
+        to_ts: Option<i64>,
+        /// Filter by status (passed, failed, no_data)
+        #[arg(long)]
+        status: Option<String>,
+        /// Filter by run type (scheduled, fast, ci, triggered)
+        #[arg(long = "run-type")]
+        run_type: Option<String>,
+        /// Filter by location (private location ID or public location). Can be repeated.
+        #[arg(long = "probe-dc")]
+        probe_dc: Option<Vec<String>>,
+        /// Filter by device ID. Can be repeated.
+        #[arg(long = "device-id")]
+        device_id: Option<Vec<String>>,
+    },
+    /// List the latest browser test result summaries for a test
+    #[command(name = "list-latest-browser-results")]
+    ListLatestBrowserResults {
+        /// Public ID of the test
+        public_id: String,
+        /// Start timestamp in milliseconds
+        #[arg(long = "from-ts")]
+        from_ts: Option<i64>,
+        /// End timestamp in milliseconds
+        #[arg(long = "to-ts")]
+        to_ts: Option<i64>,
+        /// Filter by status (passed, failed, no_data)
+        #[arg(long)]
+        status: Option<String>,
+        /// Filter by run type (scheduled, fast, ci, triggered)
+        #[arg(long = "run-type")]
+        run_type: Option<String>,
+        /// Filter by location. Can be repeated.
+        #[arg(long = "probe-dc")]
+        probe_dc: Option<Vec<String>>,
+        /// Filter by device ID. Can be repeated.
+        #[arg(long = "device-id")]
+        device_id: Option<Vec<String>>,
+    },
+    /// Poll for results given a list of result IDs (typical CI/CD use)
+    #[command(name = "poll-results")]
+    PollResults {
+        /// One or more result IDs
+        #[arg(required = true)]
+        result_ids: Vec<String>,
+    },
     /// Get a specific version of a synthetic test
     GetVersion {
         /// Public ID of the test
@@ -3470,6 +3787,29 @@ enum TestOptimizationFlakyTestsActions {
         #[arg(long, help = "JSON file with request body (required)")]
         file: String,
     },
+    /// Manage flaky test management policies
+    Policies {
+        #[command(subcommand)]
+        action: TestOptimizationFlakyTestsPoliciesActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum TestOptimizationFlakyTestsPoliciesActions {
+    /// Get flaky tests management policies.
+    /// The API uses a POST body to specify which service/repo policies to retrieve.
+    Get {
+        #[arg(
+            long,
+            help = "JSON file with request body specifying which policies to retrieve (e.g. {\"data\":{\"type\":\"get_request\"}})"
+        )]
+        file: String,
+    },
+    /// Update flaky tests management policies (body from JSON file)
+    Update {
+        #[arg(long, help = "JSON file with request body (required)")]
+        file: String,
+    },
 }
 
 // ---- Events ----
@@ -3569,7 +3909,11 @@ enum DbmSamplesActions {
 enum DdsqlActions {
     /// Execute DDSQL query and return columnar table data
     Table {
-        #[arg(long, help = "DDSQL query string")]
+        #[arg(
+            long,
+            allow_hyphen_values = true,
+            help = "DDSQL query string, or use --query - to read from stdin"
+        )]
         query: String,
         #[arg(
             long,
@@ -3589,7 +3933,11 @@ enum DdsqlActions {
     /// Execute DDSQL query and return time series data
     #[command(name = "time-series")]
     TimeSeries {
-        #[arg(long, help = "DDSQL query string")]
+        #[arg(
+            long,
+            allow_hyphen_values = true,
+            help = "DDSQL query string, or use --query - to read from stdin"
+        )]
         query: String,
         #[arg(long, default_value = "1h", help = "Start time")]
         from: String,
@@ -3603,6 +3951,46 @@ enum DdsqlActions {
             help = "Maximum number of rows to return"
         )]
         limit: i32,
+    },
+    /// Print DDSQL reference guidance from the editor tooling
+    Spec,
+    /// Discover DDSQL tables and columns
+    Schema {
+        #[command(subcommand)]
+        action: DdsqlSchemaActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum DdsqlSchemaActions {
+    /// List DDSQL tables visible to your org
+    Tables {
+        #[arg(long, help = "Case-insensitive substring filter for table names")]
+        query: Option<String>,
+        #[arg(
+            long,
+            default_value_t = 100,
+            help = "Maximum number of tables to return"
+        )]
+        limit: usize,
+        #[arg(long, default_value_t = 0, help = "Number of tables to skip")]
+        offset: usize,
+    },
+    /// Show columns for a DDSQL table
+    Columns {
+        #[arg(
+            long,
+            help = "Table ID, for example public.aws.ec2_instance or reference_tables.my_table"
+        )]
+        table_id: String,
+        #[arg(
+            long,
+            default_value_t = 100,
+            help = "Maximum number of columns to return"
+        )]
+        limit: usize,
+        #[arg(long, default_value_t = 0, help = "Number of columns to skip")]
+        offset: usize,
     },
 }
 
@@ -3625,7 +4013,12 @@ enum TagActions {
 #[derive(Subcommand)]
 enum UserActions {
     /// List users
-    List,
+    List {
+        #[arg(long, default_value_t = 10, help = "Results per page (max 100)")]
+        page_size: i64,
+        #[arg(long, default_value_t = 0, help = "Page number (0-indexed)")]
+        page_number: i64,
+    },
     /// Get user details
     Get { user_id: String },
     /// Manage roles
@@ -3854,6 +4247,30 @@ enum WorkflowActions {
         #[command(subcommand)]
         action: WorkflowInstanceActions,
     },
+    /// Manage action connections
+    Connections {
+        #[command(subcommand)]
+        action: WorkflowConnectionActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum WorkflowConnectionActions {
+    /// Get an action connection by ID
+    Get { connection_id: String },
+    /// Create an action connection from a JSON file
+    Create {
+        #[arg(long)]
+        file: String,
+    },
+    /// Update an action connection from a JSON file
+    Update {
+        connection_id: String,
+        #[arg(long)]
+        file: String,
+    },
+    /// Delete an action connection
+    Delete { connection_id: String },
 }
 
 #[derive(Subcommand)]
@@ -4043,20 +4460,34 @@ enum BitsActions {
 // ---- Security ----
 #[derive(Subcommand)]
 enum SecurityActions {
-    /// Manage security rules
-    Rules {
+    // -- Query & Investigate --
+    /// Search and analyze security findings (posture, vulnerabilities, misconfigs)
+    Findings {
         #[command(subcommand)]
-        action: SecurityRuleActions,
+        action: SecurityFindingActions,
     },
-    /// Manage security signals
+    /// Search and analyze real-time security detections
     Signals {
         #[command(subcommand)]
         action: SecuritySignalActions,
     },
-    /// Manage security findings
-    Findings {
+    /// List entity risk scores
+    #[command(name = "risk-scores")]
+    RiskScores {
         #[command(subcommand)]
-        action: SecurityFindingActions,
+        action: SecurityRiskScoreActions,
+    },
+
+    // -- Configure --
+    /// Manage detection rules
+    Rules {
+        #[command(subcommand)]
+        action: SecurityRuleActions,
+    },
+    /// Manage suppression rules
+    Suppressions {
+        #[command(subcommand)]
+        action: SecuritySuppressionActions,
     },
     /// Manage security content packs
     #[command(name = "content-packs")]
@@ -4064,16 +4495,10 @@ enum SecurityActions {
         #[command(subcommand)]
         action: SecurityContentPackActions,
     },
-    /// Manage entity risk scores
-    #[command(name = "risk-scores")]
-    RiskScores {
+    /// Explore indicators of compromise (IoCs)
+    Iocs {
         #[command(subcommand)]
-        action: SecurityRiskScoreActions,
-    },
-    /// Manage security suppression rules
-    Suppressions {
-        #[command(subcommand)]
-        action: SecuritySuppressionActions,
+        action: SecurityIocActions,
     },
     /// Manage ASM WAF custom rules
     #[command(name = "asm-custom-rules")]
@@ -4087,11 +4512,47 @@ enum SecurityActions {
         #[command(subcommand)]
         action: AsmExclusionActions,
     },
-    /// Manage restriction policies
+    /// Manage resource restriction policies
     #[command(name = "restriction-policies")]
     RestrictionPolicies {
         #[command(subcommand)]
         action: RestrictionPolicyActions,
+    },
+    /// Export and convert security monitoring resources as Terraform
+    Terraform {
+        #[command(subcommand)]
+        action: SecurityTerraformActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum SecurityTerraformActions {
+    /// Export a single resource as Terraform
+    Export {
+        /// Resource type (suppressions, critical_assets)
+        resource_type: String,
+        /// Resource ID to export
+        resource_id: String,
+    },
+    /// Bulk export resources as a Terraform zip archive
+    #[command(name = "bulk-export")]
+    BulkExport {
+        /// Resource type (suppressions, critical_assets)
+        resource_type: String,
+        #[arg(long, help = "JSON file with the bulk export payload (required)")]
+        file: String,
+        #[arg(
+            long = "output-file",
+            help = "Path to write the zip archive to (required)"
+        )]
+        output_file: String,
+    },
+    /// Convert a JSON resource definition into Terraform
+    Convert {
+        /// Resource type (suppressions, critical_assets)
+        resource_type: String,
+        #[arg(long, help = "JSON file with the conversion payload (required)")]
+        file: String,
     },
 }
 
@@ -4171,6 +4632,12 @@ enum SecurityRuleActions {
         /// Rule IDs to export
         rule_ids: Vec<String>,
     },
+    /// Convert a JSON rule definition into a Terraform resource
+    #[command(name = "to-terraform")]
+    ToTerraform {
+        #[arg(long, help = "JSON file with the rule conversion payload (required)")]
+        file: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -4188,6 +4655,18 @@ enum SecuritySignalActions {
         #[arg(long, help = "Sort field: severity, status, timestamp")]
         sort: Option<String>,
     },
+    /// Get log queries for investigating a signal
+    #[command(name = "investigation-queries")]
+    InvestigationQueries {
+        /// Security signal ID
+        signal_id: String,
+    },
+    /// Get suggested remediation actions for a signal
+    #[command(name = "suggested-actions")]
+    SuggestedActions {
+        /// Security signal ID
+        signal_id: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -4196,6 +4675,33 @@ enum SecurityFindingActions {
     Search {
         #[arg(long)]
         query: Option<String>,
+        #[arg(long, default_value_t = 100)]
+        limit: i64,
+    },
+    /// Get the schema (available fields and types) for security findings.
+    /// Fetches the latest schema reference from Datadog documentation.
+    /// Call this before using `findings analyze` to discover queryable fields.
+    #[command(name = "schema")]
+    Schema,
+    /// Analyze security findings using DDSQL. Workflow: 1) Run `pup security findings schema` to get fields, 2) Query with SQL. Function: dd.security_findings(columns => ARRAY['@field', ...], filter => '@field:value', finding_types => ARRAY['type', ...]). AS clause types: VARCHAR, BIGINT, DECIMAL, BOOLEAN, TIMESTAMP. Notes: 'columns' ordering MUST match the AS clause. Use -@compliance.evaluation:pass filter to exclude passing findings. Prefer ordering by @severity_details.adjusted.score. Use LIMIT to reduce output. Example: SELECT rule_name, finding_type, severity, count(*) as cnt FROM dd.security_findings(columns => ARRAY['@rule.name', '@finding_type', '@severity'], filter => '@status:open @severity:(high OR critical)') AS (rule_name VARCHAR, finding_type VARCHAR, severity VARCHAR) GROUP BY rule_name, finding_type, severity ORDER BY cnt DESC LIMIT 100
+    #[command(
+        name = "analyze",
+        long_about = "Analyze security findings using DDSQL with dd.security_findings().\n\nWorkflow: 1) Call `pup security findings schema` first to get available fields\n         2) Use this command to query with SQL\n\nQueries the current state of all security findings using flexible SQL aggregations,\nfiltering, and grouping.\n\nFunction signature:\n  dd.security_findings(\n    columns => ARRAY['@field1', '@field2', ...],\n    filter  => '@field:value',\n    finding_types => ARRAY['library_vulnerability', ...]\n  )\n\nThe AS clause must declare column names and DDSQL types:\n  AS (col1 VARCHAR, col2 BIGINT, ...)\n\nAvailable types: VARCHAR, BIGINT, DECIMAL, BOOLEAN, TIMESTAMP\n\nQuery structure (filter vs WHERE):\n  - filter => '...'  : Datadog query syntax, pushed down to the backing store.\n                        Use @ prefix: @status:open @severity:(high OR critical)\n                        Supports negation: -@compliance.evaluation:pass\n  - WHERE clause     : Standard SQL, operates on the aliases in your AS clause.\n                        No @ prefix: WHERE severity = 'critical'\n                        Simple conditions are pushed down automatically.\n  - columns => ARRAY : Fields to select. Use @ prefix. Order must match AS clause.\n\nCommon fields (use with @ prefix in columns/filter):\n\n  Filtering & Grouping\n    @severity              string   critical, high, medium, low, info, none, unknown\n    @status                string   open, muted, auto_closed\n    @finding_type          string   misconfiguration, host_and_container_vulnerability,\n                                    library_vulnerability, static_code_vulnerability,\n                                    secret, identity_risk, attack_path, ...\n    @resource_type         string   Type of affected resource\n    @rule.name             string   Name of the detection rule\n\n  Identification\n    @title                 string   Human-readable finding title\n    @resource_name         string   Name of the affected resource\n    @resource_id           string   Unique resource identifier\n\n  Risk Prioritization\n    @is_in_security_inbox                boolean  In the Security Inbox\n    @severity_details.adjusted.score     number   CVSS-scale adjusted score\n    @risk.is_publicly_accessible         boolean  Resource is internet-facing\n    @risk.is_production                  boolean  Resource is in production\n    @risk.has_exploit_available          boolean  Known exploits exist\n    @risk.has_high_exploitability_chance  boolean  EPSS score > 1%\n    @risk.is_exposed_to_attacks          boolean  Attacks already detected\n    @risk.has_sensitive_data             boolean  Resource has sensitive data\n\n  Compliance\n    @compliance.evaluation   string   pass or fail\n\n  Scoping\n    @cloud_resource.cloud_provider   string   aws, azure, gcp, oci\n    @cloud_resource.account          string   Cloud account/subscription/project\n    @cloud_resource.region           string   Cloud region\n    @service.name                    string   Service name\n    @host.name                       string   Host name\n\n  Time\n    @first_seen_at           integer  First detection (ms UTC)\n    @last_seen_at            integer  Most recent detection (ms UTC)\n\n  Run `pup security findings schema` for the full field reference.\n\nIMPORTANT notes:\n  - 'columns =>' ordering MUST match the AS clause column ordering\n  - If querying all findings or misconfigurations, use -@compliance.evaluation:pass\n    filter to exclude passing findings\n  - Prefer ordering by severity score (@severity_details.adjusted.score) when relevant\n  - Use LIMIT to reduce context\n\nExample queries:\n\n  # Open findings by severity\n  pup security findings analyze --query \"\n    SELECT severity, COUNT(*) as cnt\n    FROM dd.security_findings(\n      columns => ARRAY['@severity'],\n      filter => '@status:open'\n    ) AS (severity VARCHAR)\n    GROUP BY severity ORDER BY cnt DESC\"\n\n  # Top 10 critical rules\n  pup security findings analyze --query \"\n    SELECT rule_name, COUNT(*) as cnt\n    FROM dd.security_findings(\n      columns => ARRAY['@rule.name'],\n      filter => '@status:open @severity:critical'\n    ) AS (rule_name VARCHAR)\n    GROUP BY rule_name ORDER BY cnt DESC LIMIT 10\"\n\n  # Critical findings in production with known exploits\n  pup security findings analyze --query \"\n    SELECT title, resource_name, score\n    FROM dd.security_findings(\n      columns => ARRAY['@title', '@resource_name', '@severity_details.adjusted.score'],\n      filter => '@status:open @severity:critical @risk.is_production:true @risk.has_exploit_available:true'\n    ) AS (title VARCHAR, resource_name VARCHAR, score DECIMAL)\n    ORDER BY score DESC LIMIT 20\"\n\n  # Findings by cloud account and region\n  pup security findings analyze --query \"\n    SELECT account, region, COUNT(*) as cnt\n    FROM dd.security_findings(\n      columns => ARRAY['@cloud_resource.account', '@cloud_resource.region'],\n      filter => '@status:open @severity:(high OR critical)'\n    ) AS (account VARCHAR, region VARCHAR)\n    GROUP BY account, region ORDER BY cnt DESC LIMIT 20\"\n\n  # Vulnerabilities only (exclude misconfigs, secrets, etc.)\n  pup security findings analyze --query \"\n    SELECT severity, COUNT(*) as cnt\n    FROM dd.security_findings(\n      columns => ARRAY['@severity'],\n      filter => '@status:open',\n      finding_types => ARRAY['host_and_container_vulnerability', 'library_vulnerability']\n    ) AS (severity VARCHAR)\n    GROUP BY severity ORDER BY cnt DESC\""
+    )]
+    Analyze {
+        /// SQL query using dd.security_findings(columns => ARRAY['@field', ...], filter => '@field:value', finding_types => ARRAY['type', ...]) AS (col TYPE, ...). 'columns' ordering MUST match the AS clause. Run `pup security findings schema` to see fields. Types: VARCHAR, BIGINT, DECIMAL, BOOLEAN, TIMESTAMP
+        #[arg(long, short)]
+        query: String,
+
+        /// Start time (default: 24h ago). Relative (e.g., 24h, 7d) or ISO 8601.
+        #[arg(long, default_value = "24h")]
+        from: String,
+
+        /// End time (default: now). ISO 8601 or relative
+        #[arg(long, default_value = "now")]
+        to: String,
+
+        /// Max rows to return
         #[arg(long, default_value_t = 100)]
         limit: i64,
     },
@@ -4209,6 +4715,33 @@ enum SecurityContentPackActions {
     Activate { pack_id: String },
     /// Deactivate a content pack
     Deactivate { pack_id: String },
+}
+
+#[derive(Subcommand)]
+enum SecurityIocActions {
+    /// List indicators of compromise
+    List {
+        /// Search/filter query (supports field:value syntax)
+        #[arg(long)]
+        query: Option<String>,
+        /// Number of results per page
+        #[arg(long)]
+        limit: Option<i32>,
+        /// Pagination offset
+        #[arg(long)]
+        offset: Option<i32>,
+        /// Sort column (score, first_seen_ts_epoch, last_seen_ts_epoch, indicator, indicator_type, signal_count, log_count, category, as_type)
+        #[arg(long = "sort-column")]
+        sort_column: Option<String>,
+        /// Sort order (asc, desc)
+        #[arg(long = "sort-order")]
+        sort_order: Option<String>,
+    },
+    /// Get a single indicator of compromise
+    Get {
+        /// Indicator value (e.g. IP, domain, hash)
+        indicator: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -4423,6 +4956,117 @@ enum OrgActions {
     List,
     /// Get organization details
     Get,
+    /// Manage organization group policies
+    Policies {
+        #[command(subcommand)]
+        action: OrgPoliciesActions,
+    },
+    /// Manage organization group policy overrides
+    #[command(name = "policy-overrides")]
+    PolicyOverrides {
+        #[command(subcommand)]
+        action: OrgPolicyOverridesActions,
+    },
+    /// List available org group policy config definitions
+    #[command(name = "policy-configs")]
+    PolicyConfigs {
+        #[command(subcommand)]
+        action: OrgPolicyConfigsActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum OrgPoliciesActions {
+    /// List policies for an org group
+    List {
+        /// Org group UUID (required)
+        #[arg(long = "group-id")]
+        group_id: String,
+        /// Filter by policy name
+        #[arg(long)]
+        name: Option<String>,
+        /// Page number
+        #[arg(long = "page-number")]
+        page_number: Option<i64>,
+        /// Page size (max 1000)
+        #[arg(long = "page-size")]
+        page_size: Option<i64>,
+        /// Sort (id, -id, name, -name)
+        #[arg(long)]
+        sort: Option<String>,
+    },
+    /// Get a policy by ID
+    Get {
+        /// Policy UUID
+        policy_id: String,
+    },
+    /// Create a policy
+    Create {
+        #[arg(long, help = "JSON file with request body (required)")]
+        file: String,
+    },
+    /// Update a policy
+    Update {
+        /// Policy UUID
+        policy_id: String,
+        #[arg(long, help = "JSON file with request body (required)")]
+        file: String,
+    },
+    /// Delete a policy
+    Delete {
+        /// Policy UUID
+        policy_id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum OrgPolicyOverridesActions {
+    /// List policy overrides for an org group
+    List {
+        /// Org group UUID (required)
+        #[arg(long = "group-id")]
+        group_id: String,
+        /// Filter by policy UUID
+        #[arg(long = "policy-id")]
+        policy_id: Option<String>,
+        /// Page number
+        #[arg(long = "page-number")]
+        page_number: Option<i64>,
+        /// Page size (max 1000)
+        #[arg(long = "page-size")]
+        page_size: Option<i64>,
+        /// Sort (id, -id, org_uuid, -org_uuid)
+        #[arg(long)]
+        sort: Option<String>,
+    },
+    /// Get a policy override by ID
+    Get {
+        /// Override UUID
+        override_id: String,
+    },
+    /// Create a policy override
+    Create {
+        #[arg(long, help = "JSON file with request body (required)")]
+        file: String,
+    },
+    /// Update a policy override
+    Update {
+        /// Override UUID
+        override_id: String,
+        #[arg(long, help = "JSON file with request body (required)")]
+        file: String,
+    },
+    /// Delete a policy override
+    Delete {
+        /// Override UUID
+        override_id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum OrgPolicyConfigsActions {
+    /// List available org group policy config definitions
+    List,
 }
 
 // ---- Cloud ----
@@ -4710,7 +5354,26 @@ enum SoftwareCatalogActions {
 #[derive(Subcommand)]
 enum SoftwareCatalogEntityActions {
     /// List catalog entities
-    List,
+    ///
+    /// EXAMPLES:
+    ///   pup software-catalog entities list --filter shop-
+    ///   pup software-catalog entities list --filter-kind service --filter shop-
+    ///   pup software-catalog entities list --filter-owner team-claude
+    ///   pup software-catalog entities list --filter-ref service:shop-frontend
+    #[command(verbatim_doc_comment)]
+    List {
+        #[arg(long, help = "Filter entities by name (substring match)")]
+        filter: Option<String>,
+        #[arg(long, help = "Filter entities by kind (e.g. service, datastore)")]
+        filter_kind: Option<String>,
+        #[arg(long, help = "Filter entities by owner")]
+        filter_owner: Option<String>,
+        #[arg(
+            long,
+            help = "Filter entities by reference, e.g. service:shop-frontend"
+        )]
+        filter_ref: Option<String>,
+    },
     /// Create or update entities from a JSON file
     Upsert {
         #[arg(long, help = "JSON file with entity definition (required)")]
@@ -4774,11 +5437,7 @@ enum AppBuilderActions {
     },
     /// Create a new App Builder application
     Create {
-        #[arg(
-            long,
-            name = "body",
-            help = "JSON body (@filepath or - for stdin) (required)"
-        )]
+        #[arg(long, help = "JSON file with app data (required)")]
         file: String,
     },
     /// Update an App Builder application
@@ -4786,11 +5445,7 @@ enum AppBuilderActions {
         /// App ID (UUID)
         #[arg(name = "app-id")]
         app_id: String,
-        #[arg(
-            long,
-            name = "body",
-            help = "JSON body (@filepath or - for stdin) (required)"
-        )]
+        #[arg(long, help = "JSON file with app data (required)")]
         file: String,
     },
     /// Delete an App Builder application (DESTRUCTIVE)
@@ -4932,21 +5587,13 @@ enum NotebookActions {
     Get { notebook_id: i64 },
     /// Create a new notebook
     Create {
-        #[arg(
-            long,
-            name = "body",
-            help = "JSON body (@filepath or - for stdin) (required)"
-        )]
+        #[arg(long, help = "JSON file with notebook data (required)")]
         file: String,
     },
     /// Update a notebook
     Update {
         notebook_id: i64,
-        #[arg(
-            long,
-            name = "body",
-            help = "JSON body (@filepath or - for stdin) (required)"
-        )]
+        #[arg(long, help = "JSON file with notebook data (required)")]
         file: String,
     },
     /// Delete a notebook
@@ -5300,8 +5947,6 @@ enum CicdFlakyTestActions {
         cursor: Option<String>,
         #[arg(long, default_value_t = 100, help = "Maximum results")]
         limit: i64,
-        #[arg(long, default_value_t = false, help = "Include status history")]
-        include_history: bool,
         #[arg(
             long,
             help = "Sort order (fqn, -fqn, first_flaked, -first_flaked, last_flaked, -last_flaked, failure_rate, -failure_rate, pipelines_failed, -pipelines_failed, pipelines_duration_lost, -pipelines_duration_lost)"
@@ -5434,6 +6079,8 @@ enum OnCallPagesActions {
         #[arg(long, help = "Path to JSON file")]
         file: String,
     },
+    /// Get an on-call page by ID
+    Get { page_id: String },
 }
 
 #[derive(Subcommand)]
@@ -5617,6 +6264,11 @@ enum CsmThreatsActions {
         #[command(subcommand)]
         action: CsmThreatsAgentRuleActions,
     },
+    /// Manage workload security backend detection rules
+    BackendRules {
+        #[command(subcommand)]
+        action: CsmThreatsBackendRuleActions,
+    },
     /// Manage CSM Threats policy
     Policy {
         #[command(subcommand)]
@@ -5680,6 +6332,35 @@ enum CsmThreatsAgentRuleActions {
 }
 
 #[derive(Subcommand)]
+enum CsmThreatsBackendRuleActions {
+    /// List workload security backend rules
+    List {
+        #[arg(long, help = "Additional query filter")]
+        query: Option<String>,
+    },
+    /// Get a backend rule
+    Get { rule_id: String },
+    /// Create a backend rule from JSON
+    Create {
+        #[arg(long)]
+        file: String,
+    },
+    /// Update a backend rule
+    Update {
+        rule_id: String,
+        #[arg(long)]
+        file: String,
+    },
+    /// Delete a backend rule
+    Delete { rule_id: String },
+    /// Validate a backend rule from JSON
+    Validate {
+        #[arg(long)]
+        file: String,
+    },
+}
+
+#[derive(Subcommand)]
 enum CsmThreatsPolicyActions {
     /// Download the CSM threats policy file
     Download,
@@ -5703,6 +6384,22 @@ enum FleetActions {
         #[command(subcommand)]
         action: FleetScheduleActions,
     },
+    /// Manage fleet clusters
+    Clusters {
+        #[command(subcommand)]
+        action: FleetClusterActions,
+    },
+    /// Manage fleet tracers
+    Tracers {
+        #[command(subcommand)]
+        action: FleetTracerActions,
+    },
+    /// Manage fleet instrumented pods
+    #[command(name = "instrumented-pods")]
+    InstrumentedPods {
+        #[command(subcommand)]
+        action: FleetInstrumentedPodsActions,
+    },
 }
 
 #[derive(Subcommand)]
@@ -5721,6 +6418,18 @@ enum FleetAgentActions {
     Get { agent_key: String },
     /// List available agent versions
     Versions,
+    /// List tracers for a specific agent
+    Tracers {
+        agent_key: String,
+        #[arg(long)]
+        page_size: Option<i64>,
+        #[arg(long, help = "Page number (0-indexed)")]
+        page_number: Option<i64>,
+        #[arg(long, help = "Sort by attribute (e.g. service, language, hostname)")]
+        sort_attribute: Option<String>,
+        #[arg(long, default_value_t = false, help = "Sort descending")]
+        sort_descending: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -5767,6 +6476,116 @@ enum FleetScheduleActions {
     Delete { schedule_id: String },
     /// Trigger a fleet schedule
     Trigger { schedule_id: String },
+}
+
+#[derive(Subcommand)]
+enum FleetTracerActions {
+    /// List tracers across the fleet.
+    ///
+    /// Returns telemetry-derived service names, language, tracer version, and runtime IDs.
+    /// Note: service names here come from the SDK telemetry pipeline and may differ from
+    /// span-derived names in APM (e.g. pup apm services list).
+    List {
+        #[arg(
+            long,
+            help = "Filter query (e.g. env:prod, hostname:my-host, service:web-api)"
+        )]
+        filter: Option<String>,
+        #[arg(long)]
+        page_size: Option<i64>,
+        #[arg(long, help = "Page number (0-indexed)")]
+        page_number: Option<i64>,
+        #[arg(long, help = "Sort by attribute (e.g. service, language, hostname)")]
+        sort_attribute: Option<String>,
+        #[arg(long, default_value_t = false, help = "Sort descending")]
+        sort_descending: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum FleetClusterActions {
+    /// List Kubernetes clusters in the fleet.
+    ///
+    /// Returns clusters with node counts, agent versions, enabled products, and services.
+    /// Use this to discover cluster names for use with instrumented-pods.
+    List {
+        #[arg(long, help = "Filter query (e.g. cluster_name:production, env:prod)")]
+        filter: Option<String>,
+        #[arg(long)]
+        page_size: Option<i64>,
+        #[arg(long, help = "Page number (0-indexed)")]
+        page_number: Option<i64>,
+        #[arg(long, help = "Sort by attribute (e.g. cluster_name, node_count)")]
+        sort_attribute: Option<String>,
+        #[arg(long, default_value_t = false, help = "Sort descending")]
+        sort_descending: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum FleetInstrumentedPodsActions {
+    /// List instrumented pods in a Kubernetes cluster.
+    ///
+    /// Returns pod groups with namespace, owner, injection annotations, and pod names.
+    /// Use this to verify the Admission Controller targeted pods for SSI injection.
+    List {
+        #[arg(help = "Kubernetes cluster name (required)")]
+        cluster_name: String,
+    },
+}
+
+// ---- Data Deletion ----
+#[derive(Subcommand)]
+enum DataDeletionActions {
+    /// Manage deletion requests
+    Requests {
+        #[command(subcommand)]
+        action: DataDeletionRequestActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum DataDeletionRequestActions {
+    /// List data deletion requests
+    List {
+        #[arg(long, help = "Filter by product (e.g., logs, rum)")]
+        product: Option<String>,
+        #[arg(long, help = "Filter by query")]
+        query: Option<String>,
+        #[arg(long, help = "Filter by status")]
+        status: Option<String>,
+    },
+    /// Create a data deletion request from a JSON file
+    Create {
+        #[arg(long, help = "Product to target (e.g., logs, rum)")]
+        product: String,
+        #[arg(long)]
+        file: String,
+    },
+    /// Cancel a data deletion request
+    Cancel { request_id: String },
+}
+
+// ---- Datasets ----
+#[derive(Subcommand)]
+enum DatasetsActions {
+    /// List all datasets
+    List,
+    /// Get a dataset by ID
+    Get { dataset_id: String },
+    /// Create a dataset from a JSON file
+    Create {
+        #[arg(long)]
+        file: String,
+    },
+    /// Update a dataset from a JSON file
+    Update {
+        dataset_id: String,
+        #[arg(long)]
+        file: String,
+    },
+    /// Delete a dataset
+    Delete { dataset_id: String },
 }
 
 // ---- Data Governance ----
@@ -5961,6 +6780,16 @@ enum FeatureFlagActions {
         #[command(subcommand)]
         action: FeatureFlagEnvActions,
     },
+    /// Manage traffic allocations for a feature flag in an environment
+    Allocations {
+        #[command(subcommand)]
+        action: FeatureFlagAllocActions,
+    },
+    /// Manage exposure schedules for a feature flag
+    Exposure {
+        #[command(subcommand)]
+        action: FeatureFlagExposureActions,
+    },
     /// Enable a feature flag in an environment
     Enable {
         #[arg(help = "Feature flag ID (UUID)")]
@@ -6053,6 +6882,52 @@ enum FeatureFlagEnvActions {
     Delete {
         #[arg(help = "Environment ID (UUID)")]
         feature_flags_env_id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum FeatureFlagAllocActions {
+    /// Create allocations for a feature flag in an environment
+    Create {
+        #[arg(help = "Feature flag ID (UUID)")]
+        feature_flag_id: String,
+        #[arg(help = "Environment ID (UUID)")]
+        environment_id: String,
+        #[arg(long, help = "JSON file with request body (required)")]
+        file: String,
+    },
+    /// Update (overwrite) allocations for a feature flag in an environment
+    Update {
+        #[arg(help = "Feature flag ID (UUID)")]
+        feature_flag_id: String,
+        #[arg(help = "Environment ID (UUID)")]
+        environment_id: String,
+        #[arg(long, help = "JSON file with request body (required)")]
+        file: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum FeatureFlagExposureActions {
+    /// Start an exposure schedule
+    Start {
+        #[arg(help = "Exposure schedule ID (UUID)")]
+        exposure_schedule_id: String,
+    },
+    /// Stop an exposure schedule
+    Stop {
+        #[arg(help = "Exposure schedule ID (UUID)")]
+        exposure_schedule_id: String,
+    },
+    /// Pause an exposure schedule
+    Pause {
+        #[arg(help = "Exposure schedule ID (UUID)")]
+        exposure_schedule_id: String,
+    },
+    /// Resume an exposure schedule
+    Resume {
+        #[arg(help = "Exposure schedule ID (UUID)")]
+        exposure_schedule_id: String,
     },
 }
 
@@ -6468,6 +7343,21 @@ enum ContainerImageActions {
 // ---- Cost ----
 #[derive(Subcommand)]
 enum CostActions {
+    /// Manage Datadog cost and billing data (projected costs, attribution, cloud cost configs)
+    Datadog {
+        #[command(subcommand)]
+        action: CostDatadogActions,
+    },
+    /// Manage Cloud Cost Management features (custom costs, budgets, commitments, tags)
+    #[command(name = "ccm")]
+    Ccm {
+        #[command(subcommand)]
+        action: CostCcmActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum CostDatadogActions {
     /// Get projected end-of-month costs
     Projected,
     /// Get costs by organization
@@ -6534,6 +7424,363 @@ enum CostCloudConfigActions {
     },
 }
 
+#[derive(Subcommand)]
+enum CostCcmActions {
+    /// Manage custom cost files
+    #[command(name = "custom-costs")]
+    CustomCosts {
+        #[command(subcommand)]
+        action: CostCcmCustomCostsActions,
+    },
+    /// Manage tag descriptions
+    #[command(name = "tag-descriptions")]
+    TagDescriptions {
+        #[command(subcommand)]
+        action: CostCcmTagDescActions,
+    },
+    /// Query tag metadata and coverage analytics
+    #[command(name = "tag-metadata")]
+    TagMetadata {
+        #[command(subcommand)]
+        action: CostCcmTagMetadataActions,
+    },
+    /// List cost tags
+    Tags {
+        #[command(subcommand)]
+        action: CostCcmTagsActions,
+    },
+    /// Manage cost tag keys
+    #[command(name = "tag-keys")]
+    TagKeys {
+        #[command(subcommand)]
+        action: CostCcmTagKeysActions,
+    },
+    /// Manage cost budgets
+    Budgets {
+        #[command(subcommand)]
+        action: CostCcmBudgetsActions,
+    },
+    /// Query commitment programs (reserved instances, savings plans)
+    Commitments {
+        #[command(subcommand)]
+        action: CostCcmCommitmentsActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum CostCcmCustomCostsActions {
+    /// List custom cost files
+    List {
+        #[arg(long, help = "Page size (default: 100)")]
+        page_size: Option<i64>,
+        #[arg(long, help = "Filter by status (UPLOADING, SUCCESS, FAILED)")]
+        status: Option<String>,
+        #[arg(
+            long,
+            help = "Sort key (prefix with '-' for descending, e.g. '-created_at')"
+        )]
+        sort: Option<String>,
+    },
+    /// Get a custom cost file by ID
+    Get {
+        #[arg(help = "File ID (UUID)")]
+        file_id: String,
+    },
+    /// Upload a custom cost file
+    Upload {
+        #[arg(long, help = "Path to file to upload (required)")]
+        file: String,
+        #[arg(long, help = "File format version (default: 1.0)")]
+        version: Option<String>,
+    },
+    /// Delete a custom cost file by ID
+    Delete {
+        #[arg(help = "File ID (UUID)")]
+        file_id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum CostCcmTagDescActions {
+    /// List tag descriptions for the organization
+    List {
+        #[arg(long, help = "Filter by cloud provider (aws, azure, gcp)")]
+        cloud: Option<String>,
+    },
+    /// Get the description for a specific tag key
+    Get {
+        #[arg(long, help = "Tag key (required)")]
+        tag_key: String,
+        #[arg(long, help = "Cloud provider (aws, azure, gcp)")]
+        cloud: Option<String>,
+    },
+    /// AI-generate a description for a tag key
+    Generate {
+        #[arg(long, help = "Tag key (required)")]
+        tag_key: String,
+    },
+    /// Create or update a tag description
+    Upsert {
+        #[arg(long, help = "Tag key (required)")]
+        tag_key: String,
+        #[arg(long, help = "Description text (required)")]
+        description: String,
+        #[arg(long, help = "Cloud provider (aws, azure, gcp); omit for all clouds")]
+        cloud: Option<String>,
+    },
+    /// Delete a tag description
+    Delete {
+        #[arg(long, help = "Tag key (required)")]
+        tag_key: String,
+        #[arg(
+            long,
+            help = "Cloud provider; omit to delete all org descriptions for this key"
+        )]
+        cloud: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum CostCcmTagMetadataActions {
+    /// List tag metadata for a month
+    List {
+        #[arg(long, help = "Month in YYYY-MM format (required)")]
+        month: String,
+        #[arg(long, help = "Cloud provider (aws, azure, gcp, oci)")]
+        provider: Option<String>,
+        #[arg(long, help = "Cost metric (e.g. aws.cost.net.amortized)")]
+        metric: Option<String>,
+        #[arg(long, help = "Tag key filter")]
+        tag_key: Option<String>,
+        #[arg(long, help = "Return daily granularity instead of monthly")]
+        daily: bool,
+    },
+    /// List tag sources for a month
+    #[command(name = "tag-sources")]
+    TagSources {
+        #[arg(long, help = "Month in YYYY-MM format (required)")]
+        month: String,
+        #[arg(long, help = "Cloud provider (aws, azure, gcp, oci)")]
+        provider: Option<String>,
+    },
+    /// List available cost metrics for a month
+    Metrics {
+        #[arg(long, help = "Month in YYYY-MM format (required)")]
+        month: String,
+        #[arg(long, help = "Cloud provider (aws, azure, gcp, oci)")]
+        provider: Option<String>,
+    },
+    /// List orchestrators active in a month
+    Orchestrators {
+        #[arg(long, help = "Month in YYYY-MM format (required)")]
+        month: String,
+        #[arg(long, help = "Cloud provider (aws, azure, gcp, oci)")]
+        provider: Option<String>,
+    },
+    /// Get billing currency for a month
+    Currency {
+        #[arg(long, help = "Month in YYYY-MM format (required)")]
+        month: String,
+        #[arg(long, help = "Cloud provider (aws, azure, gcp, oci)")]
+        provider: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum CostCcmTagsActions {
+    /// List cost tags
+    List {
+        #[arg(long, help = "Cost metric filter (e.g. aws.cost.net.amortized)")]
+        metric: Option<String>,
+        #[arg(long, help = "Match filter for tag values")]
+        r#match: Option<String>,
+        #[arg(long = "tag", help = "Tag filter (key:value, repeatable)", action = clap::ArgAction::Append)]
+        tags: Vec<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum CostCcmTagKeysActions {
+    /// List cost tag keys
+    List {
+        #[arg(long, help = "Cost metric filter")]
+        metric: Option<String>,
+        #[arg(long = "tag", help = "Tag filter (key:value, repeatable)", action = clap::ArgAction::Append)]
+        tags: Vec<String>,
+    },
+    /// Get details for a specific tag key
+    Get {
+        #[arg(help = "Tag key")]
+        key: String,
+        #[arg(long, help = "Cost metric filter")]
+        metric: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum CostCcmBudgetsActions {
+    /// List all budgets
+    List,
+    /// Get a budget by ID
+    Get {
+        #[arg(help = "Budget ID (UUID)")]
+        budget_id: String,
+        #[arg(long, help = "Start time for cost data (e.g. 30d, 2024-01)")]
+        start: Option<String>,
+        #[arg(long, help = "End time for cost data (e.g. now, 2024-03)")]
+        end: Option<String>,
+        #[arg(long, help = "Include actual costs")]
+        actual: bool,
+        #[arg(long, help = "Include forecast costs")]
+        forecast: bool,
+    },
+    /// Create or update a budget from a JSON file
+    Upsert {
+        #[arg(long, help = "JSON file with budget body (required)")]
+        file: String,
+    },
+    /// Delete a budget by ID
+    Delete {
+        #[arg(help = "Budget ID (UUID)")]
+        budget_id: String,
+    },
+    /// Validate a budget JSON file without saving
+    Validate {
+        #[arg(long, help = "JSON file with budget body (required)")]
+        file: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum CostCcmCommitmentsActions {
+    /// Get utilization scalar metrics for commitment programs
+    Utilization {
+        #[arg(long, help = "Cloud provider: aws, azure (required)")]
+        provider: String,
+        #[arg(
+            long,
+            help = "Cloud product: EC2, RDS, ElastiCache, VirtualMachines, etc. (required)"
+        )]
+        product: String,
+        #[arg(long, help = "Start time (required, e.g. 30d, 2024-01-01)")]
+        from: String,
+        #[arg(long, help = "End time (required, e.g. now, 2024-01-31)")]
+        to: String,
+        #[arg(long, help = "Commitment type: RI or SP (default: RI)")]
+        commitment_type: Option<String>,
+        #[arg(long, help = "Tag filter (key:value syntax)")]
+        filter_by: Option<String>,
+    },
+    /// Get coverage scalar metrics for commitment programs
+    Coverage {
+        #[arg(long, help = "Cloud provider: aws, azure (required)")]
+        provider: String,
+        #[arg(long, help = "Cloud product (required)")]
+        product: String,
+        #[arg(long, help = "Start time (required)")]
+        from: String,
+        #[arg(long, help = "End time (required)")]
+        to: String,
+        #[arg(long, help = "Commitment type: RI or SP (default: RI)")]
+        commitment_type: Option<String>,
+        #[arg(long, help = "Tag filter (key:value syntax)")]
+        filter_by: Option<String>,
+    },
+    /// Get savings scalar metrics for commitment programs
+    Savings {
+        #[arg(long, help = "Cloud provider: aws, azure (required)")]
+        provider: String,
+        #[arg(long, help = "Cloud product (required)")]
+        product: String,
+        #[arg(long, help = "Start time (required)")]
+        from: String,
+        #[arg(long, help = "End time (required)")]
+        to: String,
+        #[arg(long, help = "Commitment type: RI or SP (default: RI)")]
+        commitment_type: Option<String>,
+        #[arg(long, help = "Tag filter (key:value syntax)")]
+        filter_by: Option<String>,
+    },
+    /// Get on-demand hot spots (uncovered spend) for commitment programs
+    Hotspots {
+        #[arg(long, help = "Cloud provider: aws, azure (required)")]
+        provider: String,
+        #[arg(long, help = "Cloud product (required)")]
+        product: String,
+        #[arg(long, help = "Start time (required)")]
+        from: String,
+        #[arg(long, help = "End time (required)")]
+        to: String,
+        #[arg(long, help = "Commitment type: RI or SP (default: RI)")]
+        commitment_type: Option<String>,
+        #[arg(long, help = "Tag filter (key:value syntax)")]
+        filter_by: Option<String>,
+    },
+    /// Get utilization timeseries for commitment programs
+    #[command(name = "utilization-ts")]
+    UtilizationTs {
+        #[arg(long, help = "Cloud provider: aws, azure (required)")]
+        provider: String,
+        #[arg(long, help = "Cloud product (required)")]
+        product: String,
+        #[arg(long, help = "Start time (required)")]
+        from: String,
+        #[arg(long, help = "End time (required)")]
+        to: String,
+        #[arg(long, help = "Commitment type: RI or SP (default: RI)")]
+        commitment_type: Option<String>,
+        #[arg(long, help = "Tag filter (key:value syntax)")]
+        filter_by: Option<String>,
+    },
+    /// Get coverage timeseries for commitment programs
+    #[command(name = "coverage-ts")]
+    CoverageTs {
+        #[arg(long, help = "Cloud provider: aws, azure (required)")]
+        provider: String,
+        #[arg(long, help = "Cloud product (required)")]
+        product: String,
+        #[arg(long, help = "Start time (required)")]
+        from: String,
+        #[arg(long, help = "End time (required)")]
+        to: String,
+        #[arg(long, help = "Commitment type: RI or SP (default: RI)")]
+        commitment_type: Option<String>,
+        #[arg(long, help = "Tag filter (key:value syntax)")]
+        filter_by: Option<String>,
+    },
+    /// Get savings timeseries for commitment programs
+    #[command(name = "savings-ts")]
+    SavingsTs {
+        #[arg(long, help = "Cloud provider: aws, azure (required)")]
+        provider: String,
+        #[arg(long, help = "Cloud product (required)")]
+        product: String,
+        #[arg(long, help = "Start time (required)")]
+        from: String,
+        #[arg(long, help = "End time (required)")]
+        to: String,
+        #[arg(long, help = "Commitment type: RI or SP (default: RI)")]
+        commitment_type: Option<String>,
+        #[arg(long, help = "Tag filter (key:value syntax)")]
+        filter_by: Option<String>,
+    },
+    /// List individual commitments (reserved instances, savings plans)
+    List {
+        #[arg(long, help = "Cloud provider: aws, azure (required)")]
+        provider: String,
+        #[arg(long, help = "Cloud product (required)")]
+        product: String,
+        #[arg(long, help = "Start time (required)")]
+        from: String,
+        #[arg(long, help = "End time (required)")]
+        to: String,
+        #[arg(long, help = "Commitment type: RI or SP (default: RI)")]
+        commitment_type: Option<String>,
+        #[arg(long, help = "Tag filter (key:value syntax)")]
+        filter_by: Option<String>,
+    },
+}
+
 // ---- Misc ----
 #[derive(Subcommand)]
 enum MiscActions {
@@ -6587,6 +7834,18 @@ enum ApmActions {
         #[command(subcommand)]
         action: ApmServiceRemappingActions,
     },
+    /// View APM service instance configuration
+    #[command(name = "service-config")]
+    ServiceConfig {
+        #[command(subcommand)]
+        action: ApmServiceConfigActions,
+    },
+    /// View APM service library configuration
+    #[command(name = "service-library-config")]
+    ServiceLibraryConfig {
+        #[command(subcommand)]
+        action: ApmServiceLibraryConfigActions,
+    },
 }
 
 #[derive(Subcommand)]
@@ -6633,7 +7892,7 @@ enum ApmServiceActions {
         #[arg(long, help = "Service name (required)")]
         service: String,
         #[arg(long, help = "Operation name (required)")]
-        operation: String,
+        name: String,
         #[arg(long, help = "Environment filter (required)")]
         env: String,
         #[arg(long, default_value = "1h", help = "Start time")]
@@ -6760,6 +8019,49 @@ enum ApmServiceRemappingActions {
     },
 }
 
+#[derive(Subcommand)]
+enum ApmServiceConfigActions {
+    /// Get service instance configuration.
+    ///
+    /// Note: service_name and env reflect what the SDK telemetry pipeline reports
+    /// at runtime and may differ from values in the Service Catalog.
+    Get {
+        #[arg(long, help = "Service name (required)")]
+        service_name: String,
+        #[arg(long, help = "Environment filter")]
+        env: Option<String>,
+        #[arg(
+            long,
+            help = "Comma-separated list of service instance IDs to filter by"
+        )]
+        service_instance_ids: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum ApmServiceLibraryConfigActions {
+    /// Get library configuration for a service.
+    ///
+    /// Note: service_name, env, and language_name reflect what the SDK telemetry
+    /// pipeline reports at runtime and may differ from values in the Service Catalog,
+    /// which aggregates data from multiple sources (APM spans, USM, infrastructure
+    /// tags, manual definitions).
+    Get {
+        #[arg(long, help = "Service name (required)")]
+        service_name: String,
+        #[arg(long, help = "Environment filter")]
+        env: Option<String>,
+        #[arg(long, help = "Language filter (python, java, go, ruby, dotnet, etc.)")]
+        language: Option<String>,
+        #[arg(
+            long,
+            default_value_t = false,
+            help = "Only show configs with mixed values across instances"
+        )]
+        mixed: bool,
+    },
+}
+
 // ---- Investigations ----
 #[derive(Subcommand)]
 enum InvestigationActions {
@@ -6801,7 +8103,9 @@ enum InvestigationActions {
     },
 }
 
-// ---- Network (placeholder) ----
+// ---- Network ----
+// `List` is a stub (the top-level network monitors API isn't wired yet);
+// `Flows`, `Devices`, and `Interfaces` are implemented.
 #[derive(Subcommand)]
 enum NetworkActions {
     /// List network devices/monitors
@@ -6928,6 +8232,18 @@ enum LlmObsActions {
     Spans {
         #[command(subcommand)]
         action: LlmObsSpansActions,
+    },
+    /// Manage LLM Observability annotation queues
+    #[command(name = "annotation-queues")]
+    AnnotationQueues {
+        #[command(subcommand)]
+        action: LlmObsAnnotationQueuesActions,
+    },
+    /// Manage LLM Observability custom evaluator configs
+    #[command(name = "eval-config")]
+    EvalConfig {
+        #[command(subcommand)]
+        action: LlmObsEvalConfigActions,
     },
 }
 
@@ -7062,6 +8378,27 @@ enum LlmObsSpansActions {
         #[arg(long, help = "Pagination cursor from a previous response")]
         cursor: Option<String>,
     },
+    /// Get detailed metadata and token/cost metrics for one or more spans
+    Details {
+        #[arg(long, help = "Trace ID (required)")]
+        trace_id: String,
+        #[arg(
+            long,
+            help = "Span ID(s) to fetch details for (repeat for multiple)",
+            required = true
+        )]
+        span_id: Vec<String>,
+        #[arg(
+            long,
+            help = "Start time: 1h, 5min, 2hours, RFC3339, Unix timestamp, or 'now'"
+        )]
+        from: Option<String>,
+        #[arg(
+            long,
+            help = "End time: 1h, 5min, 2hours, RFC3339, Unix timestamp, or 'now'"
+        )]
+        to: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -7077,6 +8414,87 @@ enum LlmObsDatasetsActions {
     List {
         #[arg(long, help = "Project ID (required)")]
         project_id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum LlmObsAnnotationQueuesActions {
+    /// Create an annotation queue
+    Create {
+        #[arg(long, help = "JSON file with annotation queue body (required)")]
+        file: String,
+    },
+    /// List annotation queues
+    List {
+        #[arg(long, help = "Filter by project ID")]
+        project_id: Option<String>,
+        #[arg(
+            long,
+            value_delimiter = ',',
+            help = "Filter by queue IDs (comma-separated)"
+        )]
+        queue_ids: Option<Vec<String>>,
+    },
+    /// Update an annotation queue
+    Update {
+        #[arg(help = "Annotation queue ID")]
+        queue_id: String,
+        #[arg(long, help = "JSON file with annotation queue update body (required)")]
+        file: String,
+    },
+    /// Delete an annotation queue
+    Delete {
+        #[arg(help = "Annotation queue ID")]
+        queue_id: String,
+    },
+    /// Manage interactions within an annotation queue
+    Interactions {
+        #[command(subcommand)]
+        action: LlmObsAnnotationQueueInteractionsActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum LlmObsAnnotationQueueInteractionsActions {
+    /// Add interactions to an annotation queue
+    Add {
+        #[arg(help = "Annotation queue ID")]
+        queue_id: String,
+        #[arg(long, help = "JSON file with interactions body (required)")]
+        file: String,
+    },
+    /// Remove interactions from an annotation queue
+    Delete {
+        #[arg(help = "Annotation queue ID")]
+        queue_id: String,
+        #[arg(long, help = "JSON file with interactions to delete (required)")]
+        file: String,
+    },
+    /// List annotated interactions for an annotation queue
+    List {
+        #[arg(help = "Annotation queue ID")]
+        queue_id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum LlmObsEvalConfigActions {
+    /// Get a custom evaluator config by name
+    Get {
+        #[arg(help = "Evaluator name")]
+        eval_name: String,
+    },
+    /// Create or update a custom evaluator config by name
+    Update {
+        #[arg(help = "Evaluator name")]
+        eval_name: String,
+        #[arg(long, help = "JSON file with evaluator config body (required)")]
+        file: String,
+    },
+    /// Delete a custom evaluator config by name
+    Delete {
+        #[arg(help = "Evaluator name")]
+        eval_name: String,
     },
 }
 
@@ -7110,13 +8528,89 @@ enum ReferenceTablesActions {
     },
 }
 
-// ---- Scorecards (placeholder) ----
+// ---- Scorecards ----
 #[derive(Subcommand)]
 enum ScorecardsActions {
-    /// List scorecards
+    /// List all scorecards
     List,
-    /// Get scorecard details
-    Get { scorecard_id: String },
+    /// Manage scorecard rules
+    Rules {
+        #[command(subcommand)]
+        action: ScorecardsRulesActions,
+    },
+    /// Manage scorecard outcomes
+    Outcomes {
+        #[command(subcommand)]
+        action: ScorecardsOutcomesActions,
+    },
+    /// Manage scorecard campaigns
+    Campaigns {
+        #[command(subcommand)]
+        action: ScorecardsCampaignsActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum ScorecardsRulesActions {
+    /// List scorecard rules
+    List,
+    /// Create a scorecard rule from a JSON file
+    Create {
+        #[arg(long, help = "Path to JSON file with rule definition")]
+        file: String,
+    },
+    /// Update a scorecard rule from a JSON file
+    Update {
+        #[arg(help = "Rule ID to update")]
+        rule_id: String,
+        #[arg(long, help = "Path to JSON file with updated rule definition")]
+        file: String,
+    },
+    /// Delete a scorecard rule
+    Delete {
+        #[arg(help = "Rule ID to delete")]
+        rule_id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum ScorecardsOutcomesActions {
+    /// List scorecard outcomes
+    List,
+    /// Create or update outcomes in batch from a JSON file
+    #[command(name = "batch-create")]
+    BatchCreate {
+        #[arg(long, help = "Path to JSON file with outcomes batch")]
+        file: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum ScorecardsCampaignsActions {
+    /// List all scorecard campaigns
+    List,
+    /// Get a scorecard campaign by ID
+    Get {
+        #[arg(help = "Campaign ID to retrieve")]
+        campaign_id: String,
+    },
+    /// Create a scorecard campaign from a JSON file
+    Create {
+        #[arg(long, help = "Path to JSON file with campaign definition")]
+        file: String,
+    },
+    /// Update a scorecard campaign from a JSON file
+    Update {
+        #[arg(help = "Campaign ID to update")]
+        campaign_id: String,
+        #[arg(long, help = "Path to JSON file with updated campaign definition")]
+        file: String,
+    },
+    /// Delete a scorecard campaign
+    Delete {
+        #[arg(help = "Campaign ID to delete")]
+        campaign_id: String,
+    },
 }
 
 // ---- Traces ----
@@ -7208,6 +8702,32 @@ enum TracesActions {
         )]
         group_by: Option<String>,
     },
+    /// Manage span-based metrics
+    Metrics {
+        #[command(subcommand)]
+        action: SpansMetricsActions,
+    },
+}
+
+#[derive(Subcommand)]
+enum SpansMetricsActions {
+    /// List all span-based metrics
+    List,
+    /// Get a span-based metric by ID
+    Get { metric_id: String },
+    /// Create a span-based metric from a JSON file
+    Create {
+        #[arg(long)]
+        file: String,
+    },
+    /// Update a span-based metric from a JSON file
+    Update {
+        metric_id: String,
+        #[arg(long)]
+        file: String,
+    },
+    /// Delete a span-based metric
+    Delete { metric_id: String },
 }
 
 // ---- ACP ----
@@ -7255,7 +8775,7 @@ enum AcpActions {
     },
 }
 
-// ---- Agent (placeholder) ----
+// ---- Agent ----
 #[derive(Subcommand)]
 enum AgentActions {
     /// Output command schema as JSON
@@ -7387,122 +8907,323 @@ enum ProductAnalyticsEventActions {
     },
 }
 
+// ---- Profiling ----
+#[derive(Subcommand)]
+enum ProfilingActions {
+    /// Aggregate flamegraph across matching profiles
+    Aggregate {
+        #[arg(long, default_value = "*", help = "Profile search query")]
+        query: String,
+        #[arg(
+            long,
+            default_value = "cpu-time",
+            help = "Profile type (e.g. cpu-time, wall-time)"
+        )]
+        profile_type: String,
+        #[arg(long, default_value = "15m", help = "Start time")]
+        from: String,
+        #[arg(long, default_value = "now", help = "End time")]
+        to: String,
+        #[arg(long, default_value = "100", help = "Maximum profiles to aggregate")]
+        limit: u32,
+        #[arg(long, default_value = "sum", help = "Aggregation function: sum or avg")]
+        aggregation_function: String,
+    },
+    /// Get automated analysis for a profile
+    Analysis {
+        #[arg(help = "Profile ID")]
+        profile_id: String,
+        #[arg(long, help = "Event ID scope (optional)")]
+        event_id: Option<String>,
+    },
+    /// Run profiling analytics with groupBy/compute
+    Analytics {
+        #[arg(long, default_value = "*", help = "Profile search query")]
+        query: String,
+        #[arg(long, default_value = "15m", help = "Start time")]
+        from: String,
+        #[arg(long, default_value = "now", help = "End time")]
+        to: String,
+        #[arg(long, help = "Comma-separated group-by fields (e.g. service,env)")]
+        group_by: Option<String>,
+        #[arg(
+            long,
+            help = "Comma-separated compute expressions (e.g. count,sum:duration)"
+        )]
+        compute: Option<String>,
+        #[arg(long, default_value = "100", help = "Maximum rows to return")]
+        limit: u32,
+    },
+    /// Compute a breakdown for a single profile (JSON output)
+    Breakdown {
+        #[arg(help = "Profile ID")]
+        profile_id: String,
+        #[arg(
+            long,
+            help = "Optional search query (must be used with --from and --to)"
+        )]
+        query: Option<String>,
+        #[arg(
+            long,
+            help = "Optional start time (must be used with --query and --to)"
+        )]
+        from: Option<String>,
+        #[arg(
+            long,
+            help = "Optional end time (must be used with --query and --from)"
+        )]
+        to: Option<String>,
+    },
+    /// Compute a call graph (JSON output)
+    Callgraph {
+        #[arg(long, default_value = "*", help = "Profile search query")]
+        query: String,
+        #[arg(long, default_value = "cpu-time", help = "Profile type")]
+        profile_type: String,
+        #[arg(long, default_value = "15m", help = "Start time")]
+        from: String,
+        #[arg(long, default_value = "now", help = "End time")]
+        to: String,
+        #[arg(long, default_value = "100", help = "Node limit")]
+        limit: u32,
+    },
+    /// Download a profile archive
+    Download {
+        #[arg(help = "Profile event ID (the `id` field from `pup profiling list`)")]
+        event_id: String,
+        #[arg(short = 'o', long, help = "Output path (writes to stdout if omitted)")]
+        output: Option<String>,
+    },
+    /// Enumerate values for a field
+    Fields {
+        #[arg(long, help = "Field name (required)")]
+        field: String,
+        #[arg(long, default_value = "*", help = "Profile search query")]
+        query: String,
+        #[arg(long, default_value = "15m", help = "Start time")]
+        from: String,
+        #[arg(long, default_value = "now", help = "End time")]
+        to: String,
+        #[arg(long, default_value = "100", help = "Maximum values to return")]
+        limit: u32,
+    },
+    /// Get profile metadata
+    Info {
+        #[arg(help = "Profile ID")]
+        profile_id: String,
+        #[arg(long, help = "Event ID scope (optional)")]
+        event_id: Option<String>,
+    },
+    /// List profiles matching a query
+    List {
+        #[arg(long, default_value = "*", help = "Profile search query")]
+        query: String,
+        #[arg(
+            long,
+            default_value = "15m",
+            help = "Start time: 1h, 5min, 2hours, RFC3339, Unix timestamp, or 'now'"
+        )]
+        from: String,
+        #[arg(
+            long,
+            default_value = "now",
+            help = "End time: 1h, 5min, 2hours, RFC3339, Unix timestamp, or 'now'"
+        )]
+        to: String,
+        #[arg(long, help = "Field to sort by (e.g. 'start', 'duration')")]
+        sort_field: Option<String>,
+        #[arg(long, default_value = "desc", help = "Sort order: asc or desc")]
+        sort_order: String,
+        #[arg(long, default_value = "100", help = "Maximum profiles to return")]
+        limit: u32,
+    },
+    /// Save a query as a favorite
+    #[command(name = "save-favorite")]
+    SaveFavorite {
+        #[arg(long, help = "Query ID (required)")]
+        query_id: String,
+        #[arg(long, help = "Profile search query")]
+        query: String,
+        #[arg(long, default_value = "15m", help = "Start time")]
+        from: String,
+        #[arg(long, default_value = "now", help = "End time")]
+        to: String,
+        #[arg(
+            long,
+            default_value = "100",
+            help = "Default limit for the saved query"
+        )]
+        limit: u32,
+    },
+    /// Fetch the timeline for a single profile (JSON output)
+    Timeline {
+        #[arg(help = "Profile ID")]
+        profile_id: String,
+        #[arg(long, help = "Profile event ID (required)")]
+        event_id: String,
+    },
+}
+
 // ---- Static Analysis ----
 #[derive(Subcommand)]
 enum StaticAnalysisActions {
-    /// AST analysis
-    Ast {
-        #[command(subcommand)]
-        action: StaticAnalysisAstActions,
-    },
-    /// Custom security rulesets
+    /// Manage custom rulesets
     #[command(name = "custom-rulesets")]
     CustomRulesets {
         #[command(subcommand)]
         action: StaticAnalysisCustomRulesetActions,
     },
-    /// Software Composition Analysis
-    Sca {
+    /// Manage custom rules within a ruleset
+    #[command(name = "custom-rules")]
+    CustomRules {
         #[command(subcommand)]
-        action: StaticAnalysisScaActions,
+        action: StaticAnalysisCustomRuleActions,
     },
-    /// Code coverage analysis
-    Coverage {
-        #[command(subcommand)]
-        action: StaticAnalysisCoverageActions,
-    },
-}
-
-#[derive(Subcommand)]
-enum StaticAnalysisAstActions {
-    /// List AST analyses
-    List {
-        #[arg(long, help = "Filter by branch")]
-        branch: Option<String>,
-        #[arg(long, help = "Start time")]
-        from: Option<String>,
-        #[arg(long, help = "End time")]
-        to: Option<String>,
-        #[arg(long, help = "Filter by repository")]
-        repository: Option<String>,
-        #[arg(long, help = "Filter by language")]
-        language: Option<String>,
-        #[arg(long, help = "Filter by severity")]
-        severity: Option<String>,
-        #[arg(long, help = "Filter by status")]
-        status: Option<String>,
-    },
-    /// Get AST analysis details
-    Get { id: String },
 }
 
 #[derive(Subcommand)]
 enum StaticAnalysisCustomRulesetActions {
-    /// List custom rulesets
-    List {
-        #[arg(long, help = "Filter by branch")]
-        branch: Option<String>,
-        #[arg(long, help = "Start time")]
-        from: Option<String>,
-        #[arg(long, help = "End time")]
-        to: Option<String>,
-        #[arg(long, help = "Filter by repository")]
-        repository: Option<String>,
-        #[arg(long, help = "Filter by language")]
-        language: Option<String>,
-        #[arg(long, help = "Filter by severity")]
-        severity: Option<String>,
-        #[arg(long, help = "Filter by status")]
-        status: Option<String>,
+    /// Get a custom ruleset by name
+    Get {
+        #[arg(help = "Ruleset name")]
+        name: String,
     },
-    /// Get custom ruleset details
-    Get { id: String },
+    /// Update a custom ruleset from a JSON file
+    Update {
+        #[arg(help = "Ruleset name")]
+        name: String,
+        #[arg(long, help = "Path to JSON file with ruleset definition")]
+        file: String,
+    },
+    /// Delete a custom ruleset
+    Delete {
+        #[arg(help = "Ruleset name")]
+        name: String,
+    },
 }
 
 #[derive(Subcommand)]
-enum StaticAnalysisScaActions {
-    /// List SCA results
-    List {
-        #[arg(long, help = "Filter by branch")]
-        branch: Option<String>,
-        #[arg(long, help = "Start time")]
-        from: Option<String>,
-        #[arg(long, help = "End time")]
-        to: Option<String>,
-        #[arg(long, help = "Filter by repository")]
-        repository: Option<String>,
-        #[arg(long, help = "Filter by language")]
-        language: Option<String>,
-        #[arg(long, help = "Filter by severity")]
-        severity: Option<String>,
-        #[arg(long, help = "Filter by status")]
-        status: Option<String>,
+enum StaticAnalysisCustomRuleActions {
+    /// Get a custom rule by name
+    Get {
+        #[arg(help = "Ruleset name")]
+        ruleset: String,
+        #[arg(help = "Rule name")]
+        rule: String,
     },
-    /// Get SCA scan details
-    Get { id: String },
+    /// Create a custom rule from a JSON file
+    Create {
+        #[arg(help = "Ruleset name")]
+        ruleset: String,
+        #[arg(long, help = "Path to JSON file with rule definition")]
+        file: String,
+    },
+    /// Delete a custom rule
+    Delete {
+        #[arg(help = "Ruleset name")]
+        ruleset: String,
+        #[arg(help = "Rule name")]
+        rule: String,
+    },
+    /// List revisions for a custom rule
+    Revisions {
+        #[arg(help = "Ruleset name")]
+        ruleset: String,
+        #[arg(help = "Rule name")]
+        rule: String,
+    },
+    /// Get a specific revision of a custom rule
+    Revision {
+        #[arg(help = "Ruleset name")]
+        ruleset: String,
+        #[arg(help = "Rule name")]
+        rule: String,
+        #[arg(help = "Revision ID")]
+        revision_id: String,
+    },
 }
 
+// ---- Kafka (Experimental) ----
 #[derive(Subcommand)]
-enum StaticAnalysisCoverageActions {
-    /// List coverage analyses
-    List {
-        #[arg(long, help = "Filter by branch")]
-        branch: Option<String>,
-        #[arg(long, help = "Start time")]
-        from: Option<String>,
-        #[arg(long, help = "End time")]
-        to: Option<String>,
-        #[arg(long, help = "Filter by repository")]
-        repository: Option<String>,
-        #[arg(long, help = "Filter by language")]
-        language: Option<String>,
-        #[arg(long, help = "Filter by severity")]
-        severity: Option<String>,
-        #[arg(long, help = "Filter by status")]
-        status: Option<String>,
+enum KafkaActions {
+    /// Get Kafka topic configuration versions
+    #[command(name = "topic-configs")]
+    TopicConfigs {
+        #[arg(long, help = "Kafka cluster ID")]
+        kafka_cluster_id: String,
+        #[arg(long, help = "Kafka topic name")]
+        topic: String,
     },
-    /// Get coverage analysis details
-    Get { id: String },
+    /// Get Kafka broker configuration versions
+    #[command(name = "broker-configs")]
+    BrokerConfigs {
+        #[arg(long, help = "Kafka cluster ID")]
+        kafka_cluster_id: String,
+        #[arg(long, help = "Broker ID")]
+        broker_id: String,
+    },
+    /// Get Kafka client (producer/consumer) configuration
+    #[command(name = "client-configs")]
+    ClientConfigs {
+        #[arg(long, help = "Kafka cluster ID")]
+        kafka_cluster_id: String,
+        /// Service to fetch configs for in the form `name:producer` or
+        /// `name:consumer`. May be repeated.
+        #[arg(long = "service", value_name = "NAME:TYPE", required = true)]
+        services: Vec<String>,
+    },
+    /// Read messages from a Kafka cluster / topic via the Datadog Agent
+    ///
+    /// Dispatches a read-messages action via Remote Config and polls for the
+    /// agent's response. Requires the `data_streams_monitoring_capture_messages`
+    /// permission and a Datadog Agent connected to the target cluster.
+    /// Rate-limited to 10 calls/minute per user.
+    #[command(name = "read-messages", verbatim_doc_comment)]
+    ReadMessages {
+        #[arg(long, help = "Kafka cluster ID")]
+        cluster: String,
+        #[arg(long, help = "Kafka topic name")]
+        topic: String,
+        #[arg(long, help = "Bootstrap servers (host:port,...)")]
+        bootstrap_servers: String,
+        #[arg(long, help = "Partition to read from (omit for all)")]
+        partition: Option<i32>,
+        #[arg(long, default_value_t = 0, help = "Offset to start reading from")]
+        start_offset: i64,
+        #[arg(long, help = "Start timestamp (unix ms); overrides start_offset")]
+        start_timestamp: Option<i64>,
+        #[arg(long, default_value_t = 10, help = "Max messages to return (<=100)")]
+        n_messages_retrieved: u32,
+        #[arg(long, default_value_t = 1000, help = "Max messages to scan (<=10000)")]
+        max_scanned_messages: u32,
+        /// Optional jq-style filter expression evaluated agent-side against each
+        /// deserialized message. The message context exposes top-level fields
+        /// .key, .value, .headers, .topic, .partition, .offset, and .timestamp;
+        /// navigate nested fields with dotted paths (e.g. .value.user.country).
+        /// Supported operators: ==, !=, >, <, >=, <=, contains. Combine with
+        /// ' and ' / ' or ' (or has higher precedence; or is split first).
+        /// String literals must be quoted with " or '. Numeric literals are
+        /// parsed as int/float. A bare path (no operator) is an existence
+        /// check — true when the field resolves to a non-null value.
+        /// Examples:
+        ///   '.value.status == "failed"'
+        ///   '.value.amount > 100'
+        ///   '.headers.tenant == "acme" and .value.priority >= 5'
+        ///   '.value.tags contains "urgent"'
+        ///   '.value.error' (existence)
+        #[arg(long, verbatim_doc_comment)]
+        filter: Option<String>,
+        #[arg(long, help = "Consumer group ID to use")]
+        consumer_group_id: Option<String>,
+    },
+    /// Get all Schema Registry versions for a subject on a cluster
+    #[command(name = "subject-schemas")]
+    SubjectSchemas {
+        #[arg(long, help = "Kafka cluster ID")]
+        kafka_cluster_id: String,
+        #[arg(long, help = "Schema Registry subject name")]
+        subject: String,
+    },
 }
 
 // ---- Auth ----
@@ -7594,6 +9315,12 @@ fn build_agent_schema_scoped(
                 "type": "bool",
                 "default": "false",
                 "description": "Enable agent mode (auto-detected for AI coding assistants)"
+            },
+            {
+                "name": "--no-agent",
+                "type": "bool",
+                "default": "false",
+                "description": "Disable agent mode (overrides auto-detection and --agent)"
             },
             {
                 "name": "--org",
@@ -7714,6 +9441,12 @@ fn build_agent_schema(cmd: &clap::Command) -> serde_json::Value {
                 "type": "bool",
                 "default": "false",
                 "description": "Enable agent mode (auto-detected for AI coding assistants)"
+            },
+            {
+                "name": "--no-agent",
+                "type": "bool",
+                "default": "false",
+                "description": "Disable agent mode (overrides auto-detection and --agent)"
             },
             {
                 "name": "--org",
@@ -7952,8 +9685,9 @@ fn build_command_schema(cmd: &clap::Command, parent_path: &str) -> serde_json::V
     obj.insert("name".into(), serde_json::json!(name));
     obj.insert("full_path".into(), serde_json::json!(full_path));
 
-    if let Some(about) = cmd.get_about() {
-        obj.insert("description".into(), serde_json::json!(about.to_string()));
+    // Prefer long_about so agents see full context (grouping, examples, field references)
+    if let Some(desc) = cmd.get_long_about().or_else(|| cmd.get_about()) {
+        obj.insert("description".into(), serde_json::json!(desc.to_string()));
     }
 
     // Determine read_only based on command name — but only emit for leaf commands
@@ -8219,6 +9953,39 @@ mod test_agent_schema {
             "group command should have subcommands"
         );
     }
+
+    #[test]
+    fn global_flags_include_no_agent() {
+        let schema = get_schema();
+        let flags = schema["global_flags"]
+            .as_array()
+            .expect("global_flags missing");
+        assert!(
+            flags
+                .iter()
+                .any(|f| f["name"].as_str() == Some("--no-agent")),
+            "global_flags must include --no-agent"
+        );
+    }
+
+    #[test]
+    fn no_agent_flag_in_scoped_schema() {
+        let cmd = Cli::command();
+        let monitors_cmd = cmd
+            .get_subcommands()
+            .find(|s| s.get_name() == "monitors")
+            .expect("monitors subcommand not found");
+        let schema = build_agent_schema_scoped(&cmd, monitors_cmd, &["monitors"]);
+        let flags = schema["global_flags"]
+            .as_array()
+            .expect("global_flags missing");
+        assert!(
+            flags
+                .iter()
+                .any(|f| f["name"].as_str() == Some("--no-agent")),
+            "scoped schema global_flags must include --no-agent"
+        );
+    }
 }
 
 // ---- Main ----
@@ -8317,7 +10084,8 @@ async fn main_inner() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let has_help = args.iter().any(|a| a == "--help" || a == "-h");
     let has_agent_flag = args.iter().any(|a| a == "--agent");
-    if has_help && (useragent::is_agent_mode() || has_agent_flag) {
+    let has_no_agent_flag = args.iter().any(|a| a == "--no-agent");
+    if has_help && !has_no_agent_flag && (useragent::is_agent_mode() || has_agent_flag) {
         let cmd = Cli::command();
         // Collect subcommand path from args (skip binary name, flags, and --help/-h)
         let sub_path: Vec<&str> = args
@@ -8397,21 +10165,18 @@ async fn main_inner() -> anyhow::Result<()> {
     if cli.yes {
         cfg.auto_approve = true;
     }
-    cfg.agent_mode = cli.agent || useragent::is_agent_mode();
+    cfg.agent_mode = !cli.no_agent && (cli.agent || useragent::is_agent_mode());
     if cfg.agent_mode {
         cfg.auto_approve = true;
     }
-    // Apply --org flag (higher priority than DD_ORG env var / config file)
+    // Apply --org flag (higher priority than DD_ORG env var / config file).
+    // Site for this org and access token are also resolved here.
     if let Some(org) = cli.org {
-        cfg.org = Some(org);
-        // Reload token from storage for this org, unless DD_ACCESS_TOKEN was explicitly set
         #[cfg(all(not(feature = "browser"), not(target_arch = "wasm32")))]
-        if std::env::var("DD_ACCESS_TOKEN")
-            .ok()
-            .filter(|s| !s.is_empty())
-            .is_none()
+        config::apply_org_override(&mut cfg, org);
+        #[cfg(any(feature = "browser", target_arch = "wasm32"))]
         {
-            cfg.access_token = config::load_token_from_storage(&cfg.site, cfg.org.as_deref());
+            cfg.org = Some(org);
         }
     }
 
@@ -8507,6 +10272,7 @@ async fn main_inner() -> anyhow::Result<()> {
                     group_by,
                     limit,
                     storage,
+                    sort,
                 } => {
                     commands::logs::aggregate(
                         &cfg,
@@ -8525,6 +10291,7 @@ async fn main_inner() -> anyhow::Result<()> {
                                 .unwrap_or_default(),
                             limit,
                             storage,
+                            sort,
                         },
                     )
                     .await?;
@@ -8569,8 +10336,8 @@ async fn main_inner() -> anyhow::Result<()> {
         Commands::Incidents { action } => {
             cfg.validate_auth()?;
             match action {
-                IncidentActions::List { limit } => {
-                    commands::incidents::list(&cfg, limit).await?;
+                IncidentActions::List { query, limit } => {
+                    commands::incidents::list(&cfg, query, limit).await?;
                 }
                 IncidentActions::Get { incident_id } => {
                     commands::incidents::get(&cfg, &incident_id).await?;
@@ -8956,6 +10723,59 @@ async fn main_inner() -> anyhow::Result<()> {
                     SyntheticsTestActions::GetFastResult { result_id } => {
                         commands::synthetics::tests_get_fast_result(&cfg, &result_id).await?;
                     }
+                    SyntheticsTestActions::GetResult {
+                        public_id,
+                        result_id,
+                        event_id,
+                        timestamp,
+                    } => {
+                        commands::synthetics::tests_get_result(
+                            &cfg, &public_id, &result_id, event_id, timestamp,
+                        )
+                        .await?;
+                    }
+                    SyntheticsTestActions::GetBrowserResult {
+                        public_id,
+                        result_id,
+                        event_id,
+                        timestamp,
+                    } => {
+                        commands::synthetics::tests_get_browser_result(
+                            &cfg, &public_id, &result_id, event_id, timestamp,
+                        )
+                        .await?;
+                    }
+                    SyntheticsTestActions::ListLatestResults {
+                        public_id,
+                        from_ts,
+                        to_ts,
+                        status,
+                        run_type,
+                        probe_dc,
+                        device_id,
+                    } => {
+                        commands::synthetics::tests_list_latest_results(
+                            &cfg, &public_id, from_ts, to_ts, status, run_type, probe_dc, device_id,
+                        )
+                        .await?;
+                    }
+                    SyntheticsTestActions::ListLatestBrowserResults {
+                        public_id,
+                        from_ts,
+                        to_ts,
+                        status,
+                        run_type,
+                        probe_dc,
+                        device_id,
+                    } => {
+                        commands::synthetics::tests_list_latest_browser_results(
+                            &cfg, &public_id, from_ts, to_ts, status, run_type, probe_dc, device_id,
+                        )
+                        .await?;
+                    }
+                    SyntheticsTestActions::PollResults { result_ids } => {
+                        commands::synthetics::tests_poll_results(&cfg, result_ids).await?;
+                    }
                     SyntheticsTestActions::GetVersion {
                         public_id,
                         version,
@@ -9038,6 +10858,20 @@ async fn main_inner() -> anyhow::Result<()> {
                     TestOptimizationFlakyTestsActions::Update { file } => {
                         commands::test_optimization::flaky_tests_update(&cfg, &file).await?;
                     }
+                    TestOptimizationFlakyTestsActions::Policies { action } => match action {
+                        TestOptimizationFlakyTestsPoliciesActions::Get { file } => {
+                            commands::test_optimization::flaky_tests_management_policies_get(
+                                &cfg, &file,
+                            )
+                            .await?;
+                        }
+                        TestOptimizationFlakyTestsPoliciesActions::Update { file } => {
+                            commands::test_optimization::flaky_tests_management_policies_update(
+                                &cfg, &file,
+                            )
+                            .await?;
+                        }
+                    },
                 },
             }
         }
@@ -9096,7 +10930,10 @@ async fn main_inner() -> anyhow::Result<()> {
         Commands::Users { action } => {
             cfg.validate_auth()?;
             match action {
-                UserActions::List => commands::users::list(&cfg).await?,
+                UserActions::List {
+                    page_size,
+                    page_number,
+                } => commands::users::list(&cfg, page_size, page_number).await?,
                 UserActions::Get { user_id } => commands::users::get(&cfg, &user_id).await?,
                 UserActions::Roles { action } => match action {
                     UserRoleActions::List => commands::users::roles_list(&cfg).await?,
@@ -9249,14 +11086,17 @@ async fn main_inner() -> anyhow::Result<()> {
             cfg.validate_auth()?;
             match action {
                 SecurityActions::Rules { action } => match action {
-                    SecurityRuleActions::List { sort, .. } => {
-                        commands::security::rules_list(&cfg, sort).await?
+                    SecurityRuleActions::List { filter, sort } => {
+                        commands::security::rules_list(&cfg, filter, sort).await?
                     }
                     SecurityRuleActions::Get { rule_id } => {
                         commands::security::rules_get(&cfg, &rule_id).await?;
                     }
                     SecurityRuleActions::BulkExport { rule_ids } => {
                         commands::security::rules_bulk_export(&cfg, rule_ids).await?;
+                    }
+                    SecurityRuleActions::ToTerraform { file } => {
+                        commands::security::rules_to_terraform(&cfg, &file).await?;
                     }
                 },
                 SecurityActions::Signals { action } => match action {
@@ -9269,10 +11109,28 @@ async fn main_inner() -> anyhow::Result<()> {
                     } => {
                         commands::security::signals_search(&cfg, query, from, to, limit).await?;
                     }
+                    SecuritySignalActions::InvestigationQueries { signal_id } => {
+                        commands::security::signals_investigation_queries(&cfg, &signal_id).await?;
+                    }
+                    SecuritySignalActions::SuggestedActions { signal_id } => {
+                        commands::security::signals_suggested_actions(&cfg, &signal_id).await?;
+                    }
                 },
                 SecurityActions::Findings { action } => match action {
                     SecurityFindingActions::Search { query, limit } => {
                         commands::security::findings_search(&cfg, query, limit).await?;
+                    }
+                    SecurityFindingActions::Schema => {
+                        commands::security::findings_schema(&cfg).await?;
+                    }
+                    SecurityFindingActions::Analyze {
+                        query,
+                        from,
+                        to,
+                        limit,
+                    } => {
+                        commands::security::findings_analyze(&cfg, &query, &from, &to, limit)
+                            .await?;
                     }
                 },
                 SecurityActions::ContentPacks { action } => match action {
@@ -9284,6 +11142,28 @@ async fn main_inner() -> anyhow::Result<()> {
                     }
                     SecurityContentPackActions::Deactivate { pack_id } => {
                         commands::security::content_packs_deactivate(&cfg, &pack_id).await?;
+                    }
+                },
+                SecurityActions::Iocs { action } => match action {
+                    SecurityIocActions::List {
+                        query,
+                        limit,
+                        offset,
+                        sort_column,
+                        sort_order,
+                    } => {
+                        commands::security::iocs_list(
+                            &cfg,
+                            query,
+                            limit,
+                            offset,
+                            sort_column,
+                            sort_order,
+                        )
+                        .await?;
+                    }
+                    SecurityIocActions::Get { indicator } => {
+                        commands::security::iocs_get(&cfg, &indicator).await?;
                     }
                 },
                 SecurityActions::RiskScores { action } => match action {
@@ -9378,6 +11258,34 @@ async fn main_inner() -> anyhow::Result<()> {
                         commands::security::restriction_policy_delete(&cfg, &resource_id).await?;
                     }
                 },
+                SecurityActions::Terraform { action } => match action {
+                    SecurityTerraformActions::Export {
+                        resource_type,
+                        resource_id,
+                    } => {
+                        commands::security::terraform_export(&cfg, &resource_type, &resource_id)
+                            .await?;
+                    }
+                    SecurityTerraformActions::BulkExport {
+                        resource_type,
+                        file,
+                        output_file,
+                    } => {
+                        commands::security::terraform_bulk_export(
+                            &cfg,
+                            &resource_type,
+                            &file,
+                            &output_file,
+                        )
+                        .await?;
+                    }
+                    SecurityTerraformActions::Convert {
+                        resource_type,
+                        file,
+                    } => {
+                        commands::security::terraform_convert(&cfg, &resource_type, &file).await?;
+                    }
+                },
             }
         }
         // --- AuthN Mappings ---
@@ -9407,6 +11315,75 @@ async fn main_inner() -> anyhow::Result<()> {
             match action {
                 OrgActions::List => commands::organizations::list(&cfg).await?,
                 OrgActions::Get => commands::organizations::get(&cfg).await?,
+                OrgActions::Policies { action } => match action {
+                    OrgPoliciesActions::List {
+                        group_id,
+                        name,
+                        page_number,
+                        page_size,
+                        sort,
+                    } => {
+                        commands::organizations::policies_list(
+                            &cfg,
+                            &group_id,
+                            name,
+                            page_number,
+                            page_size,
+                            sort,
+                        )
+                        .await?;
+                    }
+                    OrgPoliciesActions::Get { policy_id } => {
+                        commands::organizations::policies_get(&cfg, &policy_id).await?;
+                    }
+                    OrgPoliciesActions::Create { file } => {
+                        commands::organizations::policies_create(&cfg, &file).await?;
+                    }
+                    OrgPoliciesActions::Update { policy_id, file } => {
+                        commands::organizations::policies_update(&cfg, &policy_id, &file).await?;
+                    }
+                    OrgPoliciesActions::Delete { policy_id } => {
+                        commands::organizations::policies_delete(&cfg, &policy_id).await?;
+                    }
+                },
+                OrgActions::PolicyOverrides { action } => match action {
+                    OrgPolicyOverridesActions::List {
+                        group_id,
+                        policy_id,
+                        page_number,
+                        page_size,
+                        sort,
+                    } => {
+                        commands::organizations::policy_overrides_list(
+                            &cfg,
+                            &group_id,
+                            policy_id,
+                            page_number,
+                            page_size,
+                            sort,
+                        )
+                        .await?;
+                    }
+                    OrgPolicyOverridesActions::Get { override_id } => {
+                        commands::organizations::policy_overrides_get(&cfg, &override_id).await?;
+                    }
+                    OrgPolicyOverridesActions::Create { file } => {
+                        commands::organizations::policy_overrides_create(&cfg, &file).await?;
+                    }
+                    OrgPolicyOverridesActions::Update { override_id, file } => {
+                        commands::organizations::policy_overrides_update(&cfg, &override_id, &file)
+                            .await?;
+                    }
+                    OrgPolicyOverridesActions::Delete { override_id } => {
+                        commands::organizations::policy_overrides_delete(&cfg, &override_id)
+                            .await?;
+                    }
+                },
+                OrgActions::PolicyConfigs { action } => match action {
+                    OrgPolicyConfigsActions::List => {
+                        commands::organizations::policy_configs_list(&cfg).await?;
+                    }
+                },
             }
         }
         // --- Change Management ---
@@ -9639,8 +11616,20 @@ async fn main_inner() -> anyhow::Result<()> {
             cfg.validate_auth()?;
             match action {
                 SoftwareCatalogActions::Entities { action } => match action {
-                    SoftwareCatalogEntityActions::List => {
-                        commands::software_catalog::entities_list(&cfg).await?;
+                    SoftwareCatalogEntityActions::List {
+                        filter,
+                        filter_kind,
+                        filter_owner,
+                        filter_ref,
+                    } => {
+                        commands::software_catalog::entities_list(
+                            &cfg,
+                            filter,
+                            filter_kind,
+                            filter_owner,
+                            filter_ref,
+                        )
+                        .await?;
                     }
                     SoftwareCatalogEntityActions::Upsert { file } => {
                         commands::software_catalog::entities_upsert(&cfg, &file).await?;
@@ -9982,18 +11971,10 @@ async fn main_inner() -> anyhow::Result<()> {
                         query,
                         cursor,
                         limit,
-                        include_history,
                         sort,
                     } => {
-                        commands::cicd::flaky_tests_search(
-                            &cfg,
-                            query,
-                            cursor,
-                            limit,
-                            include_history,
-                            sort,
-                        )
-                        .await?;
+                        commands::cicd::flaky_tests_search(&cfg, query, cursor, limit, sort)
+                            .await?;
                     }
                     CicdFlakyTestActions::Update { file } => {
                         commands::cicd::flaky_tests_update(&cfg, &file).await?;
@@ -10135,6 +12116,9 @@ async fn main_inner() -> anyhow::Result<()> {
                     OnCallPagesActions::Create { file } => {
                         commands::on_call::pages_create(&cfg, &file).await?;
                     }
+                    OnCallPagesActions::Get { page_id } => {
+                        commands::on_call::pages_get(&cfg, &page_id).await?;
+                    }
                 },
             }
         }
@@ -10150,6 +12134,23 @@ async fn main_inner() -> anyhow::Result<()> {
                         commands::fleet::agents_get(&cfg, &agent_key).await?;
                     }
                     FleetAgentActions::Versions => commands::fleet::agents_versions(&cfg).await?,
+                    FleetAgentActions::Tracers {
+                        agent_key,
+                        page_size,
+                        page_number,
+                        sort_attribute,
+                        sort_descending,
+                    } => {
+                        commands::fleet::agents_tracers_list(
+                            &cfg,
+                            agent_key,
+                            page_size,
+                            page_number,
+                            sort_attribute,
+                            sort_descending,
+                        )
+                        .await?;
+                    }
                 },
                 FleetActions::Deployments { action } => match action {
                     FleetDeploymentActions::List { page_size } => {
@@ -10186,6 +12187,49 @@ async fn main_inner() -> anyhow::Result<()> {
                         commands::fleet::schedules_trigger(&cfg, &schedule_id).await?;
                     }
                 },
+                FleetActions::Clusters { action } => match action {
+                    FleetClusterActions::List {
+                        filter,
+                        page_size,
+                        page_number,
+                        sort_attribute,
+                        sort_descending,
+                    } => {
+                        commands::fleet::clusters_list(
+                            &cfg,
+                            filter,
+                            page_size,
+                            page_number,
+                            sort_attribute,
+                            sort_descending,
+                        )
+                        .await?;
+                    }
+                },
+                FleetActions::Tracers { action } => match action {
+                    FleetTracerActions::List {
+                        filter,
+                        page_size,
+                        page_number,
+                        sort_attribute,
+                        sort_descending,
+                    } => {
+                        commands::fleet::tracers_list(
+                            &cfg,
+                            filter,
+                            page_size,
+                            page_number,
+                            sort_attribute,
+                            sort_descending,
+                        )
+                        .await?;
+                    }
+                },
+                FleetActions::InstrumentedPods { action } => match action {
+                    FleetInstrumentedPodsActions::List { cluster_name } => {
+                        commands::fleet::instrumented_pods_list(&cfg, cluster_name).await?;
+                    }
+                },
             }
         }
         // --- DBM ---
@@ -10213,6 +12257,49 @@ async fn main_inner() -> anyhow::Result<()> {
                         }
                     },
                 },
+            }
+        }
+        // --- Data Deletion ---
+        Commands::DataDeletion { action } => {
+            cfg.validate_auth()?;
+            match action {
+                DataDeletionActions::Requests { action } => match action {
+                    DataDeletionRequestActions::List {
+                        product,
+                        query,
+                        status,
+                    } => {
+                        commands::data_deletion::requests_list(&cfg, product, query, status)
+                            .await?;
+                    }
+                    DataDeletionRequestActions::Create { product, file } => {
+                        commands::data_deletion::requests_create(&cfg, &product, &file).await?;
+                    }
+                    DataDeletionRequestActions::Cancel { request_id } => {
+                        commands::data_deletion::requests_cancel(&cfg, &request_id).await?;
+                    }
+                },
+            }
+        }
+        // --- Datasets ---
+        Commands::Datasets { action } => {
+            cfg.validate_auth()?;
+            match action {
+                DatasetsActions::List => {
+                    commands::datasets::list(&cfg).await?;
+                }
+                DatasetsActions::Get { dataset_id } => {
+                    commands::datasets::get(&cfg, &dataset_id).await?;
+                }
+                DatasetsActions::Create { file } => {
+                    commands::datasets::create(&cfg, &file).await?;
+                }
+                DatasetsActions::Update { dataset_id, file } => {
+                    commands::datasets::update(&cfg, &dataset_id, &file).await?;
+                }
+                DatasetsActions::Delete { dataset_id } => {
+                    commands::datasets::delete(&cfg, &dataset_id).await?;
+                }
             }
         }
         // --- Deployment Gates ---
@@ -10366,6 +12453,59 @@ async fn main_inner() -> anyhow::Result<()> {
                         feature_flags_env_id,
                     } => {
                         commands::feature_flags::envs_delete(&cfg, &feature_flags_env_id).await?;
+                    }
+                },
+                FeatureFlagActions::Allocations { action } => match action {
+                    FeatureFlagAllocActions::Create {
+                        feature_flag_id,
+                        environment_id,
+                        file,
+                    } => {
+                        commands::feature_flags::allocations_create(
+                            &cfg,
+                            &feature_flag_id,
+                            &environment_id,
+                            &file,
+                        )
+                        .await?;
+                    }
+                    FeatureFlagAllocActions::Update {
+                        feature_flag_id,
+                        environment_id,
+                        file,
+                    } => {
+                        commands::feature_flags::allocations_update(
+                            &cfg,
+                            &feature_flag_id,
+                            &environment_id,
+                            &file,
+                        )
+                        .await?;
+                    }
+                },
+                FeatureFlagActions::Exposure { action } => match action {
+                    FeatureFlagExposureActions::Start {
+                        exposure_schedule_id,
+                    } => {
+                        commands::feature_flags::exposure_start(&cfg, &exposure_schedule_id)
+                            .await?;
+                    }
+                    FeatureFlagExposureActions::Stop {
+                        exposure_schedule_id,
+                    } => {
+                        commands::feature_flags::exposure_stop(&cfg, &exposure_schedule_id).await?;
+                    }
+                    FeatureFlagExposureActions::Pause {
+                        exposure_schedule_id,
+                    } => {
+                        commands::feature_flags::exposure_pause(&cfg, &exposure_schedule_id)
+                            .await?;
+                    }
+                    FeatureFlagExposureActions::Resume {
+                        exposure_schedule_id,
+                    } => {
+                        commands::feature_flags::exposure_resume(&cfg, &exposure_schedule_id)
+                            .await?;
                     }
                 },
                 FeatureFlagActions::Enable {
@@ -10758,54 +12898,332 @@ async fn main_inner() -> anyhow::Result<()> {
         Commands::Cost { action } => {
             cfg.validate_auth()?;
             match action {
-                CostActions::Projected => commands::cost::projected(&cfg).await?,
-                CostActions::ByOrg {
-                    start_month,
-                    end_month,
-                    ..
-                } => {
-                    commands::cost::by_org(&cfg, start_month, end_month).await?;
-                }
-                CostActions::Attribution { start, fields, .. } => {
-                    commands::cost::attribution(&cfg, start, fields).await?;
-                }
-                CostActions::AwsConfig { action } => match action {
-                    CostCloudConfigActions::List => commands::cost::aws_config_list(&cfg).await?,
-                    CostCloudConfigActions::Get { id } => {
-                        commands::cost::aws_config_get(&cfg, id).await?;
+                CostActions::Datadog { action } => match action {
+                    CostDatadogActions::Projected => commands::cost::projected(&cfg).await?,
+                    CostDatadogActions::ByOrg {
+                        start_month,
+                        end_month,
+                        ..
+                    } => {
+                        commands::cost::by_org(&cfg, start_month, end_month).await?;
                     }
-                    CostCloudConfigActions::Create { file } => {
-                        commands::cost::aws_config_create(&cfg, &file).await?;
+                    CostDatadogActions::Attribution { start, fields, .. } => {
+                        commands::cost::attribution(&cfg, start, fields).await?;
                     }
-                    CostCloudConfigActions::Delete { id } => {
-                        commands::cost::aws_config_delete(&cfg, id).await?;
-                    }
+                    CostDatadogActions::AwsConfig { action } => match action {
+                        CostCloudConfigActions::List => {
+                            commands::cost::aws_config_list(&cfg).await?
+                        }
+                        CostCloudConfigActions::Get { id } => {
+                            commands::cost::aws_config_get(&cfg, id).await?;
+                        }
+                        CostCloudConfigActions::Create { file } => {
+                            commands::cost::aws_config_create(&cfg, &file).await?;
+                        }
+                        CostCloudConfigActions::Delete { id } => {
+                            commands::cost::aws_config_delete(&cfg, id).await?;
+                        }
+                    },
+                    CostDatadogActions::AzureConfig { action } => match action {
+                        CostCloudConfigActions::List => {
+                            commands::cost::azure_config_list(&cfg).await?;
+                        }
+                        CostCloudConfigActions::Get { id } => {
+                            commands::cost::azure_config_get(&cfg, id).await?;
+                        }
+                        CostCloudConfigActions::Create { file } => {
+                            commands::cost::azure_config_create(&cfg, &file).await?;
+                        }
+                        CostCloudConfigActions::Delete { id } => {
+                            commands::cost::azure_config_delete(&cfg, id).await?;
+                        }
+                    },
+                    CostDatadogActions::GcpConfig { action } => match action {
+                        CostCloudConfigActions::List => {
+                            commands::cost::gcp_config_list(&cfg).await?
+                        }
+                        CostCloudConfigActions::Get { id } => {
+                            commands::cost::gcp_config_get(&cfg, id).await?;
+                        }
+                        CostCloudConfigActions::Create { file } => {
+                            commands::cost::gcp_config_create(&cfg, &file).await?;
+                        }
+                        CostCloudConfigActions::Delete { id } => {
+                            commands::cost::gcp_config_delete(&cfg, id).await?;
+                        }
+                    },
                 },
-                CostActions::AzureConfig { action } => match action {
-                    CostCloudConfigActions::List => {
-                        commands::cost::azure_config_list(&cfg).await?;
-                    }
-                    CostCloudConfigActions::Get { id } => {
-                        commands::cost::azure_config_get(&cfg, id).await?;
-                    }
-                    CostCloudConfigActions::Create { file } => {
-                        commands::cost::azure_config_create(&cfg, &file).await?;
-                    }
-                    CostCloudConfigActions::Delete { id } => {
-                        commands::cost::azure_config_delete(&cfg, id).await?;
-                    }
-                },
-                CostActions::GcpConfig { action } => match action {
-                    CostCloudConfigActions::List => commands::cost::gcp_config_list(&cfg).await?,
-                    CostCloudConfigActions::Get { id } => {
-                        commands::cost::gcp_config_get(&cfg, id).await?;
-                    }
-                    CostCloudConfigActions::Create { file } => {
-                        commands::cost::gcp_config_create(&cfg, &file).await?;
-                    }
-                    CostCloudConfigActions::Delete { id } => {
-                        commands::cost::gcp_config_delete(&cfg, id).await?;
-                    }
+                CostActions::Ccm { action } => match action {
+                    CostCcmActions::CustomCosts { action } => match action {
+                        CostCcmCustomCostsActions::List {
+                            page_size,
+                            status,
+                            sort,
+                        } => {
+                            commands::cost_ccm::custom_costs_list(&cfg, page_size, status, sort)
+                                .await?;
+                        }
+                        CostCcmCustomCostsActions::Get { file_id } => {
+                            commands::cost_ccm::custom_costs_get(&cfg, &file_id).await?;
+                        }
+                        CostCcmCustomCostsActions::Upload { file, version } => {
+                            commands::cost_ccm::custom_costs_upload(&cfg, &file, version).await?;
+                        }
+                        CostCcmCustomCostsActions::Delete { file_id } => {
+                            commands::cost_ccm::custom_costs_delete(&cfg, &file_id).await?;
+                        }
+                    },
+                    CostCcmActions::TagDescriptions { action } => match action {
+                        CostCcmTagDescActions::List { cloud } => {
+                            commands::cost_ccm::tag_desc_list(&cfg, cloud).await?;
+                        }
+                        CostCcmTagDescActions::Get { tag_key, cloud } => {
+                            commands::cost_ccm::tag_desc_get(&cfg, &tag_key, cloud).await?;
+                        }
+                        CostCcmTagDescActions::Generate { tag_key } => {
+                            commands::cost_ccm::tag_desc_generate(&cfg, &tag_key).await?;
+                        }
+                        CostCcmTagDescActions::Upsert {
+                            tag_key,
+                            description,
+                            cloud,
+                        } => {
+                            commands::cost_ccm::tag_desc_upsert(
+                                &cfg,
+                                &tag_key,
+                                &description,
+                                cloud,
+                            )
+                            .await?;
+                        }
+                        CostCcmTagDescActions::Delete { tag_key, cloud } => {
+                            commands::cost_ccm::tag_desc_delete(&cfg, &tag_key, cloud).await?;
+                        }
+                    },
+                    CostCcmActions::TagMetadata { action } => match action {
+                        CostCcmTagMetadataActions::List {
+                            month,
+                            provider,
+                            metric,
+                            tag_key,
+                            daily,
+                        } => {
+                            commands::cost_ccm::tag_meta_list(
+                                &cfg, &month, provider, metric, tag_key, daily,
+                            )
+                            .await?;
+                        }
+                        CostCcmTagMetadataActions::TagSources { month, provider } => {
+                            commands::cost_ccm::tag_meta_sources(&cfg, &month, provider).await?;
+                        }
+                        CostCcmTagMetadataActions::Metrics { month, provider } => {
+                            commands::cost_ccm::tag_meta_metrics(&cfg, &month, provider).await?;
+                        }
+                        CostCcmTagMetadataActions::Orchestrators { month, provider } => {
+                            commands::cost_ccm::tag_meta_orchestrators(&cfg, &month, provider)
+                                .await?;
+                        }
+                        CostCcmTagMetadataActions::Currency { month, provider } => {
+                            commands::cost_ccm::tag_meta_currency(&cfg, &month, provider).await?;
+                        }
+                    },
+                    CostCcmActions::Tags { action } => match action {
+                        CostCcmTagsActions::List {
+                            metric,
+                            r#match,
+                            tags,
+                        } => {
+                            commands::cost_ccm::tags_list(&cfg, metric, r#match, tags).await?;
+                        }
+                    },
+                    CostCcmActions::TagKeys { action } => match action {
+                        CostCcmTagKeysActions::List { metric, tags } => {
+                            commands::cost_ccm::tag_keys_list(&cfg, metric, tags).await?;
+                        }
+                        CostCcmTagKeysActions::Get { key, metric } => {
+                            commands::cost_ccm::tag_keys_get(&cfg, &key, metric).await?;
+                        }
+                    },
+                    CostCcmActions::Budgets { action } => match action {
+                        CostCcmBudgetsActions::List => {
+                            commands::cost_ccm::budgets_list(&cfg).await?;
+                        }
+                        CostCcmBudgetsActions::Get {
+                            budget_id,
+                            start,
+                            end,
+                            actual,
+                            forecast,
+                        } => {
+                            commands::cost_ccm::budgets_get(
+                                &cfg, &budget_id, start, end, actual, forecast,
+                            )
+                            .await?;
+                        }
+                        CostCcmBudgetsActions::Upsert { file } => {
+                            commands::cost_ccm::budgets_upsert(&cfg, &file).await?;
+                        }
+                        CostCcmBudgetsActions::Delete { budget_id } => {
+                            commands::cost_ccm::budgets_delete(&cfg, &budget_id).await?;
+                        }
+                        CostCcmBudgetsActions::Validate { file } => {
+                            commands::cost_ccm::budgets_validate(&cfg, &file).await?;
+                        }
+                    },
+                    CostCcmActions::Commitments { action } => match action {
+                        CostCcmCommitmentsActions::Utilization {
+                            provider,
+                            product,
+                            from,
+                            to,
+                            commitment_type,
+                            filter_by,
+                        } => {
+                            commands::cost_ccm::commitments_utilization(
+                                &cfg,
+                                &provider,
+                                &product,
+                                &from,
+                                &to,
+                                commitment_type,
+                                filter_by,
+                            )
+                            .await?;
+                        }
+                        CostCcmCommitmentsActions::Coverage {
+                            provider,
+                            product,
+                            from,
+                            to,
+                            commitment_type,
+                            filter_by,
+                        } => {
+                            commands::cost_ccm::commitments_coverage(
+                                &cfg,
+                                &provider,
+                                &product,
+                                &from,
+                                &to,
+                                commitment_type,
+                                filter_by,
+                            )
+                            .await?;
+                        }
+                        CostCcmCommitmentsActions::Savings {
+                            provider,
+                            product,
+                            from,
+                            to,
+                            commitment_type,
+                            filter_by,
+                        } => {
+                            commands::cost_ccm::commitments_savings(
+                                &cfg,
+                                &provider,
+                                &product,
+                                &from,
+                                &to,
+                                commitment_type,
+                                filter_by,
+                            )
+                            .await?;
+                        }
+                        CostCcmCommitmentsActions::Hotspots {
+                            provider,
+                            product,
+                            from,
+                            to,
+                            commitment_type,
+                            filter_by,
+                        } => {
+                            commands::cost_ccm::commitments_hotspots(
+                                &cfg,
+                                &provider,
+                                &product,
+                                &from,
+                                &to,
+                                commitment_type,
+                                filter_by,
+                            )
+                            .await?;
+                        }
+                        CostCcmCommitmentsActions::UtilizationTs {
+                            provider,
+                            product,
+                            from,
+                            to,
+                            commitment_type,
+                            filter_by,
+                        } => {
+                            commands::cost_ccm::commitments_utilization_ts(
+                                &cfg,
+                                &provider,
+                                &product,
+                                &from,
+                                &to,
+                                commitment_type,
+                                filter_by,
+                            )
+                            .await?;
+                        }
+                        CostCcmCommitmentsActions::CoverageTs {
+                            provider,
+                            product,
+                            from,
+                            to,
+                            commitment_type,
+                            filter_by,
+                        } => {
+                            commands::cost_ccm::commitments_coverage_ts(
+                                &cfg,
+                                &provider,
+                                &product,
+                                &from,
+                                &to,
+                                commitment_type,
+                                filter_by,
+                            )
+                            .await?;
+                        }
+                        CostCcmCommitmentsActions::SavingsTs {
+                            provider,
+                            product,
+                            from,
+                            to,
+                            commitment_type,
+                            filter_by,
+                        } => {
+                            commands::cost_ccm::commitments_savings_ts(
+                                &cfg,
+                                &provider,
+                                &product,
+                                &from,
+                                &to,
+                                commitment_type,
+                                filter_by,
+                            )
+                            .await?;
+                        }
+                        CostCcmCommitmentsActions::List {
+                            provider,
+                            product,
+                            from,
+                            to,
+                            commitment_type,
+                            filter_by,
+                        } => {
+                            commands::cost_ccm::commitments_list(
+                                &cfg,
+                                &provider,
+                                &product,
+                                &from,
+                                &to,
+                                commitment_type,
+                                filter_by,
+                            )
+                            .await?;
+                        }
+                    },
                 },
             }
         }
@@ -10839,13 +13257,13 @@ async fn main_inner() -> anyhow::Result<()> {
                     }
                     ApmServiceActions::Resources {
                         service,
-                        operation,
+                        name,
                         env,
                         from,
                         to,
                         ..
                     } => {
-                        commands::apm::services_resources(&cfg, service, operation, env, from, to)
+                        commands::apm::services_resources(&cfg, service, name, env, from, to)
                             .await?;
                     }
                 },
@@ -10911,6 +13329,38 @@ async fn main_inner() -> anyhow::Result<()> {
                         commands::apm::service_remapping_delete(&cfg, id, version).await?;
                     }
                 },
+                ApmActions::ServiceConfig { action } => match action {
+                    ApmServiceConfigActions::Get {
+                        service_name,
+                        env,
+                        service_instance_ids,
+                    } => {
+                        commands::apm::service_config_get(
+                            &cfg,
+                            service_name,
+                            env,
+                            service_instance_ids,
+                        )
+                        .await?;
+                    }
+                },
+                ApmActions::ServiceLibraryConfig { action } => match action {
+                    ApmServiceLibraryConfigActions::Get {
+                        service_name,
+                        env,
+                        language,
+                        mixed,
+                    } => {
+                        commands::apm::service_library_config_get(
+                            &cfg,
+                            service_name,
+                            env,
+                            language,
+                            mixed,
+                        )
+                        .await?;
+                    }
+                },
             }
         }
         // --- DDSQL ---
@@ -10937,6 +13387,26 @@ async fn main_inner() -> anyhow::Result<()> {
                 } => {
                     commands::ddsql::time_series(&cfg, &query, &from, &to, interval, limit).await?;
                 }
+                DdsqlActions::Spec => {
+                    commands::ddsql::spec(&cfg).await?;
+                }
+                DdsqlActions::Schema { action } => match action {
+                    DdsqlSchemaActions::Tables {
+                        query,
+                        limit,
+                        offset,
+                    } => {
+                        commands::ddsql::schema_tables(&cfg, query.as_deref(), limit, offset)
+                            .await?;
+                    }
+                    DdsqlSchemaActions::Columns {
+                        table_id,
+                        limit,
+                        offset,
+                    } => {
+                        commands::ddsql::schema_columns(&cfg, &table_id, limit, offset).await?;
+                    }
+                },
             }
         }
         // --- Investigations ---
@@ -10962,10 +13432,12 @@ async fn main_inner() -> anyhow::Result<()> {
                 }
             }
         }
-        // --- Network (placeholder) ---
+        // --- Network ---
         Commands::Network { action } => match action {
             NetworkActions::List => {
-                anyhow::bail!("network commands are not yet implemented (API endpoints pending)")
+                anyhow::bail!(
+                    "the bare `pup network list` is not implemented; use `pup network flows`, `pup network devices`, or `pup network interfaces`"
+                )
             }
             NetworkActions::Flows { action } => match action {
                 NetworkFlowActions::List => {
@@ -11036,13 +13508,54 @@ async fn main_inner() -> anyhow::Result<()> {
                 }
             }
         }
-        // --- Scorecards (placeholder) ---
-        Commands::Scorecards { action } => match action {
-            ScorecardsActions::List => commands::scorecards::list()?,
-            ScorecardsActions::Get { scorecard_id } => {
-                commands::scorecards::get(&scorecard_id)?;
+        // --- Scorecards ---
+        Commands::Scorecards { action } => {
+            cfg.validate_auth()?;
+            match action {
+                ScorecardsActions::List => {
+                    commands::scorecards::list_scorecards(&cfg).await?;
+                }
+                ScorecardsActions::Rules { action } => match action {
+                    ScorecardsRulesActions::List => {
+                        commands::scorecards::rules_list(&cfg).await?;
+                    }
+                    ScorecardsRulesActions::Create { file } => {
+                        commands::scorecards::rules_create(&cfg, &file).await?;
+                    }
+                    ScorecardsRulesActions::Update { rule_id, file } => {
+                        commands::scorecards::rules_update(&cfg, &rule_id, &file).await?;
+                    }
+                    ScorecardsRulesActions::Delete { rule_id } => {
+                        commands::scorecards::rules_delete(&cfg, &rule_id).await?;
+                    }
+                },
+                ScorecardsActions::Outcomes { action } => match action {
+                    ScorecardsOutcomesActions::List => {
+                        commands::scorecards::outcomes_list(&cfg).await?;
+                    }
+                    ScorecardsOutcomesActions::BatchCreate { file } => {
+                        commands::scorecards::outcomes_batch_create(&cfg, &file).await?;
+                    }
+                },
+                ScorecardsActions::Campaigns { action } => match action {
+                    ScorecardsCampaignsActions::List => {
+                        commands::scorecards::campaigns_list(&cfg).await?;
+                    }
+                    ScorecardsCampaignsActions::Get { campaign_id } => {
+                        commands::scorecards::campaigns_get(&cfg, &campaign_id).await?;
+                    }
+                    ScorecardsCampaignsActions::Create { file } => {
+                        commands::scorecards::campaigns_create(&cfg, &file).await?;
+                    }
+                    ScorecardsCampaignsActions::Update { campaign_id, file } => {
+                        commands::scorecards::campaigns_update(&cfg, &campaign_id, &file).await?;
+                    }
+                    ScorecardsCampaignsActions::Delete { campaign_id } => {
+                        commands::scorecards::campaigns_delete(&cfg, &campaign_id).await?;
+                    }
+                },
             }
-        },
+        }
         // --- Traces ---
         Commands::Traces { action } => {
             cfg.validate_auth()?;
@@ -11065,6 +13578,23 @@ async fn main_inner() -> anyhow::Result<()> {
                 } => {
                     commands::traces::aggregate(&cfg, query, from, to, compute, group_by).await?;
                 }
+                TracesActions::Metrics { action } => match action {
+                    SpansMetricsActions::List => {
+                        commands::traces::metrics_list(&cfg).await?;
+                    }
+                    SpansMetricsActions::Get { metric_id } => {
+                        commands::traces::metrics_get(&cfg, &metric_id).await?;
+                    }
+                    SpansMetricsActions::Create { file } => {
+                        commands::traces::metrics_create(&cfg, &file).await?;
+                    }
+                    SpansMetricsActions::Update { metric_id, file } => {
+                        commands::traces::metrics_update(&cfg, &metric_id, &file).await?;
+                    }
+                    SpansMetricsActions::Delete { metric_id } => {
+                        commands::traces::metrics_delete(&cfg, &metric_id).await?;
+                    }
+                },
             }
         }
         // --- ACP ---
@@ -11097,6 +13627,33 @@ async fn main_inner() -> anyhow::Result<()> {
             AliasActions::Delete { names } => commands::alias::delete(names)?,
             AliasActions::Import { file } => commands::alias::import(&file)?,
         },
+        // --- Api ---
+        Commands::Api {
+            endpoint,
+            method,
+            field,
+            header,
+            include,
+            input,
+            raw_field,
+            silent,
+            verbose,
+        } => {
+            cfg.validate_auth()?;
+            commands::api::run(
+                &cfg,
+                &endpoint,
+                &method,
+                &field,
+                &header,
+                &raw_field,
+                input.as_deref(),
+                include,
+                silent,
+                verbose,
+            )
+            .await?;
+        }
         // --- Skills ---
         Commands::Skills { action } => match action {
             SkillsActions::List { entry_type } => commands::skills::list(&cfg, entry_type)?,
@@ -11132,36 +13689,48 @@ async fn main_inner() -> anyhow::Result<()> {
         Commands::StaticAnalysis { action } => {
             cfg.validate_auth()?;
             match action {
-                StaticAnalysisActions::Ast { action } => match action {
-                    StaticAnalysisAstActions::List { .. } => {
-                        commands::static_analysis::ast_list(&cfg).await?;
-                    }
-                    StaticAnalysisAstActions::Get { id } => {
-                        commands::static_analysis::ast_get(&cfg, &id).await?;
-                    }
-                },
                 StaticAnalysisActions::CustomRulesets { action } => match action {
-                    StaticAnalysisCustomRulesetActions::List { .. } => {
-                        commands::static_analysis::custom_rulesets_list(&cfg).await?;
+                    StaticAnalysisCustomRulesetActions::Get { name } => {
+                        commands::static_analysis::custom_rulesets_get(&cfg, &name).await?;
                     }
-                    StaticAnalysisCustomRulesetActions::Get { id } => {
-                        commands::static_analysis::custom_rulesets_get(&cfg, &id).await?;
+                    StaticAnalysisCustomRulesetActions::Update { name, file } => {
+                        commands::static_analysis::custom_rulesets_update(&cfg, &name, &file)
+                            .await?;
                     }
-                },
-                StaticAnalysisActions::Sca { action } => match action {
-                    StaticAnalysisScaActions::List { .. } => {
-                        commands::static_analysis::sca_list(&cfg).await?;
-                    }
-                    StaticAnalysisScaActions::Get { id } => {
-                        commands::static_analysis::sca_get(&cfg, &id).await?;
+                    StaticAnalysisCustomRulesetActions::Delete { name } => {
+                        commands::static_analysis::custom_rulesets_delete(&cfg, &name).await?;
                     }
                 },
-                StaticAnalysisActions::Coverage { action } => match action {
-                    StaticAnalysisCoverageActions::List { .. } => {
-                        commands::static_analysis::coverage_list(&cfg).await?;
+                StaticAnalysisActions::CustomRules { action } => match action {
+                    StaticAnalysisCustomRuleActions::Get { ruleset, rule } => {
+                        commands::static_analysis::custom_rules_get(&cfg, &ruleset, &rule).await?;
                     }
-                    StaticAnalysisCoverageActions::Get { id } => {
-                        commands::static_analysis::coverage_get(&cfg, &id).await?;
+                    StaticAnalysisCustomRuleActions::Create { ruleset, file } => {
+                        commands::static_analysis::custom_rules_create(&cfg, &ruleset, &file)
+                            .await?;
+                    }
+                    StaticAnalysisCustomRuleActions::Delete { ruleset, rule } => {
+                        commands::static_analysis::custom_rules_delete(&cfg, &ruleset, &rule)
+                            .await?;
+                    }
+                    StaticAnalysisCustomRuleActions::Revisions { ruleset, rule } => {
+                        commands::static_analysis::custom_rule_revisions_list(
+                            &cfg, &ruleset, &rule,
+                        )
+                        .await?;
+                    }
+                    StaticAnalysisCustomRuleActions::Revision {
+                        ruleset,
+                        rule,
+                        revision_id,
+                    } => {
+                        commands::static_analysis::custom_rule_revision_get(
+                            &cfg,
+                            &ruleset,
+                            &rule,
+                            &revision_id,
+                        )
+                        .await?;
                     }
                 },
             }
@@ -11194,7 +13763,7 @@ async fn main_inner() -> anyhow::Result<()> {
                 subdomain,
             } => {
                 if let Some(s) = site {
-                    cfg.site = s;
+                    cfg.set_site_explicit(s);
                 }
                 let is_read_only = read_only || cfg.read_only;
                 let resolved =
@@ -11204,7 +13773,7 @@ async fn main_inner() -> anyhow::Result<()> {
             AuthActions::Logout => commands::auth::logout(&cfg).await?,
             AuthActions::Status { site } => {
                 if let Some(s) = site {
-                    cfg.site = s;
+                    cfg.set_site_explicit(s);
                 }
                 commands::auth::status(&cfg)?
             }
@@ -11273,6 +13842,24 @@ async fn main_inner() -> anyhow::Result<()> {
                     } => {
                         commands::workflows::instance_cancel(&cfg, &workflow_id, &instance_id)
                             .await?;
+                    }
+                },
+                WorkflowActions::Connections { action } => match action {
+                    WorkflowConnectionActions::Get { connection_id } => {
+                        commands::workflows::connections_get(&cfg, &connection_id).await?;
+                    }
+                    WorkflowConnectionActions::Create { file } => {
+                        commands::workflows::connections_create(&cfg, &file).await?;
+                    }
+                    WorkflowConnectionActions::Update {
+                        connection_id,
+                        file,
+                    } => {
+                        commands::workflows::connections_update(&cfg, &connection_id, &file)
+                            .await?;
+                    }
+                    WorkflowConnectionActions::Delete { connection_id } => {
+                        commands::workflows::connections_delete(&cfg, &connection_id).await?;
                     }
                 },
             }
@@ -11417,7 +14004,167 @@ async fn main_inner() -> anyhow::Result<()> {
                         )
                         .await?;
                     }
+                    LlmObsSpansActions::Details {
+                        trace_id,
+                        span_id,
+                        from,
+                        to,
+                    } => {
+                        commands::llm_obs::spans_details(&cfg, trace_id, span_id, from, to).await?;
+                    }
                 },
+                LlmObsActions::AnnotationQueues { action } => match action {
+                    LlmObsAnnotationQueuesActions::Create { file } => {
+                        commands::llm_obs::annotation_queues_create(&cfg, &file).await?;
+                    }
+                    LlmObsAnnotationQueuesActions::List {
+                        project_id,
+                        queue_ids,
+                    } => {
+                        commands::llm_obs::annotation_queues_list(&cfg, project_id, queue_ids)
+                            .await?;
+                    }
+                    LlmObsAnnotationQueuesActions::Update { queue_id, file } => {
+                        commands::llm_obs::annotation_queues_update(&cfg, &queue_id, &file).await?;
+                    }
+                    LlmObsAnnotationQueuesActions::Delete { queue_id } => {
+                        commands::llm_obs::annotation_queues_delete(&cfg, &queue_id).await?;
+                    }
+                    LlmObsAnnotationQueuesActions::Interactions { action } => match action {
+                        LlmObsAnnotationQueueInteractionsActions::Add { queue_id, file } => {
+                            commands::llm_obs::annotation_queue_interactions_add(
+                                &cfg, &queue_id, &file,
+                            )
+                            .await?;
+                        }
+                        LlmObsAnnotationQueueInteractionsActions::Delete { queue_id, file } => {
+                            commands::llm_obs::annotation_queue_interactions_delete(
+                                &cfg, &queue_id, &file,
+                            )
+                            .await?;
+                        }
+                        LlmObsAnnotationQueueInteractionsActions::List { queue_id } => {
+                            commands::llm_obs::annotation_queue_interactions_list(&cfg, &queue_id)
+                                .await?;
+                        }
+                    },
+                },
+                LlmObsActions::EvalConfig { action } => match action {
+                    LlmObsEvalConfigActions::Get { eval_name } => {
+                        commands::llm_obs::eval_config_get(&cfg, &eval_name).await?;
+                    }
+                    LlmObsEvalConfigActions::Update { eval_name, file } => {
+                        commands::llm_obs::eval_config_update(&cfg, &eval_name, &file).await?;
+                    }
+                    LlmObsEvalConfigActions::Delete { eval_name } => {
+                        commands::llm_obs::eval_config_delete(&cfg, &eval_name).await?;
+                    }
+                },
+            }
+        }
+        // --- Profiling ---
+        Commands::Profiling { action } => {
+            cfg.validate_auth()?;
+            match action {
+                ProfilingActions::Aggregate {
+                    query,
+                    profile_type,
+                    from,
+                    to,
+                    limit,
+                    aggregation_function,
+                } => {
+                    commands::profiling::aggregate(
+                        &cfg,
+                        query,
+                        profile_type,
+                        from,
+                        to,
+                        limit,
+                        aggregation_function,
+                    )
+                    .await?;
+                }
+                ProfilingActions::Analysis {
+                    profile_id,
+                    event_id,
+                } => {
+                    commands::profiling::analysis(&cfg, &profile_id, event_id).await?;
+                }
+                ProfilingActions::Analytics {
+                    query,
+                    from,
+                    to,
+                    group_by,
+                    compute,
+                    limit,
+                } => {
+                    commands::profiling::analytics(&cfg, query, from, to, group_by, compute, limit)
+                        .await?;
+                }
+                ProfilingActions::Breakdown {
+                    profile_id,
+                    query,
+                    from,
+                    to,
+                } => {
+                    commands::profiling::breakdown(&cfg, &profile_id, query, from, to).await?;
+                }
+                ProfilingActions::Callgraph {
+                    query,
+                    profile_type,
+                    from,
+                    to,
+                    limit,
+                } => {
+                    commands::profiling::callgraph(&cfg, query, profile_type, from, to, limit)
+                        .await?;
+                }
+                ProfilingActions::Download { event_id, output } => {
+                    commands::profiling::download(&cfg, &event_id, output).await?;
+                }
+                ProfilingActions::Fields {
+                    field,
+                    query,
+                    from,
+                    to,
+                    limit,
+                } => {
+                    commands::profiling::fields(&cfg, field, query, from, to, limit).await?;
+                }
+                ProfilingActions::Info {
+                    profile_id,
+                    event_id,
+                } => {
+                    commands::profiling::info(&cfg, &profile_id, event_id).await?;
+                }
+                ProfilingActions::List {
+                    query,
+                    from,
+                    to,
+                    sort_field,
+                    sort_order,
+                    limit,
+                } => {
+                    commands::profiling::list(&cfg, query, from, to, sort_field, sort_order, limit)
+                        .await?;
+                }
+                ProfilingActions::SaveFavorite {
+                    query_id,
+                    query,
+                    from,
+                    to,
+                    limit,
+                } => {
+                    commands::profiling::save_favorite(&cfg, query, from, to, query_id, limit)
+                        .await?;
+                }
+                ProfilingActions::Timeline {
+                    profile_id,
+                    event_id,
+                } => {
+                    commands::profiling::timeline(&cfg, &profile_id, &event_id).await?;
+                }
             }
         }
         // --- Reference Tables ---
@@ -11665,11 +14412,102 @@ async fn main_inner() -> anyhow::Result<()> {
                             .await?;
                     }
                 },
+                CsmThreatsActions::BackendRules { action } => match action {
+                    CsmThreatsBackendRuleActions::List { query } => {
+                        commands::csm_threats::backend_rules_list(&cfg, query).await?;
+                    }
+                    CsmThreatsBackendRuleActions::Get { rule_id } => {
+                        commands::csm_threats::backend_rules_get(&cfg, &rule_id).await?;
+                    }
+                    CsmThreatsBackendRuleActions::Create { file } => {
+                        commands::csm_threats::backend_rules_create(&cfg, &file).await?;
+                    }
+                    CsmThreatsBackendRuleActions::Update { rule_id, file } => {
+                        commands::csm_threats::backend_rules_update(&cfg, &rule_id, &file).await?;
+                    }
+                    CsmThreatsBackendRuleActions::Delete { rule_id } => {
+                        commands::csm_threats::backend_rules_delete(&cfg, &rule_id).await?;
+                    }
+                    CsmThreatsBackendRuleActions::Validate { file } => {
+                        commands::csm_threats::backend_rules_validate(&cfg, &file).await?;
+                    }
+                },
                 CsmThreatsActions::Policy { action } => match action {
                     CsmThreatsPolicyActions::Download => {
                         commands::csm_threats::policy_download(&cfg).await?;
                     }
                 },
+            }
+        }
+        // --- Kafka (Experimental) ---
+        Commands::Kafka { action } => {
+            cfg.validate_auth()?;
+            match action {
+                KafkaActions::TopicConfigs {
+                    kafka_cluster_id,
+                    topic,
+                } => {
+                    commands::kafka::topic_configs(&cfg, &kafka_cluster_id, &topic).await?;
+                }
+                KafkaActions::BrokerConfigs {
+                    kafka_cluster_id,
+                    broker_id,
+                } => {
+                    commands::kafka::broker_configs(&cfg, &kafka_cluster_id, &broker_id).await?;
+                }
+                KafkaActions::ClientConfigs {
+                    kafka_cluster_id,
+                    services,
+                } => {
+                    let mut parsed = Vec::with_capacity(services.len());
+                    for s in services {
+                        let (name, kind) = s.split_once(':').ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "--service must be in the form NAME:producer|consumer (got {s:?})"
+                            )
+                        })?;
+                        if kind != "producer" && kind != "consumer" {
+                            anyhow::bail!(
+                                "--service type must be 'producer' or 'consumer' (got {kind:?})"
+                            );
+                        }
+                        parsed.push((name.to_string(), kind.to_string()));
+                    }
+                    commands::kafka::client_configs(&cfg, &kafka_cluster_id, parsed).await?;
+                }
+                KafkaActions::SubjectSchemas {
+                    kafka_cluster_id,
+                    subject,
+                } => {
+                    commands::kafka::subject_schemas(&cfg, &kafka_cluster_id, &subject).await?;
+                }
+                KafkaActions::ReadMessages {
+                    cluster,
+                    topic,
+                    bootstrap_servers,
+                    partition,
+                    start_offset,
+                    start_timestamp,
+                    n_messages_retrieved,
+                    max_scanned_messages,
+                    filter,
+                    consumer_group_id,
+                } => {
+                    commands::kafka::read_messages(
+                        &cfg,
+                        &cluster,
+                        &topic,
+                        &bootstrap_servers,
+                        partition,
+                        start_offset,
+                        start_timestamp,
+                        n_messages_retrieved,
+                        max_scanned_messages,
+                        filter,
+                        consumer_group_id,
+                    )
+                    .await?;
+                }
             }
         }
     }
