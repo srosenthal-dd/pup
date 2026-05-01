@@ -170,6 +170,9 @@ pup dashboards get "abc-123-def"
 
 # Get public URL for sharing
 pup dashboards url "abc-123-def"
+
+# Open with a live 1 week time window
+pup dashboards url "abc-123-def" --from=now-1w --to=now --live=true
 ```
 
 ### Delete Dashboard

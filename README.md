@@ -334,6 +334,9 @@ pup dashboards list
 # Get dashboard details
 pup dashboards get abc-123-def
 
+# Print a live 1 week dashboard URL
+pup dashboards url abc-123-def --from=now-1w --to=now --live=true
+
 # Delete dashboard
 pup dashboards delete abc-123-def --yes
 ```

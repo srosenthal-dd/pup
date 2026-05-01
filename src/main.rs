@@ -3198,6 +3198,16 @@ enum DashboardActions {
     List,
     /// Get dashboard details
     Get { id: String },
+    /// Print dashboard URL, optionally scoped to a live time window
+    Url {
+        id: String,
+        #[arg(long = "from", default_value = "now-1w")]
+        from_ts: String,
+        #[arg(long = "to", default_value = "now")]
+        to_ts: String,
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+        live: bool,
+    },
     /// Create a dashboard from JSON file
     Create {
         #[arg(long)]
@@ -10370,6 +10380,12 @@ async fn main_inner() -> anyhow::Result<()> {
             match action {
                 DashboardActions::List => commands::dashboards::list(&cfg).await?,
                 DashboardActions::Get { id } => commands::dashboards::get(&cfg, &id).await?,
+                DashboardActions::Url {
+                    id,
+                    from_ts,
+                    to_ts,
+                    live,
+                } => commands::dashboards::url(&cfg, &id, &from_ts, &to_ts, live).await?,
                 DashboardActions::Create { file } => {
                     commands::dashboards::create(&cfg, &file).await?;
                 }
