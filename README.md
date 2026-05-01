@@ -77,7 +77,6 @@ list of commands as built.
 | Downtimes | ✅ | `downtime list`, `downtime get`, `downtime cancel` | Full downtime management |
 | Notebooks | ✅ | `notebooks list`, `notebooks get`, `notebooks delete` | Investigation notebooks supported |
 | Status Pages | ✅ | `status-pages pages`, `status-pages components`, `status-pages degradations` | **New** — Pages, components, and degradation management |
-| Dashboard Lists | ❌ | - | Not yet implemented |
 | Powerpacks | ❌ | - | Not yet implemented |
 | Workflow Automation | ✅ | `workflows get`, `workflows create`, `workflows update`, `workflows delete`, `workflows run`, `workflows instances` | Full CRUD plus run and instance management (list, get, cancel) |
 | Local Runbooks | ✅ | `runbooks list`, `runbooks describe`, `runbooks run`, `runbooks import`, `runbooks validate` | **New** — YAML-defined multi-step runbooks with pup/shell/http/workflow step types, variable interpolation, and reusable templates |
