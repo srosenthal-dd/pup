@@ -13896,8 +13896,7 @@ async fn main_inner() -> anyhow::Result<()> {
                         from,
                         to,
                     } => {
-                        commands::llm_obs::spans_details(&cfg, trace_id, span_id, from, to)
-                            .await?;
+                        commands::llm_obs::spans_details(&cfg, trace_id, span_id, from, to).await?;
                     }
                 },
                 LlmObsActions::AnnotationQueues { action } => match action {

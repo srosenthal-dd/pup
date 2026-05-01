@@ -1583,14 +1583,7 @@ mod tests {
         )
         .await;
 
-        let result = super::spans_details(
-            &cfg,
-            "t-1".into(),
-            vec!["s-1".into()],
-            None,
-            None,
-        )
-        .await;
+        let result = super::spans_details(&cfg, "t-1".into(), vec!["s-1".into()], None, None).await;
         assert!(result.is_ok(), "spans_details failed: {:?}", result.err());
         cleanup_env();
     }
@@ -1636,14 +1629,7 @@ mod tests {
             read_only: false,
         };
 
-        let result = super::spans_details(
-            &cfg,
-            "t-1".into(),
-            vec!["s-1".into()],
-            None,
-            None,
-        )
-        .await;
+        let result = super::spans_details(&cfg, "t-1".into(), vec!["s-1".into()], None, None).await;
         assert!(result.is_err(), "should fail without auth");
         cleanup_env();
     }
