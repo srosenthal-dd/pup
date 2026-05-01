@@ -973,6 +973,9 @@ pub async fn raw_put(
         let body = resp.text().await.unwrap_or_default();
         anyhow::bail!("PUT {url} failed (HTTP {status}): {body}");
     }
+    if resp.status() == reqwest::StatusCode::NO_CONTENT {
+        return Ok(serde_json::Value::Null);
+    }
     Ok(resp.json().await?)
 }
 

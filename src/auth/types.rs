@@ -278,6 +278,7 @@ mod tests {
         assert!(scopes.contains(&"ci_visibility_read"));
         assert!(scopes.contains(&"teams_read"));
         assert!(scopes.contains(&"apm_service_catalog_read"));
+        assert!(scopes.contains(&"apm_service_renaming_write"));
         assert!(scopes.contains(&"status_pages_settings_read"));
         assert!(scopes.contains(&"on_call_read"));
         assert!(scopes.contains(&"on_call_write"));

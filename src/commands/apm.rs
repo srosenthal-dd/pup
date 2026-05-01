@@ -445,4 +445,229 @@ mod tests {
         mock.assert_async().await;
         cleanup_env();
     }
+
+    #[tokio::test]
+    async fn test_service_remapping_list() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let mock = server
+            .mock("GET", "/api/v2/service-naming-rules")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data": []}"#)
+            .create_async()
+            .await;
+
+        let result = super::service_remapping_list(&cfg).await;
+        assert!(result.is_ok(), "service_remapping_list failed: {:?}", result.err());
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_service_remapping_list_api_error() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        server
+            .mock("GET", "/api/v2/service-naming-rules")
+            .with_status(403)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors": ["Forbidden"]}"#)
+            .create_async()
+            .await;
+
+        let result = super::service_remapping_list(&cfg).await;
+        assert!(result.is_err(), "expected error on 403");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_service_remapping_create() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let mock = server
+            .mock("POST", "/api/v2/service-naming-rules")
+            .with_status(201)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data": {"id": "abc123"}}"#)
+            .create_async()
+            .await;
+
+        let result = super::service_remapping_create(
+            &cfg,
+            "my-rule".into(),
+            "service:my-svc".into(),
+            0,
+            "new-name".into(),
+        )
+        .await;
+        assert!(result.is_ok(), "service_remapping_create failed: {:?}", result.err());
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_service_remapping_create_api_error() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        server
+            .mock("POST", "/api/v2/service-naming-rules")
+            .with_status(422)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors": ["Invalid rule_type"]}"#)
+            .create_async()
+            .await;
+
+        let result = super::service_remapping_create(
+            &cfg,
+            "my-rule".into(),
+            "service:my-svc".into(),
+            99,
+            "new-name".into(),
+        )
+        .await;
+        assert!(result.is_err(), "expected error on 422");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_service_remapping_get() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let mock = server
+            .mock("GET", "/api/v2/service-naming-rules/abc123")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data": {"id": "abc123"}}"#)
+            .create_async()
+            .await;
+
+        let result = super::service_remapping_get(&cfg, "abc123".into()).await;
+        assert!(result.is_ok(), "service_remapping_get failed: {:?}", result.err());
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_service_remapping_get_not_found() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        server
+            .mock("GET", "/api/v2/service-naming-rules/missing")
+            .with_status(404)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors": ["Not found"]}"#)
+            .create_async()
+            .await;
+
+        let result = super::service_remapping_get(&cfg, "missing".into()).await;
+        assert!(result.is_err(), "expected error on 404");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_service_remapping_update() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let mock = server
+            .mock("PUT", "/api/v2/service-naming-rules/abc123")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data": {"id": "abc123"}}"#)
+            .create_async()
+            .await;
+
+        let result = super::service_remapping_update(
+            &cfg,
+            "abc123".into(),
+            "updated-rule".into(),
+            "service:my-svc".into(),
+            0,
+            "new-name".into(),
+            2,
+        )
+        .await;
+        assert!(result.is_ok(), "service_remapping_update failed: {:?}", result.err());
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_service_remapping_update_conflict() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        server
+            .mock("PUT", "/api/v2/service-naming-rules/abc123")
+            .with_status(409)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors": ["Conflict: stale version"]}"#)
+            .create_async()
+            .await;
+
+        let result = super::service_remapping_update(
+            &cfg,
+            "abc123".into(),
+            "updated-rule".into(),
+            "service:my-svc".into(),
+            0,
+            "new-name".into(),
+            1,
+        )
+        .await;
+        assert!(result.is_err(), "expected error on 409");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_service_remapping_delete() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let mock = server
+            .mock("DELETE", "/api/v2/service-naming-rules/abc123/2")
+            .with_status(204)
+            .create_async()
+            .await;
+
+        let result = super::service_remapping_delete(&cfg, "abc123".into(), 2).await;
+        assert!(result.is_ok(), "service_remapping_delete failed: {:?}", result.err());
+        mock.assert_async().await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_service_remapping_delete_not_found() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        server
+            .mock("DELETE", "/api/v2/service-naming-rules/missing/1")
+            .with_status(404)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"errors": ["Not found"]}"#)
+            .create_async()
+            .await;
+
+        let result = super::service_remapping_delete(&cfg, "missing".into(), 1).await;
+        assert!(result.is_err(), "expected error on 404");
+        cleanup_env();
+    }
 }
