@@ -60,6 +60,7 @@ list of commands as built.
 | APM Services | ✅ | `apm services`, `apm entities`, `apm dependencies`, `apm flow-map` | Services stats, operations, resources; entity queries; dependencies; flow visualization |
 | Traces | ✅ | `traces search`, `traces aggregate`, `traces metrics` | Span search/aggregation and span-based metric definitions |
 | Profiling | ✅ | `profiling aggregate`, `profiling analytics`, `profiling timeline`, … | Continuous Profiler queries (requires API + App keys) |
+| Database Monitoring | ✅ | `dbm samples search` | DBM query sample search |
 | Session Replay | ❌ | - | Not yet implemented |
 
 </details>
@@ -96,6 +97,9 @@ list of commands as built.
 | Data Governance | ✅ | `data-governance scanner-rules list` | Sensitive data scanner rules |
 | CSM Threats | ✅ | `csm-threats` | Cloud Security Management threat rules and agent rules |
 | Sensitive Data Scanner | ✅ | `data-governance scanner-rules list` | Listed via Data Governance row above |
+| Agentless Scanning | ✅ | `agentless-scanning aws list/get/create/update/delete`, `agentless-scanning gcp list`, `agentless-scanning azure list` | Cloud agentless scanning configuration for AWS, GCP, and Azure |
+| Logs Restriction | ✅ | `logs-restriction list`, `logs-restriction get`, `logs-restriction create`, `logs-restriction update`, `logs-restriction delete` | Log restriction queries for fine-grained log access control |
+| Data Deletion | ✅ | `data-deletion requests list`, `data-deletion requests create`, `data-deletion requests cancel` | GDPR/compliance data deletion request management |
 
 </details>
 
@@ -132,6 +136,8 @@ list of commands as built.
 | Investigations | ✅ | `investigations list`, `investigations get`, `investigations trigger` | Bits AI SRE investigation management |
 | Change Management | ✅ | `change-management create`, `change-management get`, `change-management update`, `change-management create-branch`, `change-management decisions` | Change request management with decisions and branching |
 | Incident Services/Teams | ✅ | `incidents services`, `incidents teams` | Service and team CRUD scoped to incident management |
+| Live Debugger | ✅ | `debugger probes list`, `debugger probes get`, `debugger probes create`, `debugger probes delete`, `debugger probes watch` | Remote log probe management for Live Debugger |
+| Software Catalog | ✅ | `software-catalog entities list`, `software-catalog entities upsert`, `software-catalog kinds list`, `software-catalog relations list` | Software Catalog entity and kind management (next-gen catalog) |
 
 </details>
 
@@ -144,6 +150,7 @@ list of commands as built.
 | Test Optimization | ✅ | `cicd tests`, `cicd flaky-tests`, `test-optimization` | Test events, flaky test management, and Test Optimization API |
 | DORA Metrics | ✅ | `cicd dora` | DORA deployment patching |
 | Code Coverage | ✅ | `code-coverage branch-summary`, `code-coverage commit-summary` | Branch and commit-level coverage summaries |
+| Deployment Gates | ✅ | `deployment-gates gates`, `deployment-gates evaluations`, `deployment-gates rules` | Deployment gate CRUD, evaluation triggers, and rule management |
 
 </details>
 
@@ -158,6 +165,7 @@ list of commands as built.
 | App Keys | ✅ | `app-keys list`, `app-keys get`, `app-keys create`, `app-keys update`, `app-keys delete` | Full application key CRUD |
 | Service Accounts | ✅ | - | Managed via users commands |
 | Roles | ❌ | - | Only list via users |
+| AuthN Mappings | ✅ | `authn-mappings list`, `authn-mappings get`, `authn-mappings create`, `authn-mappings update`, `authn-mappings delete` | SAML/IdP attribute-to-role authentication mappings |
 
 </details>
 
@@ -169,7 +177,10 @@ list of commands as built.
 | Usage Metering | ✅ | `usage summary`, `usage hourly` | Usage and billing metrics |
 | Cost Management | ✅ | `costs datadog projected`, `costs datadog attribution`, `costs datadog by-org`, `costs datadog aws-config`, `costs datadog azure-config`, `costs datadog gcp-config`, `costs ccm custom-costs`, `costs ccm tag-descriptions`, `costs ccm tag-metadata`, `costs ccm tags`, `costs ccm tag-keys`, `costs ccm budgets`, `costs ccm commitments` | Cost attribution, cloud cost configs (AWS/Azure/GCP), and Cloud Cost Management (custom costs, tag descriptions, budgets, commitment programs) |
 | Product Analytics | ✅ | `product-analytics events send`, `product-analytics query` | Server-side product analytics events and queries |
-| Integrations | ✅ | `integrations slack`, `integrations pagerduty`, `integrations webhooks`, `integrations jira`, `integrations servicenow`, `integrations google-chat` | Third-party integrations with Jira, ServiceNow, and Google Chat support |
+| Integrations | ✅ | `integrations slack`, `integrations pagerduty`, `integrations webhooks`, `integrations jira`, `integrations servicenow`, `integrations google-chat`, `integrations ms-teams` | Third-party integrations including Jira, ServiceNow, Google Chat, and Microsoft Teams |
+| Feature Flags | ✅ | `feature-flags flags`, `feature-flags environments`, `feature-flags allocations`, `feature-flags exposure`, `feature-flags enable`, `feature-flags disable` | Feature flag management with environment, allocation, and exposure control |
+| Data Streams (Kafka) | ✅ | `kafka topic-configs`, `kafka broker-configs`, `kafka client-configs`, `kafka read-messages` | **Experimental** — Kafka cluster inspection via Datadog |
+| Restricted Datasets | ✅ | `datasets list`, `datasets get`, `datasets create`, `datasets update`, `datasets delete` | Restricted dataset management for data access control |
 | Observability Pipelines | ✅ | `obs-pipelines list`, `obs-pipelines get`, `obs-pipelines create`, `obs-pipelines update`, `obs-pipelines delete`, `obs-pipelines validate` | Full pipeline CRUD and validation |
 | LLM Observability | ✅ | `llm-obs projects`, `llm-obs experiments`, `llm-obs datasets` | **New** — LLM Obs projects, experiments, and dataset management |
 | Reference Tables | ✅ | `reference-tables list`, `reference-tables get`, `reference-tables create`, `reference-tables batch-query` | **New** — Reference table management for log enrichment |
@@ -383,6 +394,7 @@ Agent mode is **auto-detected** when any of these environment variables are set 
 | `AMAZON_Q` or `AWS_Q_DEVELOPER` | Amazon Q |
 | `GEMINI_CODE_ASSIST` | Gemini Code Assist |
 | `SRC_CODY` | Sourcegraph Cody |
+| `PI_CODING_AGENT` | pi.dev |
 | `FORCE_AGENT_MODE` | Any agent (manual override) |
 
 You can also enable it explicitly with the `--agent` flag or by setting `FORCE_AGENT_MODE=1`:

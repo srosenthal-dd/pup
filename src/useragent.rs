@@ -58,6 +58,10 @@ static AGENT_DETECTORS: &[AgentDetector] = &[
         env_vars: &["SRC_CODY"],
     },
     AgentDetector {
+        name: "pi-dev",
+        env_vars: &["PI_CODING_AGENT"],
+    },
+    AgentDetector {
         name: "generic-agent",
         env_vars: &["AGENT"],
     },
@@ -151,22 +155,27 @@ pub fn get_with_command(command: Option<&str>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::ENV_LOCK;
+
+    fn clear_all_agent_vars() {
+        for det in AGENT_DETECTORS {
+            for var in det.env_vars {
+                std::env::remove_var(var);
+            }
+        }
+        std::env::remove_var("FORCE_AGENT_MODE");
+    }
 
     #[test]
     fn test_is_env_truthy() {
-        // These tests use env vars that shouldn't be set in normal environments
+        let _guard = ENV_LOCK.blocking_lock();
         std::env::set_var("__PUP_TEST_TRUE__", "true");
         assert!(is_env_truthy("__PUP_TEST_TRUE__"));
-
         std::env::set_var("__PUP_TEST_ONE__", "1");
         assert!(is_env_truthy("__PUP_TEST_ONE__"));
-
         std::env::set_var("__PUP_TEST_FALSE__", "false");
         assert!(!is_env_truthy("__PUP_TEST_FALSE__"));
-
         assert!(!is_env_truthy("__PUP_TEST_NONEXISTENT__"));
-
-        // Clean up
         std::env::remove_var("__PUP_TEST_TRUE__");
         std::env::remove_var("__PUP_TEST_ONE__");
         std::env::remove_var("__PUP_TEST_FALSE__");
@@ -174,6 +183,8 @@ mod tests {
 
     #[test]
     fn test_user_agent_format() {
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
         let ua = get();
         assert!(ua.starts_with("pup/"));
         assert!(ua.contains("rust"));
@@ -184,6 +195,8 @@ mod tests {
 
     #[test]
     fn test_user_agent_with_command() {
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
         let ua = get_with_command(Some("security-findings-analyze"));
         assert!(ua.starts_with("pup/"));
         assert!(ua.contains("; cmd security-findings-analyze)"));
@@ -196,6 +209,8 @@ mod tests {
     /// until the UA is fixed.
     #[test]
     fn test_user_agent_parses_for_smart_edge_telemetry() {
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
         for ua in [
             get_with_command(None),
             get_with_command(Some("monitors-list")),
@@ -228,6 +243,8 @@ mod tests {
 
     #[test]
     fn test_user_agent_with_no_command() {
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
         let ua = get_with_command(None);
         assert!(!ua.contains("cmd "));
         assert_eq!(ua, get());
@@ -241,14 +258,8 @@ mod tests {
 
     #[test]
     fn test_detect_agent_info_no_agent() {
-        // Clear all agent env vars
-        for det in AGENT_DETECTORS {
-            for var in det.env_vars {
-                std::env::remove_var(var);
-            }
-        }
-        std::env::remove_var("FORCE_AGENT_MODE");
-
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
         let info = detect_agent_info();
         assert!(!info.detected);
         assert!(info.name.is_empty());
@@ -256,6 +267,8 @@ mod tests {
 
     #[test]
     fn test_detect_agent_info_claude_code() {
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
         std::env::set_var("CLAUDE_CODE", "1");
         let info = detect_agent_info();
         assert!(info.detected);
@@ -265,9 +278,8 @@ mod tests {
 
     #[test]
     fn test_detect_agent_info_cursor() {
-        // Clear higher-priority detectors
-        std::env::remove_var("CLAUDECODE");
-        std::env::remove_var("CLAUDE_CODE");
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
         std::env::set_var("CURSOR_AGENT", "true");
         let info = detect_agent_info();
         assert!(info.detected);
@@ -277,6 +289,8 @@ mod tests {
 
     #[test]
     fn test_is_agent_mode_force() {
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
         std::env::set_var("FORCE_AGENT_MODE", "1");
         assert!(is_agent_mode());
         std::env::remove_var("FORCE_AGENT_MODE");
@@ -284,7 +298,8 @@ mod tests {
 
     #[test]
     fn test_is_agent_mode_via_detector() {
-        std::env::remove_var("FORCE_AGENT_MODE");
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
         std::env::set_var("CLAUDE_CODE", "true");
         assert!(is_agent_mode());
         std::env::remove_var("CLAUDE_CODE");
@@ -292,17 +307,15 @@ mod tests {
 
     #[test]
     fn test_is_agent_mode_false() {
-        std::env::remove_var("FORCE_AGENT_MODE");
-        for det in AGENT_DETECTORS {
-            for var in det.env_vars {
-                std::env::remove_var(var);
-            }
-        }
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
         assert!(!is_agent_mode());
     }
 
     #[test]
     fn test_user_agent_with_detected_agent() {
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
         std::env::set_var("CLAUDE_CODE", "1");
         let ua = get();
         assert!(
@@ -314,11 +327,8 @@ mod tests {
 
     #[test]
     fn test_user_agent_without_agent() {
-        for det in AGENT_DETECTORS {
-            for var in det.env_vars {
-                std::env::remove_var(var);
-            }
-        }
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
         let ua = get();
         assert!(
             !ua.contains("ai-agent"),
@@ -328,12 +338,30 @@ mod tests {
     }
 
     #[test]
+    fn test_detect_agent_info_pi_dev() {
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
+        std::env::set_var("PI_CODING_AGENT", "true");
+        let info = detect_agent_info();
+        assert!(info.detected);
+        assert_eq!(info.name, "pi-dev");
+        std::env::remove_var("PI_CODING_AGENT");
+    }
+
+    #[test]
+    fn test_detect_agent_info_pi_dev_falsy() {
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
+        std::env::set_var("PI_CODING_AGENT", "false");
+        let info = detect_agent_info();
+        assert!(!info.detected);
+        std::env::remove_var("PI_CODING_AGENT");
+    }
+
+    #[test]
     fn test_detect_agent_info_generic_agent() {
-        for det in AGENT_DETECTORS {
-            for var in det.env_vars {
-                std::env::remove_var(var);
-            }
-        }
+        let _guard = ENV_LOCK.blocking_lock();
+        clear_all_agent_vars();
         std::env::set_var("AGENT", "1");
         let info = detect_agent_info();
         assert!(info.detected);
