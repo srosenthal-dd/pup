@@ -968,13 +968,13 @@ pub async fn raw_put(
         .json(&body)
         .send()
         .await?;
+    if resp.status() == reqwest::StatusCode::NO_CONTENT {
+        return Ok(serde_json::Value::Null);
+    }
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
         anyhow::bail!("PUT {url} failed (HTTP {status}): {body}");
-    }
-    if resp.status() == reqwest::StatusCode::NO_CONTENT {
-        return Ok(serde_json::Value::Null);
     }
     Ok(resp.json().await?)
 }

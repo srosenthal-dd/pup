@@ -461,7 +461,11 @@ mod tests {
             .await;
 
         let result = super::service_remapping_list(&cfg).await;
-        assert!(result.is_ok(), "service_remapping_list failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "service_remapping_list failed: {:?}",
+            result.err()
+        );
         mock.assert_async().await;
         cleanup_env();
     }
@@ -507,7 +511,11 @@ mod tests {
             "new-name".into(),
         )
         .await;
-        assert!(result.is_ok(), "service_remapping_create failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "service_remapping_create failed: {:?}",
+            result.err()
+        );
         mock.assert_async().await;
         cleanup_env();
     }
@@ -553,7 +561,11 @@ mod tests {
             .await;
 
         let result = super::service_remapping_get(&cfg, "abc123".into()).await;
-        assert!(result.is_ok(), "service_remapping_get failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "service_remapping_get failed: {:?}",
+            result.err()
+        );
         mock.assert_async().await;
         cleanup_env();
     }
@@ -601,7 +613,11 @@ mod tests {
             2,
         )
         .await;
-        assert!(result.is_ok(), "service_remapping_update failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "service_remapping_update failed: {:?}",
+            result.err()
+        );
         mock.assert_async().await;
         cleanup_env();
     }
@@ -647,7 +663,11 @@ mod tests {
             .await;
 
         let result = super::service_remapping_delete(&cfg, "abc123".into(), 2).await;
-        assert!(result.is_ok(), "service_remapping_delete failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "service_remapping_delete failed: {:?}",
+            result.err()
+        );
         mock.assert_async().await;
         cleanup_env();
     }
@@ -668,6 +688,37 @@ mod tests {
 
         let result = super::service_remapping_delete(&cfg, "missing".into(), 1).await;
         assert!(result.is_err(), "expected error on 404");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_service_remapping_update_204_no_content() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let cfg = test_config(&server.url());
+
+        let mock = server
+            .mock("PUT", "/api/v2/service-naming-rules/abc123")
+            .with_status(204)
+            .create_async()
+            .await;
+
+        let result = super::service_remapping_update(
+            &cfg,
+            "abc123".into(),
+            "updated-rule".into(),
+            "service:my-svc".into(),
+            0,
+            "new-name".into(),
+            2,
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "204 No Content should not be an error: {:?}",
+            result.err()
+        );
+        mock.assert_async().await;
         cleanup_env();
     }
 }
