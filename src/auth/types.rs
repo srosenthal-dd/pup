@@ -51,6 +51,7 @@ pub fn read_only_scopes() -> Vec<&'static str> {
         "apm_read",
         "apm_service_catalog_read",
         "audit_logs_read",
+        "aws_configuration_read",
         "azure_configuration_read",
         "bits_investigations_read",
         "cases_read",
@@ -62,6 +63,7 @@ pub fn read_only_scopes() -> Vec<&'static str> {
         "data_scanner_read",
         "error_tracking_read",
         "events_read",
+        "gcp_configuration_read",
         "disaster_recovery_status_read",
         "hosts_read",
         "incident_read",
@@ -105,6 +107,8 @@ pub fn default_scopes() -> Vec<&'static str> {
         "apm_service_catalog_read",
         // Audit
         "audit_logs_read",
+        // AWS
+        "aws_configuration_read",
         // Azure
         "azure_configuration_read",
         // BITS
@@ -137,6 +141,8 @@ pub fn default_scopes() -> Vec<&'static str> {
         "error_tracking_read",
         // Events
         "events_read",
+        // GCP
+        "gcp_configuration_read",
         // HAMR (disaster recovery)
         "disaster_recovery_status_read",
         "disaster_recovery_status_write",
@@ -264,7 +270,7 @@ mod tests {
     #[test]
     fn test_default_scopes() {
         let scopes = default_scopes();
-        assert_eq!(scopes.len(), 82);
+        assert_eq!(scopes.len(), 84);
         assert!(scopes.contains(&"dashboards_read"));
         assert!(scopes.contains(&"monitors_read"));
         assert!(scopes.contains(&"logs_read_data"));
@@ -280,6 +286,8 @@ mod tests {
         assert!(scopes.contains(&"status_pages_settings_read"));
         assert!(scopes.contains(&"on_call_read"));
         assert!(scopes.contains(&"on_call_write"));
+        assert!(scopes.contains(&"aws_configuration_read"));
+        assert!(scopes.contains(&"gcp_configuration_read"));
     }
 
     #[test]
