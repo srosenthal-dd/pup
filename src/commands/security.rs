@@ -218,11 +218,20 @@ pub async fn signals_search(
     from: String,
     to: String,
     limit: i32,
+    sort: Option<String>,
 ) -> Result<()> {
     let api = crate::make_api!(SecurityMonitoringAPI, cfg);
 
     let from_dt = util::parse_time_to_datetime(&from)?;
     let to_dt = util::parse_time_to_datetime(&to)?;
+
+    let sort_val = match sort.as_deref().unwrap_or("-timestamp") {
+        "timestamp" | "asc" => SecurityMonitoringSignalsSort::TIMESTAMP_ASCENDING,
+        "-timestamp" | "desc" => SecurityMonitoringSignalsSort::TIMESTAMP_DESCENDING,
+        other => anyhow::bail!(
+            "invalid --sort value: {other:?}\nExpected: timestamp (ascending) or -timestamp (descending)"
+        ),
+    };
 
     let body = SecurityMonitoringSignalListRequest::new()
         .filter(
@@ -232,7 +241,7 @@ pub async fn signals_search(
                 .to(to_dt),
         )
         .page(SecurityMonitoringSignalListRequestPage::new().limit(limit))
-        .sort(SecurityMonitoringSignalsSort::TIMESTAMP_DESCENDING);
+        .sort(sort_val);
 
     let params = SearchSecurityMonitoringSignalsOptionalParams::default().body(body);
     let resp = api
@@ -1070,5 +1079,18 @@ mod tests {
         assert!(result.is_err(), "expected error for 404 response");
         cleanup_env();
         std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_signals_search_invalid_sort() {
+        let cfg = test_config("http://unused.local");
+        let result =
+            super::signals_search(&cfg, "*".into(), "1h".into(), "now".into(), 10, Some("invalid".into()))
+                .await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid --sort value"));
     }
 }

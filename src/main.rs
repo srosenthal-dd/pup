@@ -2777,9 +2777,11 @@ enum MonitorActions {
         #[arg(
             long,
             default_value_t = 200,
-            help = "Maximum number of monitors to return (default: 200, max: 1000)"
+            help = "Maximum number of monitors to return (1-1000)"
         )]
         limit: i32,
+        #[arg(long, default_value_t = 0, help = "Page number (0-indexed)")]
+        page: i64,
     },
     /// Get monitor details
     Get { monitor_id: i64 },
@@ -4662,7 +4664,7 @@ enum SecuritySignalActions {
         to: String,
         #[arg(long, default_value_t = 100, help = "Maximum results (1-1000)")]
         limit: i32,
-        #[arg(long, help = "Sort field: severity, status, timestamp")]
+        #[arg(long, help = "Sort order: timestamp (ascending) or -timestamp (descending)")]
         sort: Option<String>,
     },
     /// Get log queries for investigating a signal
@@ -5916,7 +5918,7 @@ enum CicdEventActions {
         to: String,
         #[arg(long, default_value_t = 50, help = "Maximum results")]
         limit: i32,
-        #[arg(long, default_value = "desc", help = "Sort order (asc or desc)")]
+        #[arg(long, default_value = "desc", help = "Sort order: asc or desc")]
         sort: String,
     },
     /// Aggregate CI/CD events
@@ -6138,7 +6140,11 @@ enum OnCallMembershipActions {
         page_size: i64,
         #[arg(long, default_value_t = 0, help = "Page number")]
         page_number: i64,
-        #[arg(long, default_value = "name", help = "Sort order: name, email")]
+        #[arg(
+            long,
+            default_value = "name",
+            help = "Sort: name, -name, email, -email, handle, -handle, manager_name, -manager_name"
+        )]
         sort: String,
     },
     /// Add a member to team
@@ -10148,8 +10154,13 @@ async fn main_inner() -> anyhow::Result<()> {
         Commands::Monitors { action } => {
             cfg.validate_auth()?;
             match action {
-                MonitorActions::List { name, tags, limit } => {
-                    commands::monitors::list(&cfg, name, tags, limit).await?;
+                MonitorActions::List {
+                    name,
+                    tags,
+                    limit,
+                    page,
+                } => {
+                    commands::monitors::list(&cfg, name, tags, limit, page).await?;
                 }
                 MonitorActions::Get { monitor_id } => {
                     commands::monitors::get(&cfg, monitor_id).await?;
@@ -10160,8 +10171,13 @@ async fn main_inner() -> anyhow::Result<()> {
                 MonitorActions::Update { monitor_id, file } => {
                     commands::monitors::update(&cfg, monitor_id, &file).await?;
                 }
-                MonitorActions::Search { query, .. } => {
-                    commands::monitors::search(&cfg, query).await?;
+                MonitorActions::Search {
+                    query,
+                    page,
+                    per_page,
+                    sort,
+                } => {
+                    commands::monitors::search(&cfg, query, page, per_page, sort).await?;
                 }
                 MonitorActions::Delete { monitor_id } => {
                     commands::monitors::delete(&cfg, monitor_id).await?;
@@ -10540,8 +10556,12 @@ async fn main_inner() -> anyhow::Result<()> {
         Commands::Metrics { action } => {
             cfg.validate_auth()?;
             match action {
-                MetricActions::List { filter, from, .. } => {
-                    commands::metrics::list(&cfg, filter, from).await?;
+                MetricActions::List {
+                    filter,
+                    from,
+                    tag_filter,
+                } => {
+                    commands::metrics::list(&cfg, filter, from, tag_filter).await?;
                 }
                 MetricActions::Search { query, from, to } => {
                     commands::metrics::search(&cfg, query, from, to).await?;
@@ -11051,9 +11071,10 @@ async fn main_inner() -> anyhow::Result<()> {
                         from,
                         to,
                         limit,
-                        ..
+                        sort,
                     } => {
-                        commands::security::signals_search(&cfg, query, from, to, limit).await?;
+                        commands::security::signals_search(&cfg, query, from, to, limit, sort)
+                            .await?;
                     }
                     SecuritySignalActions::InvestigationQueries { signal_id } => {
                         commands::security::signals_investigation_queries(&cfg, &signal_id).await?;
@@ -11427,9 +11448,11 @@ async fn main_inner() -> anyhow::Result<()> {
             cfg.validate_auth()?;
             match action {
                 CaseActions::Search {
-                    query, page_size, ..
+                    query,
+                    page_size,
+                    page_number,
                 } => {
-                    commands::cases::search(&cfg, query, page_size).await?;
+                    commands::cases::search(&cfg, query, page_size, page_number).await?;
                 }
                 CaseActions::Get { case_id } => commands::cases::get(&cfg, &case_id).await?,
                 CaseActions::Create {
@@ -11857,9 +11880,19 @@ async fn main_inner() -> anyhow::Result<()> {
                         from,
                         to,
                         limit,
-                        ..
+                        branch,
+                        pipeline_name,
                     } => {
-                        commands::cicd::pipelines_list(&cfg, query, from, to, limit).await?;
+                        commands::cicd::pipelines_list(
+                            &cfg,
+                            query,
+                            from,
+                            to,
+                            limit,
+                            branch,
+                            pipeline_name,
+                        )
+                        .await?;
                     }
                     CicdPipelineActions::Get { pipeline_id } => {
                         commands::cicd::pipelines_get(&cfg, &pipeline_id).await?;
@@ -11894,9 +11927,9 @@ async fn main_inner() -> anyhow::Result<()> {
                         from,
                         to,
                         limit,
-                        ..
+                        sort,
                     } => {
-                        commands::cicd::events_search(&cfg, query, from, to, limit).await?;
+                        commands::cicd::events_search(&cfg, query, from, to, limit, sort).await?;
                     }
                     CicdEventActions::Aggregate {
                         query, from, to, ..
@@ -11952,9 +11985,19 @@ async fn main_inner() -> anyhow::Result<()> {
                     }
                     OnCallTeamActions::Memberships { action } => match action {
                         OnCallMembershipActions::List {
-                            team_id, page_size, ..
+                            team_id,
+                            page_size,
+                            page_number,
+                            sort,
                         } => {
-                            commands::on_call::memberships_list(&cfg, &team_id, page_size).await?;
+                            commands::on_call::memberships_list(
+                                &cfg,
+                                &team_id,
+                                page_size,
+                                page_number,
+                                sort,
+                            )
+                            .await?;
                         }
                         OnCallMembershipActions::Add {
                             team_id,
@@ -12312,12 +12355,16 @@ async fn main_inner() -> anyhow::Result<()> {
                     ErrorTrackingIssueActions::Search {
                         query,
                         limit,
+                        from,
+                        to,
+                        order_by,
                         track,
                         persona,
-                        ..
                     } => {
-                        commands::error_tracking::issues_search(&cfg, query, limit, track, persona)
-                            .await?;
+                        commands::error_tracking::issues_search(
+                            &cfg, query, limit, from, to, order_by, track, persona,
+                        )
+                        .await?;
                     }
                     ErrorTrackingIssueActions::Get { issue_id } => {
                         commands::error_tracking::issues_get(&cfg, &issue_id).await?;
@@ -13327,9 +13374,10 @@ async fn main_inner() -> anyhow::Result<()> {
                 InvestigationActions::List {
                     page_limit,
                     page_offset,
-                    ..
+                    monitor_id,
                 } => {
-                    commands::investigations::list(&cfg, page_limit, page_offset).await?;
+                    commands::investigations::list(&cfg, page_limit, page_offset, monitor_id)
+                        .await?;
                 }
                 InvestigationActions::Get { investigation_id } => {
                     commands::investigations::get(&cfg, &investigation_id).await?;

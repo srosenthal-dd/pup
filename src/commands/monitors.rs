@@ -14,7 +14,12 @@ pub async fn list(
     name: Option<String>,
     tags: Option<String>,
     limit: i32,
+    page: i64,
 ) -> Result<()> {
+    if !(1..=1000).contains(&limit) {
+        anyhow::bail!("--limit must be between 1 and 1000, got {limit}");
+    }
+
     let api = crate::make_api!(MonitorsAPI, cfg);
 
     let mut params = ListMonitorsOptionalParams::default();
@@ -24,9 +29,7 @@ pub async fn list(
     if let Some(tags) = tags {
         params = params.monitor_tags(tags);
     }
-
-    let limit = limit.clamp(1, 1000);
-    params = params.page_size(limit).page(0);
+    params = params.page_size(limit).page(page);
 
     let monitors = api
         .list_monitors(params)
@@ -38,7 +41,6 @@ pub async fn list(
         return Ok(());
     }
 
-    let monitors: Vec<_> = monitors.into_iter().take(limit as usize).collect();
     let meta = Metadata {
         count: Some(monitors.len()),
         truncated: false,
@@ -85,12 +87,23 @@ pub async fn update(cfg: &Config, monitor_id: i64, file: &str) -> Result<()> {
     formatter::output(cfg, &resp)
 }
 
-pub async fn search(cfg: &Config, query: Option<String>) -> Result<()> {
+pub async fn search(
+    cfg: &Config,
+    query: Option<String>,
+    page: i64,
+    per_page: i64,
+    sort: Option<String>,
+) -> Result<()> {
     let api = crate::make_api!(MonitorsAPI, cfg);
 
-    let mut params = SearchMonitorsOptionalParams::default();
+    let mut params = SearchMonitorsOptionalParams::default()
+        .page(page)
+        .per_page(per_page);
     if let Some(q) = query {
         params = params.query(q);
+    }
+    if let Some(s) = sort {
+        params = params.sort(s);
     }
 
     let resp = api
@@ -121,7 +134,7 @@ mod tests {
         let cfg = test_config(&server.url());
         let _mock = mock_any(&mut server, "GET", "[]").await;
 
-        let result = super::list(&cfg, None, None, 10).await;
+        let result = super::list(&cfg, None, None, 10, 0).await;
         assert!(result.is_ok(), "monitors list failed: {:?}", result.err());
         cleanup_env();
     }
@@ -135,7 +148,7 @@ mod tests {
         let body = r#"[{"id": 1, "name": "Test Monitor", "type": "metric alert", "query": "avg(last_5m):avg:system.cpu.user{*} > 90", "message": "CPU high", "tags": [], "options": {}}]"#;
         let _mock = mock_any(&mut server, "GET", body).await;
 
-        let result = super::list(&cfg, Some("Test".into()), None, 10).await;
+        let result = super::list(&cfg, Some("Test".into()), None, 10, 0).await;
         assert!(
             result.is_ok(),
             "monitors list with results failed: {:?}",
@@ -167,9 +180,31 @@ mod tests {
         let body = r#"{"monitors": [], "metadata": {"page": 0, "page_count": 0, "per_page": 30, "total_count": 0}}"#;
         let _mock = mock_any(&mut server, "GET", body).await;
 
-        let result = super::search(&cfg, Some("cpu".into())).await;
+        let result = super::search(&cfg, Some("cpu".into()), 0, 30, None).await;
         assert!(result.is_ok(), "monitors search failed: {:?}", result.err());
         cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_monitors_list_limit_too_small() {
+        let cfg = test_config("http://unused.local");
+        let result = super::list(&cfg, None, None, 0, 0).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("--limit must be between 1 and 1000"));
+    }
+
+    #[tokio::test]
+    async fn test_monitors_list_limit_too_large() {
+        let cfg = test_config("http://unused.local");
+        let result = super::list(&cfg, None, None, 1001, 0).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("--limit must be between 1 and 1000"));
     }
 
     #[tokio::test]

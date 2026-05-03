@@ -1,31 +1,46 @@
 use anyhow::Result;
-use chrono::Utc;
 use datadog_api_client::datadogV2::api_error_tracking::{
     ErrorTrackingAPI, GetIssueOptionalParams, SearchIssuesOptionalParams,
 };
 use datadog_api_client::datadogV2::model::{
     IssuesSearchRequest, IssuesSearchRequestData, IssuesSearchRequestDataAttributes,
-    IssuesSearchRequestDataAttributesPersona, IssuesSearchRequestDataAttributesTrack,
-    IssuesSearchRequestDataType,
+    IssuesSearchRequestDataAttributesOrderBy, IssuesSearchRequestDataAttributesPersona,
+    IssuesSearchRequestDataAttributesTrack, IssuesSearchRequestDataType,
 };
 
 use crate::config::Config;
 use crate::formatter;
+use crate::util;
 
+#[allow(clippy::too_many_arguments)]
 pub async fn issues_search(
     cfg: &Config,
     query: Option<String>,
-    _limit: i32,
+    limit: i32,
+    from: String,
+    to: String,
+    order_by: String,
     track: Option<String>,
     persona: Option<String>,
 ) -> Result<()> {
     let api = crate::make_api!(ErrorTrackingAPI, cfg);
 
-    let now = Utc::now().timestamp_millis();
-    let one_day_ago = now - 86_400_000; // 24 hours in millis
+    let from_ms = util::parse_time_to_unix_millis(&from)?;
+    let to_ms = util::parse_time_to_unix_millis(&to)?;
+
+    let order_by_val = match order_by.to_uppercase().as_str() {
+        "TOTAL_COUNT" => IssuesSearchRequestDataAttributesOrderBy::TOTAL_COUNT,
+        "FIRST_SEEN" => IssuesSearchRequestDataAttributesOrderBy::FIRST_SEEN,
+        "IMPACTED_SESSIONS" => IssuesSearchRequestDataAttributesOrderBy::IMPACTED_SESSIONS,
+        "PRIORITY" => IssuesSearchRequestDataAttributesOrderBy::PRIORITY,
+        other => anyhow::bail!(
+            "invalid --order-by value: {other:?}\nExpected: TOTAL_COUNT, FIRST_SEEN, IMPACTED_SESSIONS, PRIORITY"
+        ),
+    };
 
     let query_str = query.unwrap_or_else(|| "*".to_string());
-    let mut attrs = IssuesSearchRequestDataAttributes::new(one_day_ago, query_str, now);
+    let mut attrs =
+        IssuesSearchRequestDataAttributes::new(from_ms, query_str, to_ms).order_by(order_by_val);
     if let Some(ref t) = track {
         let track_value = match t.to_lowercase().as_str() {
             "trace" => IssuesSearchRequestDataAttributesTrack::TRACE,
@@ -55,17 +70,22 @@ pub async fn issues_search(
     let body = IssuesSearchRequest::new(data);
     let params = SearchIssuesOptionalParams::default();
 
-    let resp = api
+    let mut resp = api
         .search_issues(body, params)
         .await
         .map_err(|e| anyhow::anyhow!("failed to search issues: {e:?}"))?;
-    let val = serde_json::to_value(&resp)?;
-    if let Some(data) = val.get("data") {
-        if data.as_array().is_some_and(|a| a.is_empty()) {
-            println!("No error tracking issues found matching the specified criteria.");
-            return Ok(());
+
+    if resp.data.as_ref().is_some_and(|d| d.is_empty()) {
+        eprintln!("No error tracking issues found matching the specified criteria.");
+        return Ok(());
+    }
+
+    if limit > 0 {
+        if let Some(data) = resp.data.as_mut() {
+            data.truncate(limit as usize);
         }
     }
+
     formatter::output(cfg, &resp)
 }
 
@@ -90,7 +110,17 @@ mod tests {
         let mut s = mockito::Server::new_async().await;
         let cfg = test_config(&s.url());
         mock_all(&mut s, r#"{"data": []}"#).await;
-        let _ = super::issues_search(&cfg, None, 10, Some("trace".into()), None).await;
+        let _ = super::issues_search(
+            &cfg,
+            None,
+            10,
+            "1d".into(),
+            "now".into(),
+            "TOTAL_COUNT".into(),
+            Some("trace".into()),
+            None,
+        )
+        .await;
         cleanup_env();
     }
 
@@ -100,7 +130,17 @@ mod tests {
         let mut s = mockito::Server::new_async().await;
         let cfg = test_config(&s.url());
         mock_all(&mut s, r#"{"data": []}"#).await;
-        let _ = super::issues_search(&cfg, None, 10, None, Some("BROWSER".into())).await;
+        let _ = super::issues_search(
+            &cfg,
+            None,
+            10,
+            "1d".into(),
+            "now".into(),
+            "TOTAL_COUNT".into(),
+            None,
+            Some("BROWSER".into()),
+        )
+        .await;
         cleanup_env();
     }
 
@@ -110,8 +150,39 @@ mod tests {
         let mut s = mockito::Server::new_async().await;
         let cfg = test_config(&s.url());
         mock_all(&mut s, r#"{"data": []}"#).await;
-        let _ = super::issues_search(&cfg, None, 10, Some("RUM".into()), None).await;
+        let _ = super::issues_search(
+            &cfg,
+            None,
+            10,
+            "1d".into(),
+            "now".into(),
+            "TOTAL_COUNT".into(),
+            Some("RUM".into()),
+            None,
+        )
+        .await;
         cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_error_tracking_issues_search_invalid_order_by() {
+        let cfg = test_config("http://unused.local");
+        let result = super::issues_search(
+            &cfg,
+            None,
+            10,
+            "1d".into(),
+            "now".into(),
+            "INVALID".into(),
+            Some("trace".into()),
+            None,
+        )
+        .await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid --order-by value"));
     }
 
     #[test]

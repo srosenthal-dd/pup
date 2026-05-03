@@ -110,7 +110,10 @@ pub async fn search(
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;
 
-    let page_limit = limit.min(1000);
+    if !(1..=1000).contains(&limit) {
+        anyhow::bail!("--limit must be between 1 and 1000, got {limit}");
+    }
+    let page_limit = limit;
     let spans_sort = match sort.as_str() {
         "timestamp" => SpansSort::TIMESTAMP_ASCENDING,
         _ => SpansSort::TIMESTAMP_DESCENDING,
@@ -438,5 +441,21 @@ mod tests {
         assert!(result.is_err(), "spans metrics list should fail on 403");
         cleanup_env();
         std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_search_limit_too_small() {
+        let cfg = test_config("http://unused.local");
+        let result = super::search(&cfg, "*".into(), "1h".into(), "now".into(), 0, "-timestamp".into()).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("--limit must be between 1 and 1000"));
+    }
+
+    #[tokio::test]
+    async fn test_search_limit_too_large() {
+        let cfg = test_config("http://unused.local");
+        let result = super::search(&cfg, "*".into(), "1h".into(), "now".into(), 1001, "-timestamp".into()).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("--limit must be between 1 and 1000"));
     }
 }

@@ -25,21 +25,37 @@ pub async fn pipelines_list(
     from: String,
     to: String,
     limit: i32,
+    branch: Option<String>,
+    pipeline_name: Option<String>,
 ) -> Result<()> {
     let api = crate::make_api!(CIVisibilityPipelinesAPI, cfg);
 
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;
     let from_str = chrono::DateTime::from_timestamp_millis(from_ms)
-        .unwrap()
+        .ok_or_else(|| anyhow::anyhow!("--from value {from_ms}ms is out of representable range"))?
         .to_rfc3339();
     let to_str = chrono::DateTime::from_timestamp_millis(to_ms)
-        .unwrap()
+        .ok_or_else(|| anyhow::anyhow!("--to value {to_ms}ms is out of representable range"))?
         .to_rfc3339();
 
-    let mut filter = CIAppPipelinesQueryFilter::new().from(from_str).to(to_str);
+    let mut query_parts: Vec<String> = Vec::new();
     if let Some(q) = query {
-        filter = filter.query(q);
+        query_parts.push(q);
+    }
+    if let Some(b) = branch {
+        query_parts.push(format!("@git.branch:\"{}\"", b.replace('"', "\\\"")));
+    }
+    if let Some(p) = pipeline_name {
+        query_parts.push(format!(
+            "@ci.pipeline.name:\"{}\"",
+            p.replace('"', "\\\"")
+        ));
+    }
+
+    let mut filter = CIAppPipelinesQueryFilter::new().from(from_str).to(to_str);
+    if !query_parts.is_empty() {
+        filter = filter.query(query_parts.join(" "));
     }
 
     let body = CIAppPipelineEventsRequest::new()
@@ -88,17 +104,26 @@ pub async fn events_search(
     from: String,
     to: String,
     limit: i32,
+    sort: String,
 ) -> Result<()> {
     let api = crate::make_api!(CIVisibilityPipelinesAPI, cfg);
 
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;
     let from_str = chrono::DateTime::from_timestamp_millis(from_ms)
-        .unwrap()
+        .ok_or_else(|| anyhow::anyhow!("--from value {from_ms}ms is out of representable range"))?
         .to_rfc3339();
     let to_str = chrono::DateTime::from_timestamp_millis(to_ms)
-        .unwrap()
+        .ok_or_else(|| anyhow::anyhow!("--to value {to_ms}ms is out of representable range"))?
         .to_rfc3339();
+
+    let sort_val = match sort.as_str() {
+        "asc" | "timestamp" => CIAppSort::TIMESTAMP_ASCENDING,
+        "desc" | "-timestamp" => CIAppSort::TIMESTAMP_DESCENDING,
+        other => anyhow::bail!(
+            "invalid --sort value: {other:?}\nExpected: asc (ascending) or desc (descending)"
+        ),
+    };
 
     let filter = CIAppPipelinesQueryFilter::new()
         .from(from_str)
@@ -108,7 +133,7 @@ pub async fn events_search(
     let body = CIAppPipelineEventsRequest::new()
         .filter(filter)
         .page(CIAppQueryPageOptions::new().limit(limit))
-        .sort(CIAppSort::TIMESTAMP_DESCENDING);
+        .sort(sort_val);
 
     let params = SearchCIAppPipelineEventsOptionalParams::default().body(body);
     let resp = api
@@ -124,10 +149,10 @@ pub async fn events_aggregate(cfg: &Config, query: String, from: String, to: Str
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;
     let from_str = chrono::DateTime::from_timestamp_millis(from_ms)
-        .unwrap()
+        .ok_or_else(|| anyhow::anyhow!("--from value {from_ms}ms is out of representable range"))?
         .to_rfc3339();
     let to_str = chrono::DateTime::from_timestamp_millis(to_ms)
-        .unwrap()
+        .ok_or_else(|| anyhow::anyhow!("--to value {to_ms}ms is out of representable range"))?
         .to_rfc3339();
 
     let filter = CIAppPipelinesQueryFilter::new()
@@ -157,10 +182,10 @@ pub async fn tests_search(
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;
     let from_str = chrono::DateTime::from_timestamp_millis(from_ms)
-        .unwrap()
+        .ok_or_else(|| anyhow::anyhow!("--from value {from_ms}ms is out of representable range"))?
         .to_rfc3339();
     let to_str = chrono::DateTime::from_timestamp_millis(to_ms)
-        .unwrap()
+        .ok_or_else(|| anyhow::anyhow!("--to value {to_ms}ms is out of representable range"))?
         .to_rfc3339();
 
     let filter = CIAppTestsQueryFilter::new()
@@ -187,10 +212,10 @@ pub async fn tests_aggregate(cfg: &Config, query: String, from: String, to: Stri
     let from_ms = util::parse_time_to_unix_millis(&from)?;
     let to_ms = util::parse_time_to_unix_millis(&to)?;
     let from_str = chrono::DateTime::from_timestamp_millis(from_ms)
-        .unwrap()
+        .ok_or_else(|| anyhow::anyhow!("--from value {from_ms}ms is out of representable range"))?
         .to_rfc3339();
     let to_str = chrono::DateTime::from_timestamp_millis(to_ms)
-        .unwrap()
+        .ok_or_else(|| anyhow::anyhow!("--to value {to_ms}ms is out of representable range"))?
         .to_rfc3339();
 
     let filter = CIAppTestsQueryFilter::new()
@@ -314,7 +339,7 @@ mod tests {
         let mut s = mockito::Server::new_async().await;
         let cfg = test_config(&s.url());
         mock_all(&mut s, r#"{"data": []}"#).await;
-        let _ = super::pipelines_list(&cfg, None, "1h".into(), "now".into(), 10).await;
+        let _ = super::pipelines_list(&cfg, None, "1h".into(), "now".into(), 10, None, None).await;
         cleanup_env();
     }
 
@@ -357,5 +382,18 @@ mod tests {
             .to_string()
             .contains("invalid sort value"));
         cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_cicd_events_search_invalid_sort() {
+        let cfg = test_config("http://unused.local");
+        let result =
+            super::events_search(&cfg, "*".into(), "1h".into(), "now".into(), 10, "bogus".into())
+                .await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid --sort value"));
     }
 }

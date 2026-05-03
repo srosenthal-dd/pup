@@ -10,9 +10,9 @@ use datadog_api_client::datadogV2::api_rum_replay_playlists::{
 use datadog_api_client::datadogV2::api_rum_retention_filters::RumRetentionFiltersAPI;
 use datadog_api_client::datadogV2::model::{
     RUMApplicationCreate, RUMApplicationCreateAttributes, RUMApplicationCreateRequest,
-    RUMApplicationCreateType, RUMApplicationUpdateRequest, RUMQueryFilter, RUMSearchEventsRequest,
-    RUMSort, RumMetricCreateRequest, RumMetricUpdateRequest, RumRetentionFilterCreateRequest,
-    RumRetentionFilterUpdateRequest,
+    RUMApplicationCreateType, RUMApplicationUpdateRequest, RUMQueryFilter, RUMQueryPageOptions,
+    RUMSearchEventsRequest, RUMSort, RumMetricCreateRequest, RumMetricUpdateRequest,
+    RumRetentionFilterCreateRequest, RumRetentionFilterUpdateRequest,
 };
 
 use crate::client;
@@ -94,15 +94,17 @@ pub async fn sessions_search(
     query: Option<String>,
     from: String,
     to: String,
-    _limit: i32,
+    limit: i32,
 ) -> Result<()> {
     let api = crate::make_api!(RUMAPI, cfg);
 
-    let from_str = chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&from)?)
-        .unwrap()
+    let from_ms = util::parse_time_to_unix_millis(&from)?;
+    let to_ms = util::parse_time_to_unix_millis(&to)?;
+    let from_str = chrono::DateTime::from_timestamp_millis(from_ms)
+        .ok_or_else(|| anyhow::anyhow!("--from value {from_ms}ms is out of representable range"))?
         .to_rfc3339();
-    let to_str = chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&to)?)
-        .unwrap()
+    let to_str = chrono::DateTime::from_timestamp_millis(to_ms)
+        .ok_or_else(|| anyhow::anyhow!("--to value {to_ms}ms is out of representable range"))?
         .to_rfc3339();
 
     let mut filter = RUMQueryFilter::new().from(from_str).to(to_str);
@@ -112,6 +114,7 @@ pub async fn sessions_search(
 
     let body = RUMSearchEventsRequest::new()
         .filter(filter)
+        .page(RUMQueryPageOptions::new().limit(limit))
         .sort(RUMSort::TIMESTAMP_DESCENDING);
 
     let resp = api
@@ -239,11 +242,13 @@ pub async fn retention_filters_delete(cfg: &Config, app_id: &str, filter_id: &st
 pub async fn sessions_list(cfg: &Config, from: String, to: String, limit: i32) -> Result<()> {
     let api = crate::make_api!(RUMAPI, cfg);
 
-    let from_str = chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&from)?)
-        .unwrap()
+    let from_ms = util::parse_time_to_unix_millis(&from)?;
+    let to_ms = util::parse_time_to_unix_millis(&to)?;
+    let from_str = chrono::DateTime::from_timestamp_millis(from_ms)
+        .ok_or_else(|| anyhow::anyhow!("--from value {from_ms}ms is out of representable range"))?
         .to_rfc3339();
-    let to_str = chrono::DateTime::from_timestamp_millis(util::parse_time_to_unix_millis(&to)?)
-        .unwrap()
+    let to_str = chrono::DateTime::from_timestamp_millis(to_ms)
+        .ok_or_else(|| anyhow::anyhow!("--to value {to_ms}ms is out of representable range"))?
         .to_rfc3339();
 
     let filter = RUMQueryFilter::new()
@@ -534,6 +539,18 @@ mod tests {
         let cfg = test_config(&s.url());
         mock_all(&mut s, r#"{"data": []}"#).await;
         let _ = super::playlists_list(&cfg).await;
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_rum_sessions_search() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let result =
+            super::sessions_search(&cfg, None, "1h".into(), "now".into(), 25).await;
+        assert!(result.is_ok(), "rum sessions search failed: {:?}", result.err());
         cleanup_env();
     }
 }
