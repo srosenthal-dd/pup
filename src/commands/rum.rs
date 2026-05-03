@@ -548,9 +548,12 @@ mod tests {
         let mut s = mockito::Server::new_async().await;
         let cfg = test_config(&s.url());
         mock_all(&mut s, r#"{"data": []}"#).await;
-        let result =
-            super::sessions_search(&cfg, None, "1h".into(), "now".into(), 25).await;
-        assert!(result.is_ok(), "rum sessions search failed: {:?}", result.err());
+        let result = super::sessions_search(&cfg, None, "1h".into(), "now".into(), 25).await;
+        assert!(
+            result.is_ok(),
+            "rum sessions search failed: {:?}",
+            result.err()
+        );
         cleanup_env();
     }
 }

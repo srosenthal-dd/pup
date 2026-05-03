@@ -446,16 +446,38 @@ mod tests {
     #[tokio::test]
     async fn test_search_limit_too_small() {
         let cfg = test_config("http://unused.local");
-        let result = super::search(&cfg, "*".into(), "1h".into(), "now".into(), 0, "-timestamp".into()).await;
+        let result = super::search(
+            &cfg,
+            "*".into(),
+            "1h".into(),
+            "now".into(),
+            0,
+            "-timestamp".into(),
+        )
+        .await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("--limit must be between 1 and 1000"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("--limit must be between 1 and 1000"));
     }
 
     #[tokio::test]
     async fn test_search_limit_too_large() {
         let cfg = test_config("http://unused.local");
-        let result = super::search(&cfg, "*".into(), "1h".into(), "now".into(), 1001, "-timestamp".into()).await;
+        let result = super::search(
+            &cfg,
+            "*".into(),
+            "1h".into(),
+            "now".into(),
+            1001,
+            "-timestamp".into(),
+        )
+        .await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("--limit must be between 1 and 1000"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("--limit must be between 1 and 1000"));
     }
 }

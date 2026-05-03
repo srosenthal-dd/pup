@@ -47,10 +47,7 @@ pub async fn pipelines_list(
         query_parts.push(format!("@git.branch:\"{}\"", b.replace('"', "\\\"")));
     }
     if let Some(p) = pipeline_name {
-        query_parts.push(format!(
-            "@ci.pipeline.name:\"{}\"",
-            p.replace('"', "\\\"")
-        ));
+        query_parts.push(format!("@ci.pipeline.name:\"{}\"", p.replace('"', "\\\"")));
     }
 
     let mut filter = CIAppPipelinesQueryFilter::new().from(from_str).to(to_str);
@@ -387,9 +384,15 @@ mod tests {
     #[tokio::test]
     async fn test_cicd_events_search_invalid_sort() {
         let cfg = test_config("http://unused.local");
-        let result =
-            super::events_search(&cfg, "*".into(), "1h".into(), "now".into(), 10, "bogus".into())
-                .await;
+        let result = super::events_search(
+            &cfg,
+            "*".into(),
+            "1h".into(),
+            "now".into(),
+            10,
+            "bogus".into(),
+        )
+        .await;
         assert!(result.is_err());
         assert!(result
             .unwrap_err()

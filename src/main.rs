@@ -4664,7 +4664,10 @@ enum SecuritySignalActions {
         to: String,
         #[arg(long, default_value_t = 100, help = "Maximum results (1-1000)")]
         limit: i32,
-        #[arg(long, help = "Sort order: timestamp (ascending) or -timestamp (descending)")]
+        #[arg(
+            long,
+            help = "Sort order: timestamp (ascending) or -timestamp (descending)"
+        )]
         sort: Option<String>,
     },
     /// Get log queries for investigating a signal

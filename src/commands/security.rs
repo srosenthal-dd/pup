@@ -1084,9 +1084,15 @@ mod tests {
     #[tokio::test]
     async fn test_signals_search_invalid_sort() {
         let cfg = test_config("http://unused.local");
-        let result =
-            super::signals_search(&cfg, "*".into(), "1h".into(), "now".into(), 10, Some("invalid".into()))
-                .await;
+        let result = super::signals_search(
+            &cfg,
+            "*".into(),
+            "1h".into(),
+            "now".into(),
+            10,
+            Some("invalid".into()),
+        )
+        .await;
         assert!(result.is_err());
         assert!(result
             .unwrap_err()

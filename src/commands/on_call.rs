@@ -58,9 +58,9 @@ pub(crate) async fn resolve_team_id(cfg: &Config, input: &str) -> Result<String>
         .await
         .map_err(|e| anyhow::anyhow!("failed to resolve team handle '{input}': {e:?}"))?;
 
-    let teams = resp
-        .data
-        .ok_or_else(|| anyhow::anyhow!("unexpected response from teams API: 'data' field missing"))?;
+    let teams = resp.data.ok_or_else(|| {
+        anyhow::anyhow!("unexpected response from teams API: 'data' field missing")
+    })?;
     let total = teams.len();
     let exact: Vec<&datadog_api_client::datadogV2::model::Team> = teams
         .iter()
@@ -880,7 +880,11 @@ mod tests {
         let team_uuid = "00000000-0000-0000-0000-000000000001";
         mock_all(&mut s, r#"{"data": []}"#).await;
         let result = super::memberships_list(&cfg, team_uuid, 10, 0, "name".into()).await;
-        assert!(result.is_ok(), "memberships_list failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "memberships_list failed: {:?}",
+            result.err()
+        );
         cleanup_env();
     }
 
