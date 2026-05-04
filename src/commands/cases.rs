@@ -29,9 +29,16 @@ fn make_api(cfg: &Config) -> CaseManagementAPI {
 // Core case operations
 // ---------------------------------------------------------------------------
 
-pub async fn search(cfg: &Config, query: Option<String>, page_size: i64) -> Result<()> {
+pub async fn search(
+    cfg: &Config,
+    query: Option<String>,
+    page_size: i64,
+    page_number: i64,
+) -> Result<()> {
     let api = make_api(cfg);
-    let mut params = SearchCasesOptionalParams::default().page_size(page_size);
+    let mut params = SearchCasesOptionalParams::default()
+        .page_size(page_size)
+        .page_number(page_number);
     if let Some(q) = query {
         params = params.filter(q);
     }
@@ -372,7 +379,7 @@ mod tests {
         let mut s = mockito::Server::new_async().await;
         let cfg = test_config(&s.url());
         mock_all(&mut s, r#"{"data": []}"#).await;
-        let _ = super::search(&cfg, None, 10).await;
+        let _ = super::search(&cfg, None, 10, 0).await;
         cleanup_env();
     }
 

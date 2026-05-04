@@ -12,12 +12,12 @@ use datadog_api_client::datadogV2::api_teams::{
 };
 use datadog_api_client::datadogV2::model::{
     CreateOnCallNotificationRuleRequest, CreatePageRequest, CreateUserNotificationChannelRequest,
-    EscalationPolicyCreateRequest, EscalationPolicyUpdateRequest, RelationshipToUserTeamUser,
-    RelationshipToUserTeamUserData, ScheduleCreateRequest, ScheduleUpdateRequest, TeamCreate,
-    TeamCreateAttributes, TeamCreateRequest, TeamType, TeamUpdate, TeamUpdateAttributes,
-    TeamUpdateRequest, UpdateOnCallNotificationRuleRequest, UserTeamAttributes, UserTeamCreate,
-    UserTeamRelationships, UserTeamRequest, UserTeamRole, UserTeamType, UserTeamUpdate,
-    UserTeamUpdateRequest, UserTeamUserType,
+    EscalationPolicyCreateRequest, EscalationPolicyUpdateRequest, GetTeamMembershipsSort,
+    RelationshipToUserTeamUser, RelationshipToUserTeamUserData, ScheduleCreateRequest,
+    ScheduleUpdateRequest, TeamCreate, TeamCreateAttributes, TeamCreateRequest, TeamType,
+    TeamUpdate, TeamUpdateAttributes, TeamUpdateRequest, UpdateOnCallNotificationRuleRequest,
+    UserTeamAttributes, UserTeamCreate, UserTeamRelationships, UserTeamRequest, UserTeamRole,
+    UserTeamType, UserTeamUpdate, UserTeamUpdateRequest, UserTeamUserType,
 };
 
 use crate::client;
@@ -58,11 +58,13 @@ pub(crate) async fn resolve_team_id(cfg: &Config, input: &str) -> Result<String>
         .await
         .map_err(|e| anyhow::anyhow!("failed to resolve team handle '{input}': {e:?}"))?;
 
-    let teams = resp.data.unwrap_or_default();
+    let teams = resp.data.ok_or_else(|| {
+        anyhow::anyhow!("unexpected response from teams API: 'data' field missing")
+    })?;
     let total = teams.len();
     let exact: Vec<&datadog_api_client::datadogV2::model::Team> = teams
         .iter()
-        .filter(|t| t.attributes.handle == input)
+        .filter(|t| t.attributes.handle.to_lowercase() == input.to_lowercase())
         .collect();
 
     match exact.len() {
@@ -71,6 +73,14 @@ pub(crate) async fn resolve_team_id(cfg: &Config, input: &str) -> Result<String>
         _ => Err(anyhow::anyhow!(
             "no exact handle match for '{input}' ({total} candidates matched substring)"
         )),
+    }
+}
+
+fn parse_team_role(role: &str) -> Result<UserTeamRole> {
+    // UserTeamRole is #[non_exhaustive] upstream — extend this match when new variants are added.
+    match role.to_lowercase().as_str() {
+        "admin" => Ok(UserTeamRole::ADMIN),
+        other => anyhow::bail!("invalid --role value: {other:?}\nExpected: admin"),
     }
 }
 
@@ -129,10 +139,34 @@ pub async fn teams_update(cfg: &Config, team_id: &str, name: &str, handle: &str)
     formatter::output(cfg, &resp)
 }
 
-pub async fn memberships_list(cfg: &Config, team_id: &str, page_size: i64) -> Result<()> {
+pub async fn memberships_list(
+    cfg: &Config,
+    team_id: &str,
+    page_size: i64,
+    page_number: i64,
+    sort: String,
+) -> Result<()> {
+    let sort_val = match sort.as_str() {
+        "manager_name" => GetTeamMembershipsSort::MANAGER_NAME,
+        "-manager_name" => GetTeamMembershipsSort::_MANAGER_NAME,
+        "name" => GetTeamMembershipsSort::NAME,
+        "-name" => GetTeamMembershipsSort::_NAME,
+        "handle" => GetTeamMembershipsSort::HANDLE,
+        "-handle" => GetTeamMembershipsSort::_HANDLE,
+        "email" => GetTeamMembershipsSort::EMAIL,
+        "-email" => GetTeamMembershipsSort::_EMAIL,
+        other => anyhow::bail!(
+            "invalid --sort value: {other:?}\nExpected: name, -name, email, -email, handle, -handle, manager_name, -manager_name"
+        ),
+    };
+
     let resolved = resolve_team_id(cfg, team_id).await?;
     let api = crate::make_api!(TeamsAPI, cfg);
-    let params = GetTeamMembershipsOptionalParams::default().page_size(page_size);
+
+    let params = GetTeamMembershipsOptionalParams::default()
+        .page_size(page_size)
+        .page_number(page_number)
+        .sort(sort_val);
     let resp = api
         .get_team_memberships(resolved, params)
         .await
@@ -146,16 +180,12 @@ pub async fn memberships_add(
     user_id: &str,
     role: Option<String>,
 ) -> Result<()> {
-    let resolved = resolve_team_id(cfg, team_id).await?;
-    let api = crate::make_api!(TeamsAPI, cfg);
     let mut attrs = UserTeamAttributes::new();
     if let Some(r) = role {
-        let team_role = match r.to_lowercase().as_str() {
-            "admin" => UserTeamRole::ADMIN,
-            _ => UserTeamRole::ADMIN,
-        };
-        attrs = attrs.role(Some(team_role));
+        attrs = attrs.role(Some(parse_team_role(&r)?));
     }
+    let resolved = resolve_team_id(cfg, team_id).await?;
+    let api = crate::make_api!(TeamsAPI, cfg);
     let user_data =
         RelationshipToUserTeamUserData::new(user_id.to_string(), UserTeamUserType::USERS);
     let user_rel = RelationshipToUserTeamUser::new(user_data);
@@ -177,12 +207,9 @@ pub async fn memberships_update(
     user_id: &str,
     role: &str,
 ) -> Result<()> {
+    let team_role = parse_team_role(role)?;
     let resolved = resolve_team_id(cfg, team_id).await?;
     let api = crate::make_api!(TeamsAPI, cfg);
-    let team_role = match role.to_lowercase().as_str() {
-        "admin" => UserTeamRole::ADMIN,
-        _ => UserTeamRole::ADMIN,
-    };
     let attrs = UserTeamAttributes::new().role(Some(team_role));
     let data = UserTeamUpdate::new(UserTeamType::TEAM_MEMBERSHIPS).attributes(attrs);
     let body = UserTeamUpdateRequest::new(data);
@@ -832,5 +859,101 @@ mod tests {
         let result = super::pages_get(&cfg, "abc/def?x").await;
         assert!(result.is_ok(), "pages_get failed: {:?}", result.err());
         cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_memberships_list_invalid_sort() {
+        let cfg = test_config("http://unused.local");
+        let result = super::memberships_list(&cfg, "team-id", 10, 0, "bogus".into()).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid --sort value"));
+    }
+
+    #[tokio::test]
+    async fn test_memberships_list_valid_sort() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        let team_uuid = "00000000-0000-0000-0000-000000000001";
+        mock_all(&mut s, r#"{"data": []}"#).await;
+        let result = super::memberships_list(&cfg, team_uuid, 10, 0, "name".into()).await;
+        assert!(
+            result.is_ok(),
+            "memberships_list failed: {:?}",
+            result.err()
+        );
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_resolve_team_id_case_insensitive() {
+        let _lock = lock_env().await;
+        let mut s = mockito::Server::new_async().await;
+        let cfg = test_config(&s.url());
+        // API returns handle in lowercase; caller passes mixed-case — must still resolve.
+        let list_body = r#"{
+            "data": [
+                {
+                    "id": "00000000-0000-0000-0000-000000000002",
+                    "type": "team",
+                    "attributes": {
+                        "name": "Example Team",
+                        "handle": "example-team",
+                        "description": null,
+                        "avatar": null,
+                        "banner": null,
+                        "visible_modules": null,
+                        "hidden_modules": null,
+                        "created_at": null,
+                        "modified_at": null,
+                        "summary": null,
+                        "link_count": 0,
+                        "user_count": 0,
+                        "team_links": null
+                    }
+                }
+            ]
+        }"#;
+        s.mock("GET", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::Any)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(list_body)
+            .create_async()
+            .await;
+        let result = super::resolve_team_id(&cfg, "Example-Team").await;
+        assert!(
+            result.is_ok(),
+            "resolve_team_id case-insensitive failed: {:?}",
+            result.err()
+        );
+        assert_eq!(result.unwrap(), "00000000-0000-0000-0000-000000000002");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_memberships_add_invalid_role() {
+        let cfg = test_config("http://unused.local");
+        let result =
+            super::memberships_add(&cfg, "team-id", "user-id", Some("editor".into())).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid --role value"));
+    }
+
+    #[tokio::test]
+    async fn test_memberships_update_invalid_role() {
+        let cfg = test_config("http://unused.local");
+        let result = super::memberships_update(&cfg, "team-id", "user-id", "editor").await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid --role value"));
     }
 }

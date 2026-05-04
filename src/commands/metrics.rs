@@ -40,11 +40,19 @@ use crate::config::Config;
 use crate::formatter;
 use crate::util;
 
-pub async fn list(cfg: &Config, filter: Option<String>, from: String) -> Result<()> {
+pub async fn list(
+    cfg: &Config,
+    filter: Option<String>,
+    from: String,
+    tag_filter: Option<String>,
+) -> Result<()> {
     let api = crate::make_api!(MetricsV1API, cfg);
 
     let from_ts = util::parse_time_to_unix(&from)?;
-    let params = ListActiveMetricsOptionalParams::default();
+    let mut params = ListActiveMetricsOptionalParams::default();
+    if let Some(tf) = tag_filter {
+        params = params.tag_filter(tf);
+    }
 
     let resp = api
         .list_active_metrics(from_ts, params)
@@ -199,7 +207,7 @@ mod tests {
         )
         .await;
 
-        let result = super::list(&cfg, None, "1h".into()).await;
+        let result = super::list(&cfg, None, "1h".into(), None).await;
         assert!(result.is_ok(), "metrics list failed: {:?}", result.err());
         cleanup_env();
     }

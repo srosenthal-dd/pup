@@ -168,8 +168,11 @@ pub async fn run(
 pub async fn instance_list(cfg: &Config, workflow_id: &str, limit: i64, page: i64) -> Result<()> {
     let api = make_api(cfg);
 
+    if !(1..=100).contains(&limit) {
+        anyhow::bail!("--limit must be between 1 and 100, got {limit}");
+    }
     let mut params = ListWorkflowInstancesOptionalParams::default();
-    params = params.page_size(limit.clamp(1, 100));
+    params = params.page_size(limit);
     if page > 0 {
         params = params.page_number(page);
     }
@@ -310,5 +313,27 @@ mod tests {
         );
         cleanup_env();
         std::env::remove_var("DD_TOKEN_STORAGE");
+    }
+
+    #[tokio::test]
+    async fn test_instance_list_limit_too_small() {
+        let cfg = test_config("http://unused.local");
+        let result = super::instance_list(&cfg, "wf-id", 0, 0).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("--limit must be between 1 and 100"));
+    }
+
+    #[tokio::test]
+    async fn test_instance_list_limit_too_large() {
+        let cfg = test_config("http://unused.local");
+        let result = super::instance_list(&cfg, "wf-id", 101, 0).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("--limit must be between 1 and 100"));
     }
 }

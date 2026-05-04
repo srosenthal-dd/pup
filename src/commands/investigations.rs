@@ -9,11 +9,14 @@ fn make_api(cfg: &Config) -> BitsAIAPI {
     crate::make_api!(BitsAIAPI, cfg)
 }
 
-pub async fn list(cfg: &Config, page_limit: i64, page_offset: i64) -> Result<()> {
+pub async fn list(cfg: &Config, page_limit: i64, page_offset: i64, monitor_id: i64) -> Result<()> {
     let api = make_api(cfg);
-    let params = ListInvestigationsOptionalParams::default()
+    let mut params = ListInvestigationsOptionalParams::default()
         .page_limit(page_limit)
         .page_offset(page_offset);
+    if monitor_id != 0 {
+        params = params.filter_monitor_id(monitor_id);
+    }
     let resp = api
         .list_investigations(params)
         .await
@@ -52,7 +55,7 @@ mod tests {
         let mut s = mockito::Server::new_async().await;
         let cfg = test_config(&s.url());
         mock_all(&mut s, r#"{"data": []}"#).await;
-        let _ = super::list(&cfg, 10, 0).await;
+        let _ = super::list(&cfg, 10, 0, 0).await;
         cleanup_env();
     }
 
