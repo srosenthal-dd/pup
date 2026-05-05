@@ -223,6 +223,11 @@ pub async fn read_callback_url_from_stdin() -> Result<CallbackResult> {
 /// Read pasted callback URLs from `reader` until one parses, then return it.
 /// Errors are printed and the loop continues, so a typo doesn't end the
 /// login session: the HTTP listener may still fire.
+///
+/// On EOF without a valid URL the future stays pending forever rather than
+/// resolving to an error. This matters when the function is raced against
+/// the HTTP listener via `tokio::select!`: a closed or piped stdin must not
+/// short-circuit the HTTP branch.
 #[cfg(not(target_arch = "wasm32"))]
 async fn read_callback_url_from_reader<R: tokio::io::AsyncBufRead + Unpin>(
     reader: R,
@@ -238,7 +243,7 @@ async fn read_callback_url_from_reader<R: tokio::io::AsyncBufRead + Unpin>(
             Err(e) => eprintln!("⚠️  {e}. Paste the full callback URL again:"),
         }
     }
-    bail!("stdin closed before a valid callback URL was provided");
+    std::future::pending().await
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -337,9 +342,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn read_callback_url_returns_error_on_eof_without_match() {
-        let r = read_callback_url_from_reader(reader("garbage\nmore garbage\n")).await;
-        assert!(r.is_err());
+    async fn read_callback_url_stays_pending_on_eof_without_match() {
+        // Reader closes after delivering only garbage. The future must NOT
+        // resolve to an error — that would let it short-circuit a `select!`
+        // race against the HTTP listener. Verify by timing out.
+        let fut = read_callback_url_from_reader(reader("garbage\nmore garbage\n"));
+        let timed = tokio::time::timeout(std::time::Duration::from_millis(50), fut).await;
+        assert!(timed.is_err(), "expected pending (timeout), but future resolved");
+    }
+
+    #[tokio::test]
+    async fn read_callback_url_stays_pending_on_immediate_eof() {
+        // Closed/empty stdin (ex: `cmd </dev/null`) must not short-circuit.
+        let fut = read_callback_url_from_reader(reader(""));
+        let timed = tokio::time::timeout(std::time::Duration::from_millis(50), fut).await;
+        assert!(timed.is_err(), "expected pending (timeout), but future resolved");
     }
 
     #[tokio::test]

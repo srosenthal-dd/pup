@@ -99,18 +99,25 @@ pub async fn login(cfg: &Config, scopes: Vec<String>, subdomain: Option<&str>) -
         );
     }
 
-    // 6. Wait for callback. Race the HTTP listener against a stdin paste path
-    // so users with no reachable browser can manually relay the redirect URL.
-    // tokio::select! cancels the loser.
+    // 6. Wait for callback. The happy path waits on the HTTP listener only,
+    // exactly as before this change. When the browser failed to open, also
+    // race a stdin paste path so users on remote machines can manually relay
+    // the redirect URL. The stdin path is only enabled in the headless branch
+    // so legitimate non-interactive launches (closed stdin, piped /dev/null)
+    // can't short-circuit a working browser flow.
     eprintln!("\n⏳ Waiting for authorization...");
-    if !browser_opened {
+    let result = if browser_opened {
+        server
+            .wait_for_callback(std::time::Duration::from_secs(300))
+            .await?
+    } else {
         use std::io::Write;
         eprint!("> ");
         let _ = std::io::stderr().flush();
-    }
-    let result = tokio::select! {
-        r = server.wait_for_callback(std::time::Duration::from_secs(300)) => r?,
-        r = crate::auth::callback::read_callback_url_from_stdin() => r?,
+        tokio::select! {
+            r = server.wait_for_callback(std::time::Duration::from_secs(300)) => r?,
+            r = crate::auth::callback::read_callback_url_from_stdin() => r?,
+        }
     };
 
     if let Some(err) = &result.error {
