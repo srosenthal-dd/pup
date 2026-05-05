@@ -87,13 +87,25 @@ pub async fn login(cfg: &Config, scopes: Vec<String>, subdomain: Option<&str>) -
     // 5. Open browser
     eprintln!("\n🌐 Opening browser for authentication...");
     eprintln!("If the browser doesn't open, visit: {auth_url}");
-    let _ = open::that(&auth_url);
+    let browser_opened = open::that(&auth_url).is_ok();
+    if !browser_opened {
+        eprintln!(
+            "\nNo local browser detected (remote/SSH session?). To complete login:\n  \
+             1. Open the URL above on a machine with a browser and authorize.\n  \
+             2. Your browser will redirect to {redirect_uri}?... and fail to load\n     \
+             (expected). Copy that full URL from the address bar.\n  \
+             3. Paste it below, then press Enter."
+        );
+    }
 
-    // 6. Wait for callback
+    // 6. Wait for callback. Race the HTTP listener against a stdin paste path
+    // so users with no reachable browser can manually relay the redirect URL.
+    // tokio::select! cancels the loser.
     eprintln!("\n⏳ Waiting for authorization...");
-    let result = server
-        .wait_for_callback(std::time::Duration::from_secs(300))
-        .await?;
+    let result = tokio::select! {
+        r = server.wait_for_callback(std::time::Duration::from_secs(300)) => r?,
+        r = crate::auth::callback::read_callback_url_from_stdin() => r?,
+    };
 
     if let Some(err) = &result.error {
         let desc = result.error_description.as_deref().unwrap_or("");

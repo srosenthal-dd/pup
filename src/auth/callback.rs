@@ -181,3 +181,108 @@ h1{{color:#c00}}p{{color:#555}}</style></head>
 <p>Please close this window and try again.</p></div></body></html>"#
     )
 }
+
+/// Parse a pasted OAuth callback URL into a `CallbackResult`. Used as a
+/// fallback for users on remote machines where the laptop browser cannot
+/// reach the workspace's `127.0.0.1` listener.
+#[cfg(not(target_arch = "wasm32"))]
+fn parse_callback_url(input: &str) -> Result<CallbackResult> {
+    let url = url::Url::parse(input.trim()).map_err(|e| anyhow::anyhow!("not a valid URL: {e}"))?;
+    let mut code = None;
+    let mut state = None;
+    let mut error = None;
+    let mut error_description = None;
+    for (k, v) in url.query_pairs() {
+        match k.as_ref() {
+            "code" => code = Some(v.into_owned()),
+            "state" => state = Some(v.into_owned()),
+            "error" => error = Some(v.into_owned()),
+            "error_description" => error_description = Some(v.into_owned()),
+            _ => {}
+        }
+    }
+    if error.is_none() && (code.is_none() || state.is_none()) {
+        bail!("URL is missing 'code' and 'state' query parameters");
+    }
+    Ok(CallbackResult {
+        code: code.unwrap_or_default(),
+        state: state.unwrap_or_default(),
+        error,
+        error_description,
+    })
+}
+
+/// Read pasted callback URLs from stdin until one parses, then return it.
+/// Errors are printed and the loop continues, so a typo doesn't end the
+/// login session: the HTTP listener may still fire.
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn read_callback_url_from_stdin() -> Result<CallbackResult> {
+    use tokio::io::AsyncBufReadExt;
+    let mut lines = tokio::io::BufReader::new(tokio::io::stdin()).lines();
+    while let Some(line) = lines.next_line().await? {
+        if line.trim().is_empty() {
+            continue;
+        }
+        match parse_callback_url(&line) {
+            Ok(result) => return Ok(result),
+            Err(e) => eprintln!("⚠️  {e}. Paste the full callback URL again:"),
+        }
+    }
+    bail!("stdin closed before a valid callback URL was provided");
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_callback_url_extracts_code_and_state() {
+        let r = parse_callback_url("http://127.0.0.1:8000/oauth/callback?code=abc123&state=xyz789")
+            .unwrap();
+        assert_eq!(r.code, "abc123");
+        assert_eq!(r.state, "xyz789");
+        assert!(r.error.is_none());
+        assert!(r.error_description.is_none());
+    }
+
+    #[test]
+    fn parse_callback_url_extracts_error() {
+        let r = parse_callback_url(
+            "http://127.0.0.1:8000/oauth/callback?error=access_denied&error_description=user%20cancelled",
+        )
+        .unwrap();
+        assert_eq!(r.error.as_deref(), Some("access_denied"));
+        assert_eq!(r.error_description.as_deref(), Some("user cancelled"));
+    }
+
+    #[test]
+    fn parse_callback_url_trims_whitespace() {
+        let r = parse_callback_url("  http://127.0.0.1:8000/oauth/callback?code=abc&state=xyz\n")
+            .unwrap();
+        assert_eq!(r.code, "abc");
+        assert_eq!(r.state, "xyz");
+    }
+
+    #[test]
+    fn parse_callback_url_rejects_missing_params() {
+        assert!(parse_callback_url("http://127.0.0.1:8000/oauth/callback").is_err());
+        assert!(parse_callback_url("http://127.0.0.1:8000/oauth/callback?code=abc").is_err());
+        assert!(parse_callback_url("http://127.0.0.1:8000/oauth/callback?state=xyz").is_err());
+    }
+
+    #[test]
+    fn parse_callback_url_rejects_garbage() {
+        assert!(parse_callback_url("not a url").is_err());
+        assert!(parse_callback_url("").is_err());
+    }
+
+    #[test]
+    fn parse_callback_url_accepts_any_host() {
+        // Tolerant of broker-style or non-localhost redirect URIs as long as
+        // the query carries the right params.
+        let r = parse_callback_url("https://oauth.example.com/cli/callback?code=abc&state=xyz")
+            .unwrap();
+        assert_eq!(r.code, "abc");
+        assert_eq!(r.state, "xyz");
+    }
+}
