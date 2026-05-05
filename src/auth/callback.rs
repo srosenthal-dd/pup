@@ -348,7 +348,10 @@ mod tests {
         // race against the HTTP listener. Verify by timing out.
         let fut = read_callback_url_from_reader(reader("garbage\nmore garbage\n"));
         let timed = tokio::time::timeout(std::time::Duration::from_millis(50), fut).await;
-        assert!(timed.is_err(), "expected pending (timeout), but future resolved");
+        assert!(
+            timed.is_err(),
+            "expected pending (timeout), but future resolved"
+        );
     }
 
     #[tokio::test]
@@ -356,7 +359,10 @@ mod tests {
         // Closed/empty stdin (ex: `cmd </dev/null`) must not short-circuit.
         let fut = read_callback_url_from_reader(reader(""));
         let timed = tokio::time::timeout(std::time::Duration::from_millis(50), fut).await;
-        assert!(timed.is_err(), "expected pending (timeout), but future resolved");
+        assert!(
+            timed.is_err(),
+            "expected pending (timeout), but future resolved"
+        );
     }
 
     #[tokio::test]
