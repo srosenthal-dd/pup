@@ -19,6 +19,9 @@ Thumbs.db
 # Config files with potential secrets
 .env
 
+# HTTP Archive files (captured browser traffic — may contain session cookies)
+*.har
+
 # Test harness outputs (generated artifacts — written to /tmp/pup-dev/)
 scripts/__pycache__
 .env.local
