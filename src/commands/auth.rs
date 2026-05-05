@@ -87,7 +87,15 @@ pub async fn login(cfg: &Config, scopes: Vec<String>, subdomain: Option<&str>) -
     // 5. Open browser
     eprintln!("\n🌐 Opening browser for authentication...");
     eprintln!("If the browser doesn't open, visit: {auth_url}");
-    let _ = open::that(&auth_url);
+    if open::that(&auth_url).is_err() {
+        eprintln!(
+            "\nNo local browser detected (remote/SSH session?). To complete login:\n  \
+             1. Open the URL above on a machine with a browser and authorize.\n  \
+             2. Your browser will redirect to {redirect_uri}?... and fail to load\n     \
+             (expected). Copy that full URL from the address bar.\n  \
+             3. Run on this machine:  curl '<paste copied URL>'"
+        );
+    }
 
     // 6. Wait for callback
     eprintln!("\n⏳ Waiting for authorization...");
