@@ -94,7 +94,8 @@ pub async fn login(cfg: &Config, scopes: Vec<String>, subdomain: Option<&str>) -
              1. Open the URL above on a machine with a browser and authorize.\n  \
              2. Your browser will redirect to {redirect_uri}?... and fail to load\n     \
              (expected). Copy that full URL from the address bar.\n  \
-             3. Paste it below, then press Enter."
+             3. Paste it below, then press Enter.\n     \
+             Example: {redirect_uri}?code=...&state=..."
         );
     }
 
@@ -102,6 +103,11 @@ pub async fn login(cfg: &Config, scopes: Vec<String>, subdomain: Option<&str>) -
     // so users with no reachable browser can manually relay the redirect URL.
     // tokio::select! cancels the loser.
     eprintln!("\n⏳ Waiting for authorization...");
+    if !browser_opened {
+        use std::io::Write;
+        eprint!("> ");
+        let _ = std::io::stderr().flush();
+    }
     let result = tokio::select! {
         r = server.wait_for_callback(std::time::Duration::from_secs(300)) => r?,
         r = crate::auth::callback::read_callback_url_from_stdin() => r?,
