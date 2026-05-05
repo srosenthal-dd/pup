@@ -213,12 +213,22 @@ fn parse_callback_url(input: &str) -> Result<CallbackResult> {
 }
 
 /// Read pasted callback URLs from stdin until one parses, then return it.
+/// Thin wrapper around `read_callback_url_from_reader` so the loop logic
+/// stays unit-testable against a synthetic reader.
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn read_callback_url_from_stdin() -> Result<CallbackResult> {
+    read_callback_url_from_reader(tokio::io::BufReader::new(tokio::io::stdin())).await
+}
+
+/// Read pasted callback URLs from `reader` until one parses, then return it.
 /// Errors are printed and the loop continues, so a typo doesn't end the
 /// login session: the HTTP listener may still fire.
 #[cfg(not(target_arch = "wasm32"))]
-pub async fn read_callback_url_from_stdin() -> Result<CallbackResult> {
+async fn read_callback_url_from_reader<R: tokio::io::AsyncBufRead + Unpin>(
+    reader: R,
+) -> Result<CallbackResult> {
     use tokio::io::AsyncBufReadExt;
-    let mut lines = tokio::io::BufReader::new(tokio::io::stdin()).lines();
+    let mut lines = reader.lines();
     while let Some(line) = lines.next_line().await? {
         if line.trim().is_empty() {
             continue;
@@ -284,5 +294,62 @@ mod tests {
             .unwrap();
         assert_eq!(r.code, "abc");
         assert_eq!(r.state, "xyz");
+    }
+
+    fn reader(input: &str) -> tokio::io::BufReader<&[u8]> {
+        tokio::io::BufReader::new(input.as_bytes())
+    }
+
+    #[tokio::test]
+    async fn read_callback_url_returns_first_valid_line() {
+        let r = read_callback_url_from_reader(reader(
+            "http://127.0.0.1:8000/oauth/callback?code=abc&state=xyz\n",
+        ))
+        .await
+        .unwrap();
+        assert_eq!(r.code, "abc");
+        assert_eq!(r.state, "xyz");
+    }
+
+    #[tokio::test]
+    async fn read_callback_url_skips_blank_lines() {
+        let r = read_callback_url_from_reader(reader(
+            "\n\n   \nhttp://127.0.0.1:8000/oauth/callback?code=abc&state=xyz\n",
+        ))
+        .await
+        .unwrap();
+        assert_eq!(r.code, "abc");
+    }
+
+    #[tokio::test]
+    async fn read_callback_url_loops_through_parse_errors_until_valid() {
+        // Garbage and a half-complete URL precede the valid one; the loop
+        // must keep going until a parse succeeds, not bail on first error.
+        let r = read_callback_url_from_reader(reader(
+            "not a url\n\
+             http://127.0.0.1:8000/oauth/callback?code=alpha\n\
+             http://127.0.0.1:8000/oauth/callback?code=beta&state=charlie\n",
+        ))
+        .await
+        .unwrap();
+        assert_eq!(r.code, "beta");
+        assert_eq!(r.state, "charlie");
+    }
+
+    #[tokio::test]
+    async fn read_callback_url_returns_error_on_eof_without_match() {
+        let r = read_callback_url_from_reader(reader("garbage\nmore garbage\n")).await;
+        assert!(r.is_err());
+    }
+
+    #[tokio::test]
+    async fn read_callback_url_passes_through_oauth_error_redirect() {
+        let r = read_callback_url_from_reader(reader(
+            "http://127.0.0.1:8000/oauth/callback?error=access_denied&error_description=denied\n",
+        ))
+        .await
+        .unwrap();
+        assert_eq!(r.error.as_deref(), Some("access_denied"));
+        assert_eq!(r.error_description.as_deref(), Some("denied"));
     }
 }
