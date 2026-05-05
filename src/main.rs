@@ -1147,6 +1147,19 @@ enum Commands {
         #[command(subcommand)]
         action: DeploymentGatesActions,
     },
+    /// Ask the Datadog Docs AI a question
+    ///
+    /// Sends a natural-language question to the Datadog Docs AI assistant
+    /// and streams the response to stdout. No authentication required.
+    ///
+    /// EXAMPLES:
+    ///   pup docs ask "how do I set up log collection?"
+    ///   pup docs ask "what is the difference between a monitor and an SLO?"
+    #[command(verbatim_doc_comment)]
+    Docs {
+        #[command(subcommand)]
+        action: DocsActions,
+    },
     /// Manage monitor downtimes
     ///
     /// Manage downtimes to silence monitors during maintenance windows.
@@ -4450,6 +4463,16 @@ enum AuditLogActions {
         to: String,
         #[arg(long, default_value_t = 100, help = "Maximum results")]
         limit: i32,
+    },
+}
+
+// ---- Docs AI ----
+#[derive(Subcommand)]
+enum DocsActions {
+    /// Ask the Datadog Docs AI a natural-language question
+    Ask {
+        /// The question to ask
+        question: String,
     },
 }
 
@@ -10111,6 +10134,14 @@ async fn main_inner() -> anyhow::Result<()> {
         println!("{}", version::build_info());
         return Ok(());
     }
+    if let Commands::Docs { action } = cli.command {
+        match action {
+            DocsActions::Ask { question } => {
+                commands::docs::ask(&question, &mut std::io::stdout()).await?;
+            }
+        }
+        return Ok(());
+    }
 
     let mut cfg = config::Config::from_env()?;
 
@@ -12359,6 +12390,8 @@ async fn main_inner() -> anyhow::Result<()> {
                 },
             }
         }
+        // Handled before Config::from_env() so it runs without auth.
+        Commands::Docs { .. } => unreachable!(),
         // --- Error Tracking ---
         Commands::ErrorTracking { action } => {
             cfg.validate_auth()?;

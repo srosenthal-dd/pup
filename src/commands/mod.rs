@@ -31,6 +31,7 @@ pub mod dbm;
 pub mod ddsql;
 pub mod debugger;
 pub mod deployment_gates;
+pub mod docs;
 pub mod downtime;
 pub mod error_tracking;
 pub mod events;
