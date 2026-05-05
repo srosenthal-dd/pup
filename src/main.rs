@@ -1100,6 +1100,7 @@ enum Commands {
     ///
     ///   # Create a log probe
     ///   pup debugger probes create --service my-svc --env staging --probe-location com.example.MyClass:myMethod
+    ///   pup debugger probes create --service my-svc --env staging --probe-location "com.example.MyClass:myMethod(int,String)"
     ///
     ///   # Create a log probe with custom budget and TTL
     ///   pup debugger probes create --service my-svc --env staging --probe-location com.example.MyClass:myMethod --budget 500 --ttl 2h
@@ -3268,7 +3269,7 @@ enum DebuggerProbeActions {
         service: String,
         #[arg(long, help = "Environment")]
         env: String,
-        #[arg(long, help = "Probe location as type_name:method_name")]
+        #[arg(long, help = "Probe location as TYPE:METHOD or TYPE:METHOD(arg_types)")]
         probe_location: String,
         #[arg(long, help = "Tracer language (auto-detected from symdb if omitted)")]
         language: Option<String>,
@@ -3518,6 +3519,12 @@ enum SymdbActions {
         version: Option<String>,
         #[arg(long, default_value_t = commands::symdb::SymdbView::Full, help = "Output view")]
         view: commands::symdb::SymdbView,
+        #[arg(
+            long,
+            default_value_t = false,
+            help = "Disable partial results (wait for full indexing before returning)"
+        )]
+        no_allow_partial: bool,
     },
 }
 
@@ -10638,6 +10645,7 @@ async fn main_inner() -> anyhow::Result<()> {
                     query,
                     version,
                     view,
+                    no_allow_partial,
                 } => {
                     commands::symdb::search(
                         &cfg,
@@ -10645,6 +10653,7 @@ async fn main_inner() -> anyhow::Result<()> {
                         query.as_deref().unwrap_or(""),
                         version.as_deref(),
                         &view,
+                        !no_allow_partial,
                     )
                     .await?;
                 }

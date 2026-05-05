@@ -70,13 +70,13 @@ pup debugger probes delete <PROBE_ID>
 
 ## Service Context
 
-**Always run this before creating probes.** It returns JSON by default, showing environments with active instances, tracer versions, and supported probe features. If the service runs in multiple environments, ask the user which one to target — don't guess.
+**Always run this before creating probes.** It returns JSON by default (like all other commands) showing environments with active instances, tracer versions, and supported probe features. If the service runs in multiple environments, ask the user which one to target — don't guess.
 
 ```bash
-# Full JSON output (default, avoid)
+# Full JSON output (default)
 pup debugger context my-service
 
-# Compact: just the fields you need (preferably use this to avoid context bloat)
+# Compact: just the fields you need
 pup debugger context my-service --fields service,language,envs
 
 # Filter to a specific environment
@@ -117,13 +117,23 @@ pup debugger probes create \
   --capture "order.items[0].price"
 ```
 
+To disambiguate overloaded methods, pass a signature with argument types:
+
+```bash
+pup debugger probes create \
+  --service my-service \
+  --env staging \
+  --probe-location "com.example.MyClass:myMethod(int, java.lang.String)" \
+  --capture "user.name"
+```
+
 **Options:**
 
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--service` | Service name (required) | — |
 | `--env` | Environment (required) | — |
-| `--probe-location` | `TYPE:METHOD` (required) | — |
+| `--probe-location` | `TYPE:METHOD` or `TYPE:METHOD(args)` (required). The signature form disambiguates overloaded methods. | — |
 | `--language` | `java`, `python`, `dotnet`, `go` | Auto-detected from symdb |
 | `--capture EXPR` | Capture expression (repeatable). Use dot notation for fields, brackets for indexing. | None |
 | `--capture` | Without value: enable full snapshot (capture everything). | No snapshot |
@@ -300,7 +310,7 @@ pup debugger probes watch <ID> --limit 1 \
 | No events appearing | Check `--from` (default is `now`); probe may need time to instrument |
 | Instrumentation errors | Check stderr output from watch for status errors |
 | Auth error | Run `pup auth login` or set `DD_API_KEY` + `DD_APP_KEY` + `DD_SITE` |
-| Wrong method signature | Use the `dd-symdb` skill to find exact `TYPE:METHOD` values |
+| Wrong method signature | Use the `dd-symdb` skill to find exact `TYPE:METHOD` or `TYPE:METHOD(args)` values |
 
 ## References
 
