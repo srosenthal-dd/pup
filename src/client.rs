@@ -427,6 +427,19 @@ static UNSTABLE_OPS: &[&str] = &[
 
 use crate::useragent;
 
+// Parse a reqwest response body as JSON without serde_json's default 128-level
+// recursion cap. Some Datadog endpoints (e.g. /profiling/api/v1/aggregate)
+// return deeply-nested flame-graph trees that exceed it. serde_stacker grows
+// the thread stack on demand so disabling the limit can't blow it.
+async fn parse_response_json(resp: reqwest::Response) -> anyhow::Result<serde_json::Value> {
+    use serde::Deserialize;
+    let bytes = resp.bytes().await?;
+    let mut de = serde_json::Deserializer::from_slice(&bytes);
+    de.disable_recursion_limit();
+    let de = serde_stacker::Deserializer::new(&mut de);
+    Ok(serde_json::Value::deserialize(de)?)
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuthType {
@@ -838,7 +851,7 @@ pub async fn raw_get(
         }
         .into());
     }
-    Ok(resp.json().await?)
+    parse_response_json(resp).await
 }
 
 /// Makes an authenticated PATCH request directly via reqwest.
@@ -873,7 +886,7 @@ pub async fn raw_patch(
         }
         .into());
     }
-    Ok(resp.json().await?)
+    parse_response_json(resp).await
 }
 
 /// Makes an authenticated POST request directly via reqwest.
@@ -928,7 +941,7 @@ async fn raw_post_impl(
         }
         .into());
     }
-    Ok(resp.json().await?)
+    parse_response_json(resp).await
 }
 
 fn apply_auth(
@@ -993,7 +1006,7 @@ pub async fn raw_post_jsonapi(
         let body = resp.text().await.unwrap_or_default();
         anyhow::bail!("POST {url} failed (HTTP {status}): {body}");
     }
-    Ok(resp.json().await?)
+    parse_response_json(resp).await
 }
 
 /// Like `raw_post`, but returns the parsed JSON body even on non-2xx responses.
@@ -1024,7 +1037,7 @@ pub async fn raw_post_lenient(
         .json(&body)
         .send()
         .await?;
-    Ok(resp.json().await?)
+    parse_response_json(resp).await
 }
 
 /// Makes an authenticated DELETE request directly via reqwest.
