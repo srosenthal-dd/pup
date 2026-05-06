@@ -306,7 +306,12 @@ fn test_audit_alias_search_parses() {
 
     match cli.command {
         crate::Commands::AuditLogs { action } => match action {
-            crate::AuditLogActions::Search { query, from, to, limit } => {
+            crate::AuditLogActions::Search {
+                query,
+                from,
+                to,
+                limit,
+            } => {
                 assert_eq!(query, "@action:deleted");
                 assert_eq!(from, "24h");
                 assert_eq!(to, "now");
@@ -383,7 +388,12 @@ fn test_audit_search_all_flags() {
 
     match cli.command {
         crate::Commands::AuditLogs { action } => match action {
-            crate::AuditLogActions::Search { query, from, to, limit } => {
+            crate::AuditLogActions::Search {
+                query,
+                from,
+                to,
+                limit,
+            } => {
                 assert_eq!(query, "@metadata.api_key.id:KEY123");
                 assert_eq!(from, "90d");
                 assert_eq!(to, "2026-01-01T00:00:00Z");
