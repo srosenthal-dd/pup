@@ -432,17 +432,20 @@ enum Commands {
     ///
     /// EXAMPLES:
     ///   # List recent audit logs
-    ///   pup audit-logs list
+    ///   pup audit list
     ///
     ///   # Search for specific user actions
-    ///   pup audit-logs search --query="@usr.name:admin@example.com"
+    ///   pup audit search --query="@usr.email:admin@example.com"
     ///
-    ///   # Search for failed actions
-    ///   pup audit-logs search --query="@evt.outcome:error"
+    ///   # Who deleted resources in the last 24h
+    ///   pup audit search --query="@action:deleted" --from=24h
+    ///
+    ///   # Investigate a specific API key
+    ///   pup audit search --query="@metadata.api_key.id:KEY_ID" --from=90d
     ///
     /// AUTHENTICATION:
-    ///   Requires either OAuth2 authentication or API keys.
-    #[command(name = "audit-logs", verbatim_doc_comment)]
+    ///   Requires either OAuth2 authentication or API keys with audit_logs_read scope.
+    #[command(name = "audit-logs", visible_alias = "audit", verbatim_doc_comment)]
     AuditLogs {
         #[command(subcommand)]
         action: AuditLogActions,
