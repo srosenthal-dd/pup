@@ -60,6 +60,11 @@ jobs:
   cross-compile-linux:
     name: Cross Compile (Linux)
     runs-on: ubuntu-latest
+    # CI builds link against the runner's glibc; release artifacts still use
+    # cargo-zigbuild in release.yml for proper glibc-version pinning.
+    env:
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+      CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
@@ -76,29 +81,20 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
           rustup target add aarch64-unknown-linux-gnu
-      - name: Install Zig
+      - name: Install aarch64 cross toolchain
         run: |
-          ZIG_VERSION="0.13.0"
-          curl -sL "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz" | tar xJ
-          echo "$PWD/zig-linux-x86_64-${ZIG_VERSION}" >> "$GITHUB_PATH"
-      - name: Cache cargo-zigbuild
-        id: cache-zigbuild
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: ~/.cargo/bin/cargo-zigbuild
-          key: cargo-zigbuild-${{ runner.os }}
-      - name: Install cargo-zigbuild
-        if: steps.cache-zigbuild.outputs.cache-hit != 'true'
-        run: cargo install --locked cargo-zigbuild
+          for i in 1 2 3; do
+            sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu && exit 0
+            sleep 5
+          done
+          exit 1
       - name: Build all targets
         run: |
           PIDS=()
           for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
             (set -o pipefail
              echo "==> Starting ${target}"
-             ZIG_GLOBAL_CACHE_DIR=$(mktemp -d) \
-             ZIG_LOCAL_CACHE_DIR=$(mktemp -d) \
-               cargo zigbuild --release --target "${target}" --features vendored-openssl 2>&1 \
+             cargo build --release --target "${target}" --features vendored-openssl 2>&1 \
                | tee "/tmp/${target}.log"
             ) &
             PIDS+=($!)
