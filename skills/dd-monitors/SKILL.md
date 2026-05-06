@@ -18,7 +18,7 @@ Create, manage, and maintain monitors for alerting.
 ## Prerequisites
 This requires Go or the pup binary in your path. 
 
-`pup` - `go install github.com/datadog-labs/pup@latest`
+`pup` - `go install github.com/datadog/pup@latest`
 Ensure `~/go/bin` is in `$PATH`.
 
 
