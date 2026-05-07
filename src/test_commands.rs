@@ -284,3 +284,142 @@ fn test_symdb_view_display() {
         "probe-locations"
     );
 }
+
+// -------------------------------------------------------------------------
+// Audit logs alias: `pup audit` == `pup audit-logs`
+// -------------------------------------------------------------------------
+
+#[test]
+fn test_audit_alias_search_parses() {
+    use clap::Parser;
+
+    let cli = crate::Cli::try_parse_from([
+        "pup",
+        "audit",
+        "search",
+        "--query",
+        "@action:deleted",
+        "--from",
+        "24h",
+    ])
+    .expect("pup audit search should parse via alias");
+
+    match cli.command {
+        crate::Commands::AuditLogs { action } => match action {
+            crate::AuditLogActions::Search {
+                query,
+                from,
+                to,
+                limit,
+            } => {
+                assert_eq!(query, "@action:deleted");
+                assert_eq!(from, "24h");
+                assert_eq!(to, "now");
+                assert_eq!(limit, 100);
+            }
+            _ => panic!("expected AuditLogActions::Search"),
+        },
+        _ => panic!("expected Commands::AuditLogs"),
+    }
+}
+
+#[test]
+fn test_audit_alias_list_parses() {
+    use clap::Parser;
+
+    let cli = crate::Cli::try_parse_from(["pup", "audit", "list", "--from", "6h", "--limit", "50"])
+        .expect("pup audit list should parse via alias");
+
+    match cli.command {
+        crate::Commands::AuditLogs { action } => match action {
+            crate::AuditLogActions::List { from, to, limit } => {
+                assert_eq!(from, "6h");
+                assert_eq!(to, "now");
+                assert_eq!(limit, 50);
+            }
+            _ => panic!("expected AuditLogActions::List"),
+        },
+        _ => panic!("expected Commands::AuditLogs"),
+    }
+}
+
+#[test]
+fn test_audit_canonical_name_still_parses() {
+    use clap::Parser;
+
+    let cli = crate::Cli::try_parse_from([
+        "pup",
+        "audit-logs",
+        "search",
+        "--query",
+        "@usr.email:admin@example.com",
+    ])
+    .expect("pup audit-logs search should still parse");
+
+    match cli.command {
+        crate::Commands::AuditLogs { action } => match action {
+            crate::AuditLogActions::Search { query, .. } => {
+                assert_eq!(query, "@usr.email:admin@example.com");
+            }
+            _ => panic!("expected AuditLogActions::Search"),
+        },
+        _ => panic!("expected Commands::AuditLogs"),
+    }
+}
+
+#[test]
+fn test_audit_search_all_flags() {
+    use clap::Parser;
+
+    let cli = crate::Cli::try_parse_from([
+        "pup",
+        "audit",
+        "search",
+        "--query",
+        "@metadata.api_key.id:KEY123",
+        "--from",
+        "90d",
+        "--to",
+        "2026-01-01T00:00:00Z",
+        "--limit",
+        "200",
+    ])
+    .expect("pup audit search with all flags should parse");
+
+    match cli.command {
+        crate::Commands::AuditLogs { action } => match action {
+            crate::AuditLogActions::Search {
+                query,
+                from,
+                to,
+                limit,
+            } => {
+                assert_eq!(query, "@metadata.api_key.id:KEY123");
+                assert_eq!(from, "90d");
+                assert_eq!(to, "2026-01-01T00:00:00Z");
+                assert_eq!(limit, 200);
+            }
+            _ => panic!("expected AuditLogActions::Search"),
+        },
+        _ => panic!("expected Commands::AuditLogs"),
+    }
+}
+
+#[test]
+fn test_audit_alias_is_visible() {
+    use clap::CommandFactory;
+
+    let app = crate::Cli::command();
+    // find_subcommand searches both canonical names and aliases
+    let found = app.find_subcommand("audit");
+    assert!(
+        found.is_some(),
+        "`audit` should be findable as a visible alias of audit-logs"
+    );
+    // confirm it resolves to the audit-logs command, not a different one
+    assert_eq!(
+        found.unwrap().get_name(),
+        "audit-logs",
+        "`audit` alias should resolve to the audit-logs command"
+    );
+}
