@@ -9226,8 +9226,19 @@ enum AuthActions {
         #[arg(long, value_name = "SITE")]
         site: Option<String>,
         /// Organization subdomain for SAML/SSO login (e.g. mycompany for mycompany.datadoghq.com).
+        /// Composed against --site, so `--site datad0g.com --subdomain dd` routes to dd.datad0g.com.
+        /// Whether the consent page narrows to a single org depends on per-tenant SAML routing on
+        /// the Datadog side; some subdomains still show the org switcher.
         #[arg(long, value_name = "SUBDOMAIN")]
         subdomain: Option<String>,
+        /// Pin the OAuth callback to one specific port from the DCR redirect allowlist
+        /// [8000, 8080, 8888, 9000] instead of scanning. Useful when forwarding a single port
+        /// over SSH. If the chosen port is busy login fails — no fallback. Other values are
+        /// rejected because the OAuth server will only accept a port that was registered as a
+        /// redirect URI during Dynamic Client Registration. Falls back to
+        /// PUP_OAUTH_CALLBACK_PORT if unset.
+        #[arg(long, value_name = "PORT")]
+        callback_port: Option<u16>,
     },
     /// Logout and clear tokens
     Logout,
@@ -10059,6 +10070,217 @@ fn resolve_login_scopes(
         .into_iter()
         .map(String::from)
         .collect()
+}
+
+/// Resolve the OAuth callback port. CLI flag wins over `PUP_OAUTH_CALLBACK_PORT`;
+/// when both are unset, returns `None` so the callback server scans the DCR
+/// allowlist as before. The port must be one of `DCR_REDIRECT_PORTS` — those
+/// are the redirect URIs registered with the OAuth server during DCR, so any
+/// other port would be rejected by the authorize endpoint anyway. The flag
+/// just lets the user *pick which one* to pin, for SSH-forwarding setups that
+/// can only forward a single port.
+fn resolve_callback_port(cli: Option<u16>) -> anyhow::Result<Option<u16>> {
+    if let Some(port) = cli {
+        return validate_callback_port(port, "--callback-port").map(Some);
+    }
+    match std::env::var("PUP_OAUTH_CALLBACK_PORT") {
+        Ok(s) if s.is_empty() => Ok(None),
+        Ok(s) => {
+            let port: u16 = s.parse().map_err(|e| {
+                anyhow::anyhow!(
+                    "invalid PUP_OAUTH_CALLBACK_PORT={s:?}: {e} (expected one of {:?})",
+                    crate::auth::dcr::DCR_REDIRECT_PORTS
+                )
+            })?;
+            validate_callback_port(port, "PUP_OAUTH_CALLBACK_PORT").map(Some)
+        }
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(std::env::VarError::NotUnicode(_)) => {
+            anyhow::bail!("PUP_OAUTH_CALLBACK_PORT contains non-UTF8 bytes; refusing to proceed")
+        }
+    }
+}
+
+fn validate_callback_port(port: u16, source: &str) -> anyhow::Result<u16> {
+    if !crate::auth::dcr::DCR_REDIRECT_PORTS.contains(&port) {
+        anyhow::bail!(
+            "{source} value {port} is not in the DCR redirect allowlist {:?}; \
+             the OAuth server will reject any other port",
+            crate::auth::dcr::DCR_REDIRECT_PORTS
+        );
+    }
+    Ok(port)
+}
+
+/// Validate a SAML/SSO subdomain string before it's composed into the auth URL.
+/// Non-empty input must be alphanumeric plus `-` so that a value like `evil.com#`
+/// can't smuggle a different host into the URL via fragment/path tricks. The
+/// empty case is accepted because `build_authorization_url` already coerces it
+/// to "fall back to app.{site}".
+fn validate_subdomain(s: &str) -> anyhow::Result<()> {
+    if s.is_empty() {
+        return Ok(());
+    }
+    if !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        anyhow::bail!(
+            "--subdomain {s:?} contains invalid characters; \
+             expected ASCII letters, digits, and `-` only"
+        );
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod resolve_callback_port_tests {
+    use super::resolve_callback_port;
+    use crate::test_utils::ENV_LOCK;
+
+    #[test]
+    fn cli_flag_takes_precedence_over_env() {
+        let _g = ENV_LOCK.blocking_lock();
+        std::env::set_var("PUP_OAUTH_CALLBACK_PORT", "9000");
+        let got = resolve_callback_port(Some(8000)).unwrap();
+        std::env::remove_var("PUP_OAUTH_CALLBACK_PORT");
+        assert_eq!(got, Some(8000));
+    }
+
+    #[test]
+    fn env_used_when_flag_unset() {
+        let _g = ENV_LOCK.blocking_lock();
+        std::env::set_var("PUP_OAUTH_CALLBACK_PORT", "8888");
+        let got = resolve_callback_port(None).unwrap();
+        std::env::remove_var("PUP_OAUTH_CALLBACK_PORT");
+        assert_eq!(got, Some(8888));
+    }
+
+    #[test]
+    fn returns_none_when_neither_set() {
+        let _g = ENV_LOCK.blocking_lock();
+        std::env::remove_var("PUP_OAUTH_CALLBACK_PORT");
+        assert_eq!(resolve_callback_port(None).unwrap(), None);
+    }
+
+    #[test]
+    fn empty_env_treated_as_unset() {
+        let _g = ENV_LOCK.blocking_lock();
+        std::env::set_var("PUP_OAUTH_CALLBACK_PORT", "");
+        let got = resolve_callback_port(None).unwrap();
+        std::env::remove_var("PUP_OAUTH_CALLBACK_PORT");
+        assert_eq!(got, None);
+    }
+
+    #[test]
+    fn malformed_env_errors() {
+        let _g = ENV_LOCK.blocking_lock();
+        std::env::set_var("PUP_OAUTH_CALLBACK_PORT", "not-a-port");
+        let got = resolve_callback_port(None);
+        std::env::remove_var("PUP_OAUTH_CALLBACK_PORT");
+        assert!(got.is_err(), "malformed env should error, got: {got:?}");
+    }
+
+    #[test]
+    fn out_of_range_env_errors() {
+        let _g = ENV_LOCK.blocking_lock();
+        std::env::set_var("PUP_OAUTH_CALLBACK_PORT", "70000");
+        let got = resolve_callback_port(None);
+        std::env::remove_var("PUP_OAUTH_CALLBACK_PORT");
+        assert!(got.is_err(), "out-of-range port should error, got: {got:?}");
+    }
+
+    #[test]
+    fn cli_port_outside_dcr_allowlist_rejected() {
+        // We only let the user pick *which* of the four DCR-registered ports
+        // to pin. Anything else would be rejected by the OAuth server (the
+        // redirect URI wasn't registered) and leave the user staring at a
+        // confusing OAuth error after consenting in the browser.
+        let _g = ENV_LOCK.blocking_lock();
+        std::env::remove_var("PUP_OAUTH_CALLBACK_PORT");
+        let got = resolve_callback_port(Some(7777));
+        assert!(
+            got.is_err(),
+            "non-allowlist port should be rejected, got: {got:?}"
+        );
+        let msg = format!("{}", got.unwrap_err());
+        assert!(
+            msg.contains("DCR redirect allowlist") && msg.contains("7777"),
+            "error should name the bad port and the allowlist: {msg}"
+        );
+    }
+
+    #[test]
+    fn cli_port_zero_rejected() {
+        // Port 0 means "OS pick an ephemeral port" to bind(2). Caught by the
+        // allowlist check (0 isn't in DCR_REDIRECT_PORTS) — but pin the
+        // behavior so a future allowlist relaxation doesn't accidentally
+        // unblock it.
+        let _g = ENV_LOCK.blocking_lock();
+        std::env::remove_var("PUP_OAUTH_CALLBACK_PORT");
+        let got = resolve_callback_port(Some(0));
+        assert!(got.is_err(), "port 0 should be rejected, got: {got:?}");
+    }
+
+    #[test]
+    fn env_port_zero_rejected() {
+        let _g = ENV_LOCK.blocking_lock();
+        std::env::set_var("PUP_OAUTH_CALLBACK_PORT", "0");
+        let got = resolve_callback_port(None);
+        std::env::remove_var("PUP_OAUTH_CALLBACK_PORT");
+        assert!(got.is_err(), "env port 0 should be rejected, got: {got:?}");
+    }
+
+    #[test]
+    fn subdomain_accepts_alphanumeric_and_hyphen() {
+        use super::validate_subdomain;
+        assert!(validate_subdomain("").is_ok());
+        assert!(validate_subdomain("acme").is_ok());
+        assert!(validate_subdomain("dd-staging").is_ok());
+        assert!(validate_subdomain("ab123").is_ok());
+    }
+
+    #[test]
+    fn subdomain_rejects_url_smuggling_attempts() {
+        use super::validate_subdomain;
+        // The hash/dot/slash/at/space cases would each let a hand-crafted
+        // value redirect the OAuth flow to an attacker-controlled host. Pin
+        // them all as rejections rather than relying on the URL builder.
+        for bad in [
+            "evil.com#",
+            "evil.com",
+            "evil/path",
+            "user@evil",
+            "dd staging",
+            "dd_staging", // underscore not in DNS label charset
+            "../../etc",
+        ] {
+            let err = validate_subdomain(bad).unwrap_err();
+            let msg = format!("{err}");
+            assert!(
+                msg.contains("invalid characters"),
+                "{bad:?} should be rejected with invalid-characters error, got: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn each_dcr_redirect_port_is_accepted() {
+        // The four DCR-registered ports must all parse successfully via both
+        // the CLI flag and the env var path. If a port gets dropped from the
+        // allowlist this test will fail loudly rather than letting a silent
+        // backend mismatch surface only at OAuth callback time.
+        let _g = ENV_LOCK.blocking_lock();
+        std::env::remove_var("PUP_OAUTH_CALLBACK_PORT");
+        for &port in crate::auth::dcr::DCR_REDIRECT_PORTS {
+            assert_eq!(
+                resolve_callback_port(Some(port)).unwrap(),
+                Some(port),
+                "CLI port {port} should be accepted"
+            );
+            std::env::set_var("PUP_OAUTH_CALLBACK_PORT", port.to_string());
+            let env_got = resolve_callback_port(None).unwrap();
+            std::env::remove_var("PUP_OAUTH_CALLBACK_PORT");
+            assert_eq!(env_got, Some(port), "env port {port} should be accepted");
+        }
+    }
 }
 
 async fn main_inner() -> anyhow::Result<()> {
@@ -13768,14 +13990,19 @@ async fn main_inner() -> anyhow::Result<()> {
                 read_only,
                 site,
                 subdomain,
+                callback_port,
             } => {
                 if let Some(s) = site {
                     cfg.set_site_explicit(s);
                 }
+                if let Some(sub) = subdomain.as_deref() {
+                    validate_subdomain(sub)?;
+                }
                 let is_read_only = read_only || cfg.read_only;
                 let resolved =
                     resolve_login_scopes(scopes.as_deref(), cfg.org.as_deref(), is_read_only);
-                commands::auth::login(&cfg, resolved, subdomain.as_deref()).await?
+                let resolved_port = resolve_callback_port(callback_port)?;
+                commands::auth::login(&cfg, resolved, subdomain.as_deref(), resolved_port).await?
             }
             AuthActions::Logout => commands::auth::logout(&cfg).await?,
             AuthActions::Status { site } => {

@@ -25,8 +25,40 @@ pub struct CallbackServer {
 
 #[cfg(not(target_arch = "wasm32"))]
 impl CallbackServer {
-    /// Find an available port from DCR_REDIRECT_PORTS and prepare the server.
-    pub async fn new() -> Result<Self> {
+    /// Prepare the callback server.
+    ///
+    /// When `pinned_port` is `Some`, bind exactly that port and error out if
+    /// it's busy — no fallback. This is the deterministic mode used by
+    /// `--callback-port` / `PUP_OAUTH_CALLBACK_PORT`, where users have set up
+    /// SSH port forwarding for one specific port and a silent fallback to
+    /// another port would orphan the OAuth callback.
+    ///
+    /// When `pinned_port` is `None`, scan `DCR_REDIRECT_PORTS` first-available-wins.
+    pub async fn new(pinned_port: Option<u16>) -> Result<Self> {
+        if let Some(port) = pinned_port {
+            // Defense-in-depth: callers (currently `commands::auth::login` via
+            // `resolve_callback_port`) restrict pinned ports to the DCR
+            // allowlist. If a future caller bypasses that path, fail in debug
+            // builds rather than silently bind a port the OAuth server hasn't
+            // registered as a redirect URI.
+            debug_assert!(
+                DCR_REDIRECT_PORTS.contains(&port),
+                "pinned callback port {port} is not in DCR_REDIRECT_PORTS {DCR_REDIRECT_PORTS:?}"
+            );
+            return tokio::net::TcpListener::bind(("127.0.0.1", port))
+                .await
+                .map(|_| Self {
+                    port,
+                    shutdown_tx: None,
+                })
+                .map_err(|e| {
+                    anyhow::anyhow!(
+                        "could not bind requested callback port {port}: {e}. \
+                         Pick an unused port or omit --callback-port to scan {DCR_REDIRECT_PORTS:?}."
+                    )
+                });
+        }
+
         for &port in DCR_REDIRECT_PORTS {
             if tokio::net::TcpListener::bind(("127.0.0.1", port))
                 .await
@@ -362,6 +394,69 @@ mod tests {
         assert!(
             timed.is_err(),
             "expected pending (timeout), but future resolved"
+        );
+    }
+
+    /// Find a DCR-allowlist port that's currently free. Returns `None` if all
+    /// four are in use, in which case a pinned-port test should skip rather
+    /// than fail — the production caller would see the same condition and
+    /// surface a real error.
+    async fn find_free_dcr_port() -> Option<u16> {
+        for &p in DCR_REDIRECT_PORTS {
+            if let Ok(l) = tokio::net::TcpListener::bind(("127.0.0.1", p)).await {
+                drop(l);
+                return Some(p);
+            }
+        }
+        None
+    }
+
+    #[tokio::test]
+    async fn callback_server_pinned_port_binds_exact_port() {
+        // Pinned mode must use the exact requested port and surface it via
+        // redirect_uri(). Use a free DCR allowlist port so the debug_assert
+        // in CallbackServer::new is satisfied — production callers always
+        // pass an allowlist port via resolve_callback_port.
+        let Some(port) = find_free_dcr_port().await else {
+            // All four DCR ports busy on this machine; nothing to test.
+            return;
+        };
+        let server = CallbackServer::new(Some(port)).await.unwrap();
+        assert_eq!(server.port(), port);
+        assert_eq!(
+            server.redirect_uri(),
+            format!("http://127.0.0.1:{port}/oauth/callback")
+        );
+    }
+
+    #[tokio::test]
+    async fn callback_server_pinned_port_errors_when_busy() {
+        // If the user pinned a port and we can't bind it, fail loudly — silently
+        // falling through to the scan list defeats the purpose of the flag for
+        // the SSH-tunneled workflow.
+        let Some(port) = find_free_dcr_port().await else {
+            return;
+        };
+        let blocker = tokio::net::TcpListener::bind(("127.0.0.1", port))
+            .await
+            .unwrap();
+
+        let err = match CallbackServer::new(Some(port)).await {
+            Ok(_) => panic!("expected bind to fail on busy port {port}"),
+            Err(e) => e,
+        };
+        // Keep blocker alive past the bind attempt so the port stays busy
+        // for the duration of CallbackServer::new(). Drop only after we've
+        // captured the error.
+        drop(blocker);
+        let msg = format!("{err}");
+        assert!(
+            msg.contains(&port.to_string()),
+            "error should name the requested port: {msg}"
+        );
+        assert!(
+            msg.contains("--callback-port"),
+            "error should hint at the flag: {msg}"
         );
     }
 
