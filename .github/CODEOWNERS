@@ -5,7 +5,3 @@
 
 # Global owners - update with actual maintainer GitHub usernames
 * @DataDog/web-frameworks
-
-# Authentication and security-critical code
-/pkg/auth/ @DataDog/team-aaa
-/cmd/auth.go @DataDog/team-aaa
