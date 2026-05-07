@@ -937,7 +937,7 @@ mod tests {
         std::fs::create_dir_all(&tmp).unwrap();
         std::env::set_var("PUP_CONFIG_DIR", &tmp);
 
-        crate::auth::storage::save_session("custom.datadoghq.com", Some("prod-child")).unwrap();
+        crate::auth::storage::save_session("custom.datadoghq.com", Some("prod-child"), None).unwrap();
         std::env::set_var("DD_ORG", "prod-child");
 
         let cfg = Config::from_env().unwrap();
@@ -967,7 +967,7 @@ mod tests {
         std::fs::create_dir_all(&tmp).unwrap();
         std::env::set_var("PUP_CONFIG_DIR", &tmp);
 
-        crate::auth::storage::save_session("custom.datadoghq.com", Some("prod-child")).unwrap();
+        crate::auth::storage::save_session("custom.datadoghq.com", Some("prod-child"), None).unwrap();
         std::env::set_var("DD_ORG", "prod-child");
         std::env::set_var("DD_SITE", "datadoghq.eu");
 
@@ -998,8 +998,8 @@ mod tests {
         std::fs::create_dir_all(&tmp).unwrap();
         std::env::set_var("PUP_CONFIG_DIR", &tmp);
 
-        crate::auth::storage::save_session("a.datadoghq.com", Some("org-a")).unwrap();
-        crate::auth::storage::save_session("b.datadoghq.com", Some("org-b")).unwrap();
+        crate::auth::storage::save_session("a.datadoghq.com", Some("org-a"), None).unwrap();
+        crate::auth::storage::save_session("b.datadoghq.com", Some("org-b"), None).unwrap();
 
         // Simulate the post-from_env state where we resolved org-a's site via
         // the registry (site_explicit=false because the user did not set DD_SITE).
@@ -1040,7 +1040,7 @@ mod tests {
         std::fs::create_dir_all(&tmp).unwrap();
         std::env::set_var("PUP_CONFIG_DIR", &tmp);
 
-        crate::auth::storage::save_session("session.datadoghq.com", Some("org-a")).unwrap();
+        crate::auth::storage::save_session("session.datadoghq.com", Some("org-a"), None).unwrap();
 
         let mut cfg = Config {
             api_key: None,

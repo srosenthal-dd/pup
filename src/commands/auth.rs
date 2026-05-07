@@ -151,7 +151,7 @@ pub async fn login(
     })?;
 
     // Register this session in the session registry
-    storage::save_session(site, org)?;
+    storage::save_session(site, org, None)?;
 
     let expires_at = chrono::DateTime::from_timestamp(tokens.issued_at + tokens.expires_in, 0)
         .map(|dt| dt.with_timezone(&chrono::Local).to_rfc3339())
@@ -506,8 +506,8 @@ mod tests {
         std::env::set_var("PUP_CONFIG_DIR", tmp.path());
         std::env::set_var("DD_TOKEN_STORAGE", "file");
 
-        storage::save_session("datadoghq.com", None).unwrap();
-        storage::save_session("datadoghq.com", Some("prod-child")).unwrap();
+        storage::save_session("datadoghq.com", None, None).unwrap();
+        storage::save_session("datadoghq.com", Some("prod-child"), None).unwrap();
 
         let cfg = base_config();
         let result = list(&cfg);
@@ -603,8 +603,8 @@ mod tests {
         std::env::set_var("DD_TOKEN_STORAGE", "file");
 
         let site = "logout-session.example.invalid";
-        storage::save_session(site, None).unwrap();
-        storage::save_session(site, Some("keep-me")).unwrap();
+        storage::save_session(site, None, None).unwrap();
+        storage::save_session(site, Some("keep-me"), None).unwrap();
 
         let mut cfg = base_config();
         cfg.site = site.into();
