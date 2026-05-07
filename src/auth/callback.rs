@@ -15,6 +15,15 @@ pub struct CallbackResult {
     pub state: String,
     pub error: Option<String>,
     pub error_description: Option<String>,
+    /// Authoritative org UUID returned by the OAuth server. Present when the
+    /// authorize response carries `dd_oid` — true for Datadog OAuth today on
+    /// both the org-switcher and direct-consent paths.
+    pub dd_oid: Option<String>,
+    /// Display name of the org the user actually authenticated against,
+    /// returned alongside `dd_oid` as `dd_org_name`. Used as the saved-token
+    /// label when the user-supplied org/UUID didn't match the actual one.
+    #[allow(dead_code)]
+    pub dd_org_name: Option<String>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -162,6 +171,8 @@ async fn accept_loop(
         let state = params.get("state").cloned().unwrap_or_default();
         let error = params.get("error").cloned();
         let error_description = params.get("error_description").cloned();
+        let dd_oid = params.get("dd_oid").cloned();
+        let dd_org_name = params.get("dd_org_name").cloned();
 
         let (status, body) = if error.is_some() {
             ("400 Bad Request", error_page(&error, &error_description))
@@ -179,6 +190,8 @@ async fn accept_loop(
             state,
             error,
             error_description,
+            dd_oid,
+            dd_org_name,
         };
         if let Some(tx) = result_tx.lock().unwrap().take() {
             let _ = tx.send(result);
@@ -224,12 +237,16 @@ fn parse_callback_url(input: &str) -> Result<CallbackResult> {
     let mut state = None;
     let mut error = None;
     let mut error_description = None;
+    let mut dd_oid = None;
+    let mut dd_org_name = None;
     for (k, v) in url.query_pairs() {
         match k.as_ref() {
             "code" => code = Some(v.into_owned()),
             "state" => state = Some(v.into_owned()),
             "error" => error = Some(v.into_owned()),
             "error_description" => error_description = Some(v.into_owned()),
+            "dd_oid" => dd_oid = Some(v.into_owned()),
+            "dd_org_name" => dd_org_name = Some(v.into_owned()),
             _ => {}
         }
     }
@@ -241,6 +258,8 @@ fn parse_callback_url(input: &str) -> Result<CallbackResult> {
         state: state.unwrap_or_default(),
         error,
         error_description,
+        dd_oid,
+        dd_org_name,
     })
 }
 
@@ -290,6 +309,26 @@ mod tests {
         assert_eq!(r.state, "xyz789");
         assert!(r.error.is_none());
         assert!(r.error_description.is_none());
+        assert!(r.dd_oid.is_none());
+        assert!(r.dd_org_name.is_none());
+    }
+
+    #[test]
+    fn parse_callback_url_extracts_dd_oid_and_org_name() {
+        // Real callback shape from a Datadog OAuth flow — the issuer appends
+        // dd_oid and (URL-encoded) dd_org_name alongside code and state.
+        let r = parse_callback_url(
+            "http://127.0.0.1:8000/oauth/callback\
+             ?code=abc&state=xyz\
+             &dd_oid=8dee7c38-00cb-11ea-a77b-8b5a08d3b091\
+             &dd_org_name=Datadog+HQ",
+        )
+        .unwrap();
+        assert_eq!(
+            r.dd_oid.as_deref(),
+            Some("8dee7c38-00cb-11ea-a77b-8b5a08d3b091")
+        );
+        assert_eq!(r.dd_org_name.as_deref(), Some("Datadog HQ"));
     }
 
     #[test]

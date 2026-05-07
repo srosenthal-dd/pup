@@ -20,11 +20,20 @@ pub async fn login(
     scopes: Vec<String>,
     subdomain: Option<&str>,
     callback_port: Option<u16>,
+    org_uuid: Option<&str>,
 ) -> Result<()> {
     use crate::auth::{dcr, pkce};
 
     let site = &cfg.site;
     let org = cfg.org.as_deref();
+
+    // Resolve effective org_uuid: CLI flag wins; otherwise recall from any
+    // saved session so re-auth keeps emitting `dd_oid` without re-passing the
+    // flag.
+    let stored_session = storage::find_session(site, org);
+    let effective_org_uuid: Option<String> = org_uuid
+        .map(String::from)
+        .or_else(|| stored_session.as_ref().and_then(|s| s.org_uuid.clone()));
 
     // 1. Start callback server. `callback_port` (from --callback-port or
     //    PUP_OAUTH_CALLBACK_PORT) pins the port deterministically for SSH
@@ -92,7 +101,11 @@ pub async fn login(
         &challenge,
         &scope_strs,
         subdomain,
+        effective_org_uuid.as_deref(),
     );
+    if let Some(uuid) = effective_org_uuid.as_deref() {
+        eprintln!("🎯 Hinting org UUID (dd_oid): {uuid}");
+    }
 
     // 5. Open browser
     eprintln!("\n🌐 Opening browser for authentication...");
@@ -150,8 +163,16 @@ pub async fn login(
         Ok(store.storage_location())
     })?;
 
-    // Register this session in the session registry
-    storage::save_session(site, org, None)?;
+    // Register this session in the session registry, tagged with the
+    // authoritative `dd_oid` from the callback so re-auth without the flag
+    // keeps hinting the right org. The callback's UUID is preferred over the
+    // CLI/stored value because it reflects the org the user actually
+    // consented for.
+    let saved_org_uuid = result
+        .dd_oid
+        .as_deref()
+        .or(effective_org_uuid.as_deref());
+    storage::save_session(site, org, saved_org_uuid)?;
 
     let expires_at = chrono::DateTime::from_timestamp(tokens.issued_at + tokens.expires_in, 0)
         .map(|dt| dt.with_timezone(&chrono::Local).to_rfc3339())
@@ -170,6 +191,7 @@ pub async fn login(
     _scopes: Vec<String>,
     _subdomain: Option<&str>,
     _callback_port: Option<u16>,
+    _org_uuid: Option<&str>,
 ) -> Result<()> {
     bail!(
         "OAuth login is not available in WASM builds.\n\
