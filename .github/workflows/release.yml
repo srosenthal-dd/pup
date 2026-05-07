@@ -17,29 +17,20 @@ jobs:
   build-linux:
     name: Build Linux
     runs-on: ubuntu-latest
+    env:
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+      CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
       - name: Fetch all tags
         run: git fetch --force --tags
-      - name: Cache Zig
-        id: cache-zig
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: ${{ github.workspace }}/zig-linux-x86_64-0.13.0
-          key: zig-0.13.0-linux-x86_64
-      - name: Download Zig
-        if: steps.cache-zig.outputs.cache-hit != 'true'
-        run: |
-          ZIG_VERSION="0.13.0"
-          curl -sL "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz" | tar xJ
-      - name: Add Zig to PATH
-        run: echo "${{ github.workspace }}/zig-linux-x86_64-0.13.0" >> "$GITHUB_PATH"
       - name: Install Rust
         run: |
           rustup toolchain install stable --profile minimal
           rustup default stable
+          rustup target add aarch64-unknown-linux-gnu
       - name: Cache Rust dependencies
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
@@ -51,8 +42,13 @@ jobs:
           key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-release-
-      - name: Install build tools
-        run: cargo install cargo-zigbuild
+      - name: Install aarch64 cross toolchain
+        run: |
+          for i in 1 2 3; do
+            sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu && exit 0
+            sleep 5
+          done
+          exit 1
       - name: Install syft
         uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
       - uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7.2.1
