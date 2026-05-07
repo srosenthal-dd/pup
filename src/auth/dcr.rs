@@ -10,7 +10,10 @@ use super::types::{ClientCredentials, TokenSet};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub const DCR_CLIENT_NAME: &str = "datadog-pup-cli";
-#[cfg(not(target_arch = "wasm32"))]
+// DCR_REDIRECT_PORTS is referenced from main.rs::resolve_callback_port, which
+// runs on both native and wasm builds (the wasm login() stub bails before
+// touching the port, but the symbol still has to resolve). Plain &[u16] has
+// no platform requirements, so it's safe to expose unconditionally.
 pub const DCR_REDIRECT_PORTS: &[u16] = &[8000, 8080, 8888, 9000];
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -207,11 +210,130 @@ impl DcrClient {
             .append_pair("code_challenge_method", &challenge.method)
             .finish();
 
-        // Use custom subdomain for SAML/SSO auth, otherwise use standard app.{site}
-        let auth_host = match subdomain {
-            Some(sub) => format!("{sub}.datadoghq.com"),
+        // Use custom subdomain for SAML/SSO auth, otherwise use standard app.{site}.
+        // The subdomain replaces the `app` prefix on whichever site is in play, so a
+        // staging login (--site datad0g.com --subdomain dd) routes to dd.datad0g.com
+        // rather than collapsing to dd.datadoghq.com (prod).
+        // An empty subdomain string (`Some("")`) is coerced to `None` rather than
+        // composing `https://.{site}/...` and producing a malformed URL the browser
+        // would surface as an opaque DNS error.
+        let auth_host = match subdomain.filter(|s| !s.is_empty()) {
+            Some(sub) => format!("{sub}.{}", self.site),
             None => format!("app.{}", self.site),
         };
         format!("https://{auth_host}/oauth2/v1/authorize?{params}")
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+    use crate::auth::pkce::PkceChallenge;
+
+    fn challenge() -> PkceChallenge {
+        PkceChallenge {
+            verifier: "v".into(),
+            challenge: "c".into(),
+            method: "S256".into(),
+        }
+    }
+
+    #[test]
+    fn build_authorization_url_defaults_to_app_subdomain() {
+        let client = DcrClient::new("datadoghq.com");
+        let url = client.build_authorization_url(
+            "client123",
+            "http://127.0.0.1:8000/oauth/callback",
+            "state",
+            &challenge(),
+            &["dashboards_read"],
+            None,
+        );
+        assert!(
+            url.starts_with("https://app.datadoghq.com/oauth2/v1/authorize?"),
+            "expected app.{{site}} prefix, got: {url}"
+        );
+    }
+
+    #[test]
+    fn build_authorization_url_uses_subdomain_on_provided_site() {
+        // The bug: --subdomain used to hardcode .datadoghq.com regardless of --site,
+        // so a staging login (datad0g.com) silently redirected to prod. The fix
+        // composes the subdomain against the actual site.
+        let client = DcrClient::new("datad0g.com");
+        let url = client.build_authorization_url(
+            "client123",
+            "http://127.0.0.1:8000/oauth/callback",
+            "state",
+            &challenge(),
+            &["dashboards_read"],
+            Some("dd"),
+        );
+        assert!(
+            url.starts_with("https://dd.datad0g.com/oauth2/v1/authorize?"),
+            "expected dd.datad0g.com host, got: {url}"
+        );
+        assert!(
+            !url.contains("datadoghq.com"),
+            "staging login must not leak to prod host: {url}"
+        );
+    }
+
+    #[test]
+    fn build_authorization_url_uses_subdomain_on_eu_site() {
+        let client = DcrClient::new("datadoghq.eu");
+        let url = client.build_authorization_url(
+            "client123",
+            "http://127.0.0.1:8000/oauth/callback",
+            "state",
+            &challenge(),
+            &["dashboards_read"],
+            Some("acme"),
+        );
+        assert!(
+            url.starts_with("https://acme.datadoghq.eu/oauth2/v1/authorize?"),
+            "expected acme.datadoghq.eu host, got: {url}"
+        );
+    }
+
+    #[test]
+    fn build_authorization_url_treats_empty_subdomain_as_unset() {
+        // An empty `--subdomain ""` previously composed to `https://.datadoghq.com/...`,
+        // a malformed URL whose browser-side failure was an opaque DNS error.
+        // The fix coerces empty to None so we fall back to app.{site} — same shape
+        // as omitting the flag.
+        let client = DcrClient::new("datadoghq.com");
+        let url = client.build_authorization_url(
+            "client123",
+            "http://127.0.0.1:8000/oauth/callback",
+            "state",
+            &challenge(),
+            &["dashboards_read"],
+            Some(""),
+        );
+        assert!(
+            url.starts_with("https://app.datadoghq.com/oauth2/v1/authorize?"),
+            "empty subdomain should fall back to app.{{site}}, got: {url}"
+        );
+    }
+
+    #[test]
+    fn build_authorization_url_includes_required_oauth_params() {
+        let client = DcrClient::new("datadoghq.com");
+        let url = client.build_authorization_url(
+            "client123",
+            "http://127.0.0.1:8000/oauth/callback",
+            "the-state",
+            &challenge(),
+            &["dashboards_read", "metrics_read"],
+            None,
+        );
+        assert!(url.contains("response_type=code"));
+        assert!(url.contains("client_id=client123"));
+        assert!(url.contains("state=the-state"));
+        assert!(url.contains("code_challenge=c"));
+        assert!(url.contains("code_challenge_method=S256"));
+        // Scopes are joined with a space, then URL-encoded as `+` or `%20`.
+        assert!(url.contains("scope=dashboards_read") && url.contains("metrics_read"));
     }
 }

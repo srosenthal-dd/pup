@@ -15,19 +15,29 @@ where
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub async fn login(cfg: &Config, scopes: Vec<String>, subdomain: Option<&str>) -> Result<()> {
+pub async fn login(
+    cfg: &Config,
+    scopes: Vec<String>,
+    subdomain: Option<&str>,
+    callback_port: Option<u16>,
+) -> Result<()> {
     use crate::auth::{dcr, pkce};
 
     let site = &cfg.site;
     let org = cfg.org.as_deref();
 
-    // 1. Start callback server
-    let mut server = crate::auth::callback::CallbackServer::new().await?;
+    // 1. Start callback server. `callback_port` (from --callback-port or
+    //    PUP_OAUTH_CALLBACK_PORT) pins the port deterministically for SSH
+    //    port-forwarded workflows; otherwise we scan the DCR allowlist.
+    let mut server = crate::auth::callback::CallbackServer::new(callback_port).await?;
     let redirect_uri = server.redirect_uri();
     let org_label = org.map(|o| format!(" (org: {o})")).unwrap_or_default();
     eprintln!("\n🔐 Starting OAuth2 login for site: {site}{org_label}\n");
     if let Some(sub) = subdomain {
-        eprintln!("🏢 Using SAML/SSO subdomain: {sub}.datadoghq.com");
+        // Compose against the actual site, not a hardcoded prod host. Mirrors
+        // the URL-construction fix in dcr::build_authorization_url so the log
+        // line and the URL the browser opens stay in agreement on staging.
+        eprintln!("🏢 Using SAML/SSO subdomain: {sub}.{site}");
     }
     eprintln!("📡 Callback server started on: {redirect_uri}");
 
@@ -155,7 +165,12 @@ pub async fn login(cfg: &Config, scopes: Vec<String>, subdomain: Option<&str>) -
 }
 
 #[cfg(target_arch = "wasm32")]
-pub async fn login(_cfg: &Config, _scopes: Vec<String>, _subdomain: Option<&str>) -> Result<()> {
+pub async fn login(
+    _cfg: &Config,
+    _scopes: Vec<String>,
+    _subdomain: Option<&str>,
+    _callback_port: Option<u16>,
+) -> Result<()> {
     bail!(
         "OAuth login is not available in WASM builds.\n\
          Use DD_ACCESS_TOKEN env var for bearer token auth,\n\

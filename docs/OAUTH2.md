@@ -322,7 +322,20 @@ Try `pup auth refresh` first. If that fails, run `pup auth login` to start a new
 
 ### Port Already in Use
 
-The callback server uses a random available port. If you see port errors, the system will automatically try another port.
+The callback server scans `[8000, 8080, 8888, 9000]` and binds the first one that's free. If all four are busy, login fails with the list above.
+
+### Pinning the Callback Port (SSH workflows)
+
+When `pup auth login` runs inside an SSH-tunneled remote workspace, the operator typically forwards localhost ports to the laptop browser. To avoid forwarding all four candidate ports, pin one of the four DCR-registered ports with `--callback-port` (or `PUP_OAUTH_CALLBACK_PORT`):
+
+```bash
+ssh -L 8000:127.0.0.1:8000 workspace-host
+PUP_OAUTH_CALLBACK_PORT=8000 pup auth login --org acme
+# or per-invocation:
+pup auth login --org acme --callback-port 8000
+```
+
+The pinned value must be one of `[8000, 8080, 8888, 9000]` — those are the redirect URIs registered with the OAuth server during DCR, so any other port would be rejected at the authorize step regardless. Precedence is `--callback-port` > `PUP_OAUTH_CALLBACK_PORT` > the auto-scan default. When pinned, login fails fast if the port is already in use — there is no fallback, since a silent fallback would orphan the OAuth callback when the browser hits a port that isn't forwarded.
 
 ### Invalid State Parameter
 
