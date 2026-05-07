@@ -22,7 +22,6 @@ pub struct CallbackResult {
     /// Display name of the org the user actually authenticated against,
     /// returned alongside `dd_oid` as `dd_org_name`. Used as the saved-token
     /// label when the user-supplied org/UUID didn't match the actual one.
-    #[allow(dead_code)]
     pub dd_org_name: Option<String>,
 }
 

@@ -158,8 +158,27 @@ pub async fn login(
         .exchange_code(&result.code, &redirect_uri, &challenge.verifier, &creds)
         .await?;
 
+    // 8. Resolve the save target. By default we save under the user-supplied
+    // (site, org) label. But if the user hinted a UUID and the callback
+    // returned a different `dd_oid`, it would be misleading to label the
+    // resulting token with the requested org name — so we switch the label
+    // to the one the OAuth server reports (`dd_org_name`, falling back to a
+    // shortened UUID) and warn on stderr. The OAuth code is single-use, so
+    // refusing to save would throw away the user's click; mislabeling is the
+    // bigger risk and this side-steps it.
+    let save_target = resolve_save_target(
+        org,
+        effective_org_uuid.as_deref(),
+        result.dd_oid.as_deref(),
+        result.dd_org_name.as_deref(),
+    );
+    let saved_org = save_target.org.as_deref();
+    let saved_org_label = saved_org
+        .map(|o| format!(" (org: {o})"))
+        .unwrap_or_default();
+
     let location = with_storage(|store| {
-        store.save_tokens(site, org, &tokens)?;
+        store.save_tokens(site, saved_org, &tokens)?;
         Ok(store.storage_location())
     })?;
 
@@ -168,21 +187,68 @@ pub async fn login(
     // keeps hinting the right org. The callback's UUID is preferred over the
     // CLI/stored value because it reflects the org the user actually
     // consented for.
-    let saved_org_uuid = result
-        .dd_oid
-        .as_deref()
-        .or(effective_org_uuid.as_deref());
-    storage::save_session(site, org, saved_org_uuid)?;
+    let saved_org_uuid = result.dd_oid.as_deref().or(effective_org_uuid.as_deref());
+    storage::save_session(site, saved_org, saved_org_uuid)?;
 
     let expires_at = chrono::DateTime::from_timestamp(tokens.issued_at + tokens.expires_in, 0)
         .map(|dt| dt.with_timezone(&chrono::Local).to_rfc3339())
         .unwrap_or_else(|| format!("in {} hours", tokens.expires_in / 3600));
 
-    eprintln!("\n✅ Login successful{org_label}!");
+    eprintln!("\n✅ Login successful{saved_org_label}!");
     eprintln!("   Access token expires: {expires_at}");
     eprintln!("   Token stored in: {location}");
 
     Ok(())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+struct SaveTarget {
+    org: Option<String>,
+}
+
+/// Pick the `(site, org)` save target for a finished login.
+///
+/// The default is the user-supplied `--org` label. If the user hinted a UUID
+/// but the OAuth server returned a different one, we switch the label to
+/// `dd_org_name` (or a shortened UUID) and warn on stderr — saving under the
+/// requested label would mislabel the token. Any other case (no hint, hint
+/// matches, server didn't return `dd_oid`) keeps the requested label.
+#[cfg(not(target_arch = "wasm32"))]
+fn resolve_save_target(
+    requested_org: Option<&str>,
+    requested_uuid: Option<&str>,
+    actual_uuid: Option<&str>,
+    actual_org_name: Option<&str>,
+) -> SaveTarget {
+    let mismatch = match (requested_uuid, actual_uuid) {
+        (Some(req), Some(actual)) => !req.eq_ignore_ascii_case(actual),
+        _ => false,
+    };
+    if !mismatch {
+        return SaveTarget {
+            org: requested_org.map(String::from),
+        };
+    }
+    // Mismatch: swap to the actual org. Prefer the human-readable
+    // `dd_org_name`; if that's absent, fall back to the UUID's first 8 chars
+    // so the saved label is still distinguishable on disk.
+    let actual_label = actual_org_name
+        .map(String::from)
+        .or_else(|| actual_uuid.map(|u| u.chars().take(8).collect::<String>()));
+    eprintln!(
+        "⚠️  Requested org UUID {} but OAuth returned {}{}. \
+         Saving token under {} instead of the requested label.",
+        requested_uuid.unwrap_or("?"),
+        actual_uuid.unwrap_or("?"),
+        actual_org_name
+            .map(|n| format!(" ({n})"))
+            .unwrap_or_default(),
+        actual_label
+            .as_deref()
+            .map(|l| format!("\"{l}\""))
+            .unwrap_or_else(|| "the default session".to_string()),
+    );
+    SaveTarget { org: actual_label }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -611,6 +677,66 @@ mod tests {
             result.is_ok(),
             "logout on an un-logged-in site should be a no-op"
         );
+    }
+
+    // ------------------------------------------------------------------
+    // resolve_save_target — pure function, no env / storage state.
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn resolve_save_target_no_hint_keeps_requested_org() {
+        let t = resolve_save_target(Some("prod-child"), None, None, None);
+        assert_eq!(t.org.as_deref(), Some("prod-child"));
+    }
+
+    #[test]
+    fn resolve_save_target_hint_matches_keeps_requested_org() {
+        let uuid = "8dee7c38-00cb-11ea-a77b-8b5a08d3b091";
+        let t = resolve_save_target(
+            Some("prod-child"),
+            Some(uuid),
+            Some(uuid),
+            Some("Datadog HQ"),
+        );
+        assert_eq!(t.org.as_deref(), Some("prod-child"));
+    }
+
+    #[test]
+    fn resolve_save_target_hint_matches_case_insensitive() {
+        // UUIDs are hex; normalise case so a mismatch in the issuer's
+        // canonicalisation doesn't trip the warn-and-relabel path.
+        let upper = "8DEE7C38-00CB-11EA-A77B-8B5A08D3B091";
+        let lower = "8dee7c38-00cb-11ea-a77b-8b5a08d3b091";
+        let t = resolve_save_target(Some("prod-child"), Some(upper), Some(lower), None);
+        assert_eq!(t.org.as_deref(), Some("prod-child"));
+    }
+
+    #[test]
+    fn resolve_save_target_mismatch_uses_dd_org_name() {
+        let req = "8dee7c38-00cb-11ea-a77b-8b5a08d3b091";
+        let act = "11111111-2222-3333-4444-555555555555";
+        let t = resolve_save_target(Some("prod-child"), Some(req), Some(act), Some("Other Org"));
+        assert_eq!(t.org.as_deref(), Some("Other Org"));
+    }
+
+    #[test]
+    fn resolve_save_target_mismatch_falls_back_to_uuid_prefix() {
+        // No dd_org_name in the callback (older issuer or unusual flow): use
+        // the first 8 chars of the actual UUID as a stable, distinguishable
+        // label rather than reusing the wrong --org name.
+        let req = "8dee7c38-00cb-11ea-a77b-8b5a08d3b091";
+        let act = "11111111-2222-3333-4444-555555555555";
+        let t = resolve_save_target(Some("prod-child"), Some(req), Some(act), None);
+        assert_eq!(t.org.as_deref(), Some("11111111"));
+    }
+
+    #[test]
+    fn resolve_save_target_actual_uuid_missing_keeps_requested() {
+        // If the issuer didn't echo dd_oid, we have no comparison to make;
+        // trust the user's --org label and the in-flight UUID we sent.
+        let req = "8dee7c38-00cb-11ea-a77b-8b5a08d3b091";
+        let t = resolve_save_target(Some("prod-child"), Some(req), None, None);
+        assert_eq!(t.org.as_deref(), Some("prod-child"));
     }
 
     #[tokio::test]

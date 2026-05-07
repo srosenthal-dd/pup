@@ -195,6 +195,7 @@ impl DcrClient {
     /// authorize endpoint uses it to skip the org switcher when the existing
     /// browser session already matches, and to pre-route SAML/SSO routing
     /// for first-time logins. Empty strings are coerced to `None`.
+    #[allow(clippy::too_many_arguments)]
     pub fn build_authorization_url(
         &self,
         client_id: &str,

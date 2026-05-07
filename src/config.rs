@@ -937,7 +937,8 @@ mod tests {
         std::fs::create_dir_all(&tmp).unwrap();
         std::env::set_var("PUP_CONFIG_DIR", &tmp);
 
-        crate::auth::storage::save_session("custom.datadoghq.com", Some("prod-child"), None).unwrap();
+        crate::auth::storage::save_session("custom.datadoghq.com", Some("prod-child"), None)
+            .unwrap();
         std::env::set_var("DD_ORG", "prod-child");
 
         let cfg = Config::from_env().unwrap();
@@ -967,7 +968,8 @@ mod tests {
         std::fs::create_dir_all(&tmp).unwrap();
         std::env::set_var("PUP_CONFIG_DIR", &tmp);
 
-        crate::auth::storage::save_session("custom.datadoghq.com", Some("prod-child"), None).unwrap();
+        crate::auth::storage::save_session("custom.datadoghq.com", Some("prod-child"), None)
+            .unwrap();
         std::env::set_var("DD_ORG", "prod-child");
         std::env::set_var("DD_SITE", "datadoghq.eu");
 

@@ -908,7 +908,6 @@ pub fn remove_session(site: &str, org: Option<&str>) -> Result<()> {
 
 /// Look up a single session entry by `(site, org)`.
 #[cfg(not(target_arch = "wasm32"))]
-#[allow(dead_code)]
 pub fn find_session(site: &str, org: Option<&str>) -> Option<SessionEntry> {
     list_sessions()
         .ok()?
