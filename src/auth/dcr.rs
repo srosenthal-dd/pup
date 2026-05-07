@@ -10,7 +10,10 @@ use super::types::{ClientCredentials, TokenSet};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub const DCR_CLIENT_NAME: &str = "datadog-pup-cli";
-#[cfg(not(target_arch = "wasm32"))]
+// DCR_REDIRECT_PORTS is referenced from main.rs::resolve_callback_port, which
+// runs on both native and wasm builds (the wasm login() stub bails before
+// touching the port, but the symbol still has to resolve). Plain &[u16] has
+// no platform requirements, so it's safe to expose unconditionally.
 pub const DCR_REDIRECT_PORTS: &[u16] = &[8000, 8080, 8888, 9000];
 
 #[cfg(not(target_arch = "wasm32"))]
