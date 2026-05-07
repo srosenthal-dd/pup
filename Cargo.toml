@@ -83,7 +83,9 @@ serde_norway = "0.9"
 
 # HTTP — stream feature omitted on wasm32 (wasm-streams pulls in wasm-bindgen,
 # incompatible with wasm32-wasip1; bytes_stream() calls are all cfg(not(wasm32)))
-reqwest = { version = "0.13", features = ["json", "form"] }
+# Held at <0.13.3: reqwest 0.13.3 widened its tokio cfg to include wasm32-wasi,
+# which then trips tokio's wasm compile_error gate via hyper-util's tokio/net.
+reqwest = { version = ">=0.13, <0.13.3", features = ["json", "form"] }
 http = "1"
 
 # Error handling
@@ -154,7 +156,7 @@ serde-wasm-bindgen = { version = "0.6", optional = true }
 getrandom = { version = "0.4", features = ["wasm_js"], optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-reqwest = { version = "0.13", features = ["stream"] }
+reqwest = { version = ">=0.13, <0.13.3", features = ["stream"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "3.7"
