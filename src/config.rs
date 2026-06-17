@@ -1860,10 +1860,12 @@ mod tests {
         assert_eq!(cfg.site, "explicit.datadoghq.com");
     }
 
-    /// `--org` for an org that has no saved session must not invent one — site
-    /// stays where it was on entry.
+    /// `--org` for an org that has no saved session resets the site to the
+    /// default. Here the entry site is already the default, so the reset is a
+    /// no-op; the reset-away-from-non-default case is covered by
+    /// `test_apply_org_override_resets_default_session_site_for_unknown_org`.
     #[test]
-    fn test_apply_org_override_leaves_site_when_no_session() {
+    fn test_apply_org_override_resets_to_default_when_no_session() {
         let _guard = ENV_LOCK.blocking_lock();
         std::env::remove_var("DD_ACCESS_TOKEN");
 
