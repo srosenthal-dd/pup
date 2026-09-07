@@ -2118,6 +2118,7 @@ enum Commands {
     ///   • Create new notebooks
     ///   • Replace notebooks or append cells
     ///   • Delete notebooks
+    ///   • Upload images for embedding in notebook cells
     ///
     /// EXAMPLES:
     ///   # Find all notebooks
@@ -2140,6 +2141,9 @@ enum Commands {
     ///
     ///   # Delete a notebook
     ///   pup notebooks delete 12345
+    ///
+    ///   # Upload an image and get back a cell content reference
+    ///   pup notebooks images upload ./screenshot.png
     ///
     /// AUTHENTICATION:
     ///   Requires OAuth2 (via 'pup auth login') with notebooks_read/notebooks_write
@@ -6683,6 +6687,26 @@ enum NotebookActions {
     Annotations {
         #[command(subcommand)]
         action: AnnotationsActions,
+    },
+    /// Upload images for embedding in notebook cells
+    Images {
+        #[command(subcommand)]
+        action: NotebookImagesActions,
+    },
+}
+
+/// Images embedded in notebook cells (e.g. markdown cell content referencing
+/// the returned content_url). Backed by an internal image_upload service, not
+/// the public Datadog API — see commands::notebook_images for details.
+#[derive(Subcommand)]
+enum NotebookImagesActions {
+    /// Upload a local image file and get back a notebook cell image reference
+    Upload {
+        /// Path to the local image file to upload
+        file: String,
+        /// Image format: png, jpeg, jpg, or gif (inferred from the file extension if omitted)
+        #[arg(long)]
+        format: Option<String>,
     },
 }
 
@@ -15101,6 +15125,11 @@ async fn main_inner() -> anyhow::Result<()> {
                 NotebookActions::Delete { notebook_id } => {
                     commands::notebooks::delete(&cfg, notebook_id).await?;
                 }
+                NotebookActions::Images { action } => match action {
+                    NotebookImagesActions::Upload { file, format } => {
+                        commands::notebook_images::upload(&cfg, &file, format.as_deref()).await?;
+                    }
+                },
             }
         }
         // --- RUM ---
