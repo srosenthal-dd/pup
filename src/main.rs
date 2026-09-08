@@ -6696,7 +6696,7 @@ enum NotebookActions {
 }
 
 /// Images embedded in notebook cells (e.g. markdown cell content referencing
-/// the returned content_url). Backed by an internal image_upload service, not
+/// the returned content_url). Backed by an internal, undocumented API, not
 /// the public Datadog API — see commands::notebook_images for details.
 #[derive(Subcommand)]
 enum NotebookImagesActions {

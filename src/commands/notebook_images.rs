@@ -1,11 +1,9 @@
 //! Image upload for embedding into notebook cells.
 //!
-//! Backed by dashboards-backend's `image_upload` Rapid service
-//! (domains/dashboardsnotebooks_backend/apps/apis/image_upload in dd-source).
 //! This is not part of the public, documented Datadog API — it's the same
-//! endpoint the notebooks UI itself uses to upload images — so it's called
-//! via `raw_client` rather than the typed SDK, and its shape could change
-//! without notice.
+//! internal endpoint the notebooks UI itself uses to upload images — so
+//! it's called via `raw_client` rather than the typed SDK, and its shape
+//! could change without notice.
 //!
 //! Upload is a three-step, presigned-URL dance so image bytes never transit
 //! through this call as a Datadog-authenticated request body:
