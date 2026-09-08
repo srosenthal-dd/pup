@@ -12,6 +12,24 @@ pub struct HttpError {
     pub method: String,
     pub url: String,
     pub body: String,
+    pub rate_limit: Option<crate::rate_limit::RateLimitInfo>,
+}
+
+/// Build an [`HttpError`] from a non-success response, capturing rate-limit headers.
+pub fn http_error(
+    status: u16,
+    method: impl Into<String>,
+    url: impl Into<String>,
+    body: impl Into<String>,
+    headers: &reqwest::header::HeaderMap,
+) -> HttpError {
+    HttpError {
+        status,
+        method: method.into(),
+        url: url.into(),
+        body: body.into(),
+        rate_limit: crate::rate_limit::extract_from_headers(headers),
+    }
 }
 
 impl std::fmt::Display for HttpError {
@@ -20,7 +38,13 @@ impl std::fmt::Display for HttpError {
             f,
             "{} {} failed (HTTP {}): {}",
             self.method, self.url, self.status, self.body
-        )
+        )?;
+        if let Some(ref info) = self.rate_limit {
+            if !info.is_empty() {
+                write!(f, "\n{}", info.format_lines())?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -120,173 +144,11 @@ fn find_endpoint_requirement(method: &str, path: &str) -> Option<&'static Endpoi
 /// Endpoints that don't support OAuth.
 /// Trailing "/" means prefix match for ID-parameterized paths.
 static OAUTH_EXCLUDED_ENDPOINTS: &[EndpointRequirement] = &[
-    // DDSQL editor tools (3)
+    // Fleet Automation unstable surface — doesn't support OAuth server-side
+    // yet. Current status, not a permanent contract; delete this entry (and
+    // the tests referencing it) once it does, rather than patching forward.
     EndpointRequirement {
-        path: "/api/unstable/ddsql-editor/tools/ddsql-docs",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/unstable/ddsql-editor/tools/table-names",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/unstable/ddsql-editor/tools/table-data",
-        method: "POST",
-    },
-    // Fleet Automation (15)
-    EndpointRequirement {
-        path: "/api/v2/fleet/agents",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/v2/fleet/agents/",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/v2/fleet/agents/versions",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/v2/fleet/deployments",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/v2/fleet/deployments/",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/v2/fleet/deployments/configure",
-        method: "POST",
-    },
-    EndpointRequirement {
-        path: "/api/v2/fleet/deployments/upgrade",
-        method: "POST",
-    },
-    EndpointRequirement {
-        path: "/api/v2/fleet/deployments/",
-        method: "POST",
-    },
-    EndpointRequirement {
-        path: "/api/v2/fleet/deployments/",
-        method: "DELETE",
-    },
-    EndpointRequirement {
-        path: "/api/v2/fleet/schedules",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/v2/fleet/schedules/",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/v2/fleet/schedules",
-        method: "POST",
-    },
-    EndpointRequirement {
-        path: "/api/v2/fleet/schedules/",
-        method: "PATCH",
-    },
-    EndpointRequirement {
-        path: "/api/v2/fleet/schedules/",
-        method: "DELETE",
-    },
-    EndpointRequirement {
-        path: "/api/v2/fleet/schedules/",
-        method: "POST",
-    },
-    // Observability Pipelines (6) — API key only, no OAuth support
-    EndpointRequirement {
-        path: "/api/v2/obs-pipelines/pipelines",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/v2/obs-pipelines/pipelines",
-        method: "POST",
-    },
-    EndpointRequirement {
-        path: "/api/v2/obs-pipelines/pipelines/",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/v2/obs-pipelines/pipelines/",
-        method: "PUT",
-    },
-    EndpointRequirement {
-        path: "/api/v2/obs-pipelines/pipelines/",
-        method: "DELETE",
-    },
-    EndpointRequirement {
-        path: "/api/v2/obs-pipelines/pipelines/validate",
-        method: "POST",
-    },
-    // Cost / Billing (11) — API key only, no OAuth support
-    EndpointRequirement {
-        path: "/api/v2/usage/projected_cost",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/v2/usage/cost_by_org",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/v2/cost_by_tag/monthly_cost_attribution",
-        method: "GET",
-    },
-    // Cloud Cost Management config (12)
-    EndpointRequirement {
-        path: "/api/v2/cost/aws_cur_config",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/v2/cost/aws_cur_config",
-        method: "POST",
-    },
-    EndpointRequirement {
-        path: "/api/v2/cost/aws_cur_config/",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/v2/cost/aws_cur_config/",
-        method: "DELETE",
-    },
-    EndpointRequirement {
-        path: "/api/v2/cost/azure_uc_config",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/v2/cost/azure_uc_config",
-        method: "POST",
-    },
-    EndpointRequirement {
-        path: "/api/v2/cost/azure_uc_config/",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/v2/cost/azure_uc_config/",
-        method: "DELETE",
-    },
-    EndpointRequirement {
-        path: "/api/v2/cost/gcp_uc_config",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/v2/cost/gcp_uc_config",
-        method: "POST",
-    },
-    EndpointRequirement {
-        path: "/api/v2/cost/gcp_uc_config/",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/v2/cost/gcp_uc_config/",
-        method: "DELETE",
-    },
-    EndpointRequirement {
-        path: "/api/v2/cost/oci_config",
-        method: "GET",
-    },
-    EndpointRequirement {
-        path: "/api/v2/cost/anomalies",
+        path: "/api/unstable/fleet/",
         method: "GET",
     },
     // Profiling (4)
@@ -380,14 +242,9 @@ pub async fn raw_request(
     let resp = req.send().await?;
     if !resp.status().is_success() {
         let status = resp.status();
+        let headers = resp.headers().clone();
         let text = resp.text().await.unwrap_or_default();
-        return Err(HttpError {
-            status: status.as_u16(),
-            method: method_name,
-            url,
-            body: text,
-        }
-        .into());
+        return Err(http_error(status.as_u16(), method_name, url, text, &headers).into());
     }
 
     let resp_ct = resp
@@ -436,14 +293,9 @@ pub async fn raw_get(
         .await?;
     if !resp.status().is_success() {
         let status = resp.status();
+        let headers = resp.headers().clone();
         let body = resp.text().await.unwrap_or_default();
-        return Err(HttpError {
-            status: status.as_u16(),
-            method: "GET".into(),
-            url,
-            body,
-        }
-        .into());
+        return Err(http_error(status.as_u16(), "GET", url, body, &headers).into());
     }
     parse_response_json(resp).await
 }
@@ -471,14 +323,9 @@ pub async fn raw_patch(
         .await?;
     if !resp.status().is_success() {
         let status = resp.status();
+        let headers = resp.headers().clone();
         let body = resp.text().await.unwrap_or_default();
-        return Err(HttpError {
-            status: status.as_u16(),
-            method: "PATCH".into(),
-            url,
-            body,
-        }
-        .into());
+        return Err(http_error(status.as_u16(), "PATCH", url, body, &headers).into());
     }
     parse_response_json(resp).await
 }
@@ -526,14 +373,9 @@ async fn raw_post_impl(
         .await?;
     if !resp.status().is_success() {
         let status = resp.status();
+        let headers = resp.headers().clone();
         let body = resp.text().await.unwrap_or_default();
-        return Err(HttpError {
-            status: status.as_u16(),
-            method: "POST".into(),
-            url: url.to_string(),
-            body,
-        }
-        .into());
+        return Err(http_error(status.as_u16(), "POST", url, body, &headers).into());
     }
     parse_response_json(resp).await
 }
@@ -696,14 +538,9 @@ pub async fn raw_delete(cfg: &Config, path: &str) -> anyhow::Result<()> {
         .await?;
     if !resp.status().is_success() {
         let status = resp.status();
+        let headers = resp.headers().clone();
         let body = resp.text().await.unwrap_or_default();
-        return Err(HttpError {
-            status: status.as_u16(),
-            method: "DELETE".into(),
-            url,
-            body,
-        }
-        .into());
+        return Err(http_error(status.as_u16(), "DELETE", url, body, &headers).into());
     }
     Ok(())
 }
@@ -818,10 +655,11 @@ mod tests {
 
     #[test]
     fn test_prefix_matching_with_id() {
-        // Trailing "/" in the pattern should match paths with IDs
+        // Trailing "/" in the pattern should match paths with IDs.
+        // Uses the still-excluded unstable Fleet entry as the example.
         assert!(requires_api_key_fallback(
             "GET",
-            "/api/v2/fleet/agents/agent-123"
+            "/api/unstable/fleet/some-id"
         ));
     }
 
@@ -835,8 +673,87 @@ mod tests {
     }
 
     #[test]
-    fn test_oauth_excluded_count() {
-        assert_eq!(OAUTH_EXCLUDED_ENDPOINTS.len(), 46);
+    fn test_no_fallback_for_obs_pipelines() {
+        // Observability Pipelines routes already accept OAuth server-side;
+        // removing them from OAUTH_EXCLUDED_ENDPOINTS means raw_get/raw_post
+        // (used by `pup obs-pipelines diff` and the `pup api` passthrough)
+        // should send the OAuth bearer instead of forcing API-key fallback.
+        // Collection endpoint
+        assert!(!requires_api_key_fallback(
+            "GET",
+            "/api/v2/obs-pipelines/pipelines"
+        ));
+        assert!(!requires_api_key_fallback(
+            "POST",
+            "/api/v2/obs-pipelines/pipelines"
+        ));
+        // ID-parameterized endpoints (prefix match via trailing "/")
+        assert!(!requires_api_key_fallback(
+            "GET",
+            "/api/v2/obs-pipelines/pipelines/abc-123"
+        ));
+        assert!(!requires_api_key_fallback(
+            "PUT",
+            "/api/v2/obs-pipelines/pipelines/abc-123"
+        ));
+        assert!(!requires_api_key_fallback(
+            "DELETE",
+            "/api/v2/obs-pipelines/pipelines/abc-123"
+        ));
+        // Validation endpoint
+        assert!(!requires_api_key_fallback(
+            "POST",
+            "/api/v2/obs-pipelines/pipelines/validate"
+        ));
+        // Non-matching method on a formerly-excluded path
+        assert!(!requires_api_key_fallback(
+            "PATCH",
+            "/api/v2/obs-pipelines/pipelines"
+        ));
+    }
+
+    #[test]
+    fn test_no_fallback_for_ddsql_editor_tools() {
+        // DDSQL editor tools now accept OAuth server-side (DAL-960); removing
+        // them from OAUTH_EXCLUDED_ENDPOINTS means `pup ddsql spec`/`schema
+        // tables`/`schema columns` should send the OAuth bearer instead of
+        // forcing API-key fallback.
+        assert!(!requires_api_key_fallback(
+            "GET",
+            "/api/unstable/ddsql-editor/tools/ddsql-docs"
+        ));
+        assert!(!requires_api_key_fallback(
+            "GET",
+            "/api/unstable/ddsql-editor/tools/table-names"
+        ));
+        assert!(!requires_api_key_fallback(
+            "POST",
+            "/api/unstable/ddsql-editor/tools/table-data"
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_raw_get_obs_pipelines_uses_oauth_bearer() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        let mut cfg = test_config(&server.url());
+        cfg.access_token = Some("token".into());
+        let mock = server
+            .mock("GET", "/api/v2/obs-pipelines/pipelines/abc-123")
+            .match_header("Authorization", "Bearer token")
+            .match_header("DD-API-KEY", mockito::Matcher::Missing)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"data": []}"#)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let result = raw_get(&cfg, "/api/v2/obs-pipelines/pipelines/abc-123", &[]).await;
+
+        assert!(result.is_ok(), "raw get failed: {:?}", result.err());
+        mock.assert_async().await;
+        cleanup_env();
     }
 
     #[test]
@@ -847,12 +764,83 @@ mod tests {
     }
 
     #[test]
-    fn test_requires_api_key_fallback_fleet() {
-        assert!(requires_api_key_fallback("GET", "/api/v2/fleet/agents"));
-        assert!(requires_api_key_fallback(
+    fn test_no_fallback_for_fleet() {
+        // Fleet Automation v2 routes already accept OAuth server-side;
+        // the raw/generic `pup api` passthrough should use the OAuth bearer
+        // like the typed fleet commands do.
+        assert!(!requires_api_key_fallback("GET", "/api/v2/fleet/agents"));
+        assert!(!requires_api_key_fallback(
             "GET",
             "/api/v2/fleet/agents/agent-123"
         ));
+        assert!(!requires_api_key_fallback(
+            "GET",
+            "/api/v2/fleet/deployments"
+        ));
+        assert!(!requires_api_key_fallback(
+            "POST",
+            "/api/v2/fleet/deployments/configure"
+        ));
+        assert!(!requires_api_key_fallback(
+            "POST",
+            "/api/v2/fleet/schedules/sched-123/trigger"
+        ));
+    }
+
+    #[test]
+    fn test_no_fallback_for_cost_billing() {
+        // Cost/Billing routes already accept OAuth server-side (DAL-959); the
+        // raw/generic `pup api` passthrough should use the OAuth bearer
+        // instead of forcing API-key fallback.
+        assert!(!requires_api_key_fallback(
+            "GET",
+            "/api/v2/usage/projected_cost"
+        ));
+        assert!(!requires_api_key_fallback(
+            "GET",
+            "/api/v2/usage/cost_by_org"
+        ));
+        assert!(!requires_api_key_fallback(
+            "GET",
+            "/api/v2/cost_by_tag/monthly_cost_attribution"
+        ));
+    }
+
+    #[test]
+    fn test_no_fallback_for_ccm() {
+        // Cloud Cost Management config routes already accept OAuth
+        // server-side (DAL-959); the raw/generic `pup api` passthrough
+        // should use the OAuth bearer instead of forcing API-key fallback.
+        assert!(!requires_api_key_fallback(
+            "GET",
+            "/api/v2/cost/aws_cur_config"
+        ));
+        assert!(!requires_api_key_fallback(
+            "POST",
+            "/api/v2/cost/aws_cur_config"
+        ));
+        assert!(!requires_api_key_fallback(
+            "DELETE",
+            "/api/v2/cost/aws_cur_config/config-123"
+        ));
+        assert!(!requires_api_key_fallback(
+            "GET",
+            "/api/v2/cost/azure_uc_config"
+        ));
+        assert!(!requires_api_key_fallback(
+            "DELETE",
+            "/api/v2/cost/azure_uc_config/config-123"
+        ));
+        assert!(!requires_api_key_fallback(
+            "GET",
+            "/api/v2/cost/gcp_uc_config"
+        ));
+        assert!(!requires_api_key_fallback(
+            "DELETE",
+            "/api/v2/cost/gcp_uc_config/config-123"
+        ));
+        assert!(!requires_api_key_fallback("GET", "/api/v2/cost/oci_config"));
+        assert!(!requires_api_key_fallback("GET", "/api/v2/cost/anomalies"));
     }
 
     #[test]
@@ -878,22 +866,6 @@ mod tests {
         assert!(!requires_api_key_fallback(
             "PATCH",
             "/api/v2/application_keys/key-123"
-        ));
-    }
-
-    #[test]
-    fn test_requires_api_key_fallback_ddsql_editor_tools() {
-        assert!(requires_api_key_fallback(
-            "GET",
-            "/api/unstable/ddsql-editor/tools/ddsql-docs"
-        ));
-        assert!(requires_api_key_fallback(
-            "GET",
-            "/api/unstable/ddsql-editor/tools/table-names"
-        ));
-        assert!(requires_api_key_fallback(
-            "POST",
-            "/api/unstable/ddsql-editor/tools/table-data"
         ));
     }
 
@@ -1016,16 +988,14 @@ mod tests {
 
     #[test]
     fn test_other_oauth_excluded_endpoints_still_require_both_keys() {
-        // Uses Fleet Automation as a currently-still-excluded example. This is
-        // just today's state of OAUTH_EXCLUDED_ENDPOINTS, not a claim that Fleet
-        // (or anything else in the table) is meant to stay that way -- update
-        // this example if/when its entries get OAuth support and are removed.
+        // Uses the still-excluded unstable Fleet entry as the example.
         let mut cfg = test_cfg();
         cfg.app_key = None;
-        let req = reqwest::Client::new().get("https://api.datadoghq.com/api/v2/fleet/agents");
+        let req =
+            reqwest::Client::new().get("https://api.datadoghq.com/api/unstable/fleet/some-id");
 
-        let err = match apply_auth(req, &cfg, "GET", "/api/v2/fleet/agents") {
-            Ok(_) => panic!("Fleet Automation should require both keys"),
+        let err = match apply_auth(req, &cfg, "GET", "/api/unstable/fleet/some-id") {
+            Ok(_) => panic!("excluded endpoint should require both keys"),
             Err(err) => err,
         };
         assert!(err.to_string().contains("DD_API_KEY and DD_APP_KEY"));
@@ -1185,6 +1155,43 @@ mod tests {
             .await
             .expect("raw_get with JSON body should succeed");
         assert_eq!(resp["data"]["id"], "12345");
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    async fn test_raw_get_rate_limit_includes_headers() {
+        let _lock = lock_env().await;
+        let mut server = mockito::Server::new_async().await;
+        std::env::set_var("PUP_MOCK_SERVER", server.url());
+
+        let cfg = test_cfg();
+        server
+            .mock("GET", "/api/v1/monitor")
+            .with_status(429)
+            .with_header("x-ratelimit-name", "get_all_monitors")
+            .with_header("x-ratelimit-limit", "1000")
+            .with_header("x-ratelimit-remaining", "0")
+            .with_body(r#"{"errors":["Too Many Requests"]}"#)
+            .create_async()
+            .await;
+
+        let err = super::raw_get(&cfg, "/api/v1/monitor", &[])
+            .await
+            .expect_err("429 should fail");
+        let http_err = err
+            .downcast_ref::<super::HttpError>()
+            .expect("expected HttpError");
+        assert_eq!(http_err.status, 429);
+        let info = http_err
+            .rate_limit
+            .as_ref()
+            .expect("expected rate limit headers");
+        assert_eq!(info.name.as_deref(), Some("get_all_monitors"));
+        assert_eq!(info.limit.as_deref(), Some("1000"));
+        assert_eq!(info.remaining.as_deref(), Some("0"));
+        let (msg, code) = crate::rate_limit::cli_error(&err);
+        assert_eq!(code, crate::rate_limit::EXIT_RATE_LIMITED);
+        assert!(msg.contains("rule: get_all_monitors"));
         cleanup_env();
     }
 }

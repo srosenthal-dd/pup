@@ -22,18 +22,18 @@ pup <domain> <subgroup> <action> [options] # Nested commands
 | Domain | Subcommands | File | Status |
 |--------|-------------|------|--------|
 | acp | serve | src/commands/acp.rs | ✅ |
-| auth | login, logout, status, refresh | src/commands/auth.rs | ✅ |
+| auth | login, logout, status, token, refresh | src/commands/auth.rs | ✅ |
 | metrics | query, list, search, timeseries, metadata, tags, submit | src/commands/metrics.rs | ✅ |
 | logs | search, list, aggregate, patterns, saved-views (list, get, create, delete) | src/commands/logs.rs | ✅ |
 | traces | metrics (list, get, create, update, delete) | src/commands/traces.rs | ✅ |
 | monitors | list, get, create, update, delete, search, diff | src/commands/monitors.rs | ✅ |
 | dashboards | list, get, create, update, diff, delete, url, annotations (list, get-page, create, update, delete) | src/commands/dashboards.rs, src/commands/annotations.rs | ✅ |
 | dbm | samples (search) | src/commands/dbm.rs | ✅ |
-| ddsql | table, time-series, spec, schema (tables, columns) | src/commands/ddsql.rs | ✅ |
+| ddsql | table, spec, schema (tables, columns) | src/commands/ddsql.rs | ✅ |
 | debugger | probes (list, get, create, delete, watch) | src/commands/debugger.rs | ✅ |
 | slos | list, get, create, update, diff, delete, status | src/commands/slos.rs | ✅ |
 | incidents | list, get, attachments, settings, handles, postmortem-templates | src/commands/incidents.rs | ✅ |
-| rum | apps, metrics, retention-filters, sessions, playlists, heatmaps | src/commands/rum.rs | ✅ |
+| rum | apps, metrics, retention-filters, sessions, events, aggregate, playlists, replay, viewership, heatmaps | src/commands/rum.rs | ✅ |
 | cicd | pipelines, events, tests, dora, flaky-tests | src/commands/cicd.rs | ✅ |
 | static-analysis | custom-rulesets (get, update, delete), custom-rules (get, create, delete, revisions, revision) | src/commands/static_analysis.rs | ✅ |
 | downtime | list, get, cancel | src/commands/downtime.rs | ✅ |
@@ -53,7 +53,7 @@ pup <domain> <subgroup> <action> [options] # Nested commands
 | security | rules, signals, findings, content-packs, risk-scores | src/commands/security.rs | ✅ |
 | organizations | get, list | src/commands/organizations.rs | ✅ |
 | service-catalog | list, get | src/commands/service_catalog.rs | ✅ |
-| idp | assist, find, owner, deps, register | src/commands/idp.rs | ✅ |
+| idp | kinds (list, describe), entities (query), assist, find, owner, deps, register, migrate-schema | src/commands/idp/ | ✅ |
 | error-tracking | issues (search, get) | src/commands/error_tracking.rs | ✅ |
 | scorecards | rules (list, create, update, delete), outcomes (list, batch-create) | src/commands/scorecards.rs | ✅ |
 | usage | summary, hourly | src/commands/usage.rs | ✅ |
@@ -84,6 +84,7 @@ pup <domain> <subgroup> <action> [options] # Nested commands
 | change-requests | create, get, update, create-branch, decisions (update, delete) | src/commands/change_management.rs | ✅ |
 | change-stories | list | src/commands/change_stories.rs | ✅ |
 | app-builder | list, get, create, update, delete, delete-batch, publish, unpublish | src/commands/app_builder.rs | ✅ |
+| governance | tag-rules (list, get, create, update, delete, score) | src/commands/tag_rules.rs | ✅ |
 
 **Note:** RUM command is fully operational. Apps and sessions work completely. Metrics and retention-filters support list/get operations (create/update/delete operations pending due to complex API type structures).
 
@@ -122,6 +123,34 @@ pup metrics timeseries --file=request.json
 pup events search --query="@user.id:12345"
 ```
 
+### IDP Entity Graph
+
+Use kind discovery before writing flexible cross-entity queries:
+
+```bash
+# Curated kind index; add --all for the filtered live server inventory.
+pup idp kinds list
+pup idp kinds list --all --include-custom
+
+# Live fields, relations, operators, examples, and caveats for one kind.
+pup idp kinds describe service
+
+# Query one result kind and optionally expand relations.
+pup idp entities query 'kind:service AND owner:payments' \
+  --field name,owner,contacts,service_health_status \
+  --include owner_teams,systems
+
+# Continue an explicitly paginated query.
+pup idp entities query 'kind:service' --cursor '<next_cursor>'
+```
+
+Every query must contain one unquoted `kind:<kind>` filter or a concrete
+`ref:"ref:<kind>:<id>"`. Top-level `OR` across result kinds is rejected; group
+alternatives below a shared kind instead, for example
+`kind:service AND (owner:idp OR team:idp)`. `--field` selects attributes and
+`--include` expands relations. Output is normalized and bounded for agents by
+default; pass `--raw` for the original JSON:API response.
+
 ### Create/Update/Delete
 ```bash
 pup <domain> create [--flags]
@@ -148,7 +177,7 @@ pup infrastructure hosts list
 - **traces** - APM spans metrics (list, get, create, update, delete)
 - **rum** - Real User Monitoring (apps, metrics, retention-filters, sessions)
 - **events** - Infrastructure events (post, list, search, get)
-- **ddsql** - DDSQL queries and discovery (table, time-series, spec, schema)
+- **ddsql** - DDSQL queries and discovery (table, spec, schema)
 - **symdb** - Symbol Database queries (search scopes, probe locations)
 
 ### Monitoring & Alerting
@@ -173,6 +202,7 @@ pup infrastructure hosts list
 - **static-analysis** - Code security (custom-rulesets, custom-rules)
 - **audit-logs** - Audit trail (list, search)
 - **data-governance** - Sensitive data scanning (scanner-rules list)
+- **governance** - Tag governance (tag-rules list/get/create/update/delete/score)
 
 ### Cloud & Integrations
 - **cloud** - Cloud providers (aws, gcp, azure, oci)
@@ -207,7 +237,7 @@ pup infrastructure hosts list
 
 ### Cost & Usage
 - **usage** - Usage and billing (summary, hourly)
-- **costs** - Cost management: `datadog` subgroup (projected, attribution, by-org, aws-config, azure-config, gcp-config), `ccm` subgroup (custom-costs, tag-descriptions, tag-metadata, tags, tag-keys, budgets, commitments), `oci-configs` subgroup (list), and `anomalies` subgroup (list)
+- **costs** - Cost management: `datadog` subgroup (projected, attribution, by-org, aws-config, azure-config, gcp-config), `ccm` subgroup (custom-costs, tag-descriptions, tag-metadata, tags, tag-keys, budgets, commitments), and `anomalies` subgroup (list)
 
 ### Configuration & Data Management
 - **obs-pipelines** - Observability pipelines (list, get, create, update, diff, delete, validate)
@@ -310,6 +340,12 @@ Constraints worth knowing before relying on these:
 - `--output` and agent mode have no effect under `--markdown`: the document is
   printed as-is, with no envelope and no format conversion. This matches
   `skills remote get`, the other command that emits raw Markdown.
+
+### v1.13.x — Session Replay API Support (#182)
+
+- **rum replay segments get** — fetch replay recording segments for a session view (`--session-id`, `--view-id`, optional paging/source flags)
+- **rum playlists** — extended with create, update, delete, and `sessions list|add|remove|bulk-remove`
+- **rum viewership** — new subgroup: `history list`, `watch create|delete`, `watchers list`
 
 ### v0.64.x — Error Tracking Issue Filters (SDK PRs #1568, #1480)
 

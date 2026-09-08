@@ -54,12 +54,12 @@ list of commands as built.
 | Metrics | ✅ | `metrics search`, `metrics query`, `metrics list`, `metrics get` | V1 and V2 APIs supported |
 | Logs | ✅ | `logs search`, `logs list`, `logs aggregate` | V1 and V2 APIs supported |
 | Events | ✅ | `events list`, `events search`, `events get` | Infrastructure event management |
-| RUM | ✅ | `rum apps`, `rum sessions`, `rum metrics`, `rum retention-filters`, `rum playlists`, `rum heatmaps` | Apps, sessions, metrics, retention filters, replay playlists, heatmaps |
+| RUM | ✅ | `rum apps`, `rum sessions`, `rum events`, `rum aggregate`, `rum metrics`, `rum retention-filters`, `rum playlists`, `rum replay`, `rum viewership`, `rum heatmaps` | Apps, sessions, events, metrics, retention filters, replay playlists/segments/viewership, heatmaps |
 | APM Services | ✅ | `apm services`, `apm entities`, `apm dependencies`, `apm flow-map` | Services stats, operations, resources; entity queries; dependencies; flow visualization |
 | Traces | ✅ | `traces search`, `traces aggregate`, `traces metrics` | Span search/aggregation and span-based metric definitions |
 | Profiling | ⏳ | `profiling` | Not supported in pup yet. Use the Datadog MCP server: https://docs.datadoghq.com/bits_ai/mcp_server. Enable with: https://mcp.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,profiling |
 | Database Monitoring | ✅ | `dbm samples search` | DBM query sample search |
-| Session Replay | ❌ | - | Not yet implemented |
+| Session Replay | ✅ | `rum replay segments`, `rum playlists`, `rum viewership`, `rum sessions search` | Segments, playlist CRUD, viewership; discover sessions via RUM (not logs) |
 
 </details>
 
@@ -92,6 +92,7 @@ list of commands as built.
 | Static Analysis | ✅ | `static-analysis ast`, `static-analysis custom-rulesets`, `static-analysis sca`, `static-analysis coverage` | Code security analysis |
 | Audit Logs | ✅ | `audit-logs list`, `audit-logs search` | Full audit log search and listing |
 | Data Governance | ✅ | `data-governance scanner-rules list` | Sensitive data scanner rules |
+| Tag Governance | ✅ | `governance tag-rules list`, `governance tag-rules get`, `governance tag-rules score` | Tag rules and compliance scoring (`/api/v2/governance/tag_rules`) |
 | CSM Threats | ✅ | `csm-threats` | Cloud Security Management threat rules and agent rules |
 | Sensitive Data Scanner | ✅ | `data-governance scanner-rules list` | Listed via Data Governance row above |
 | Agentless Scanning | ✅ | `agentless-scanning aws list/get/create/update/delete`, `agentless-scanning gcp list`, `agentless-scanning azure list` | Cloud agentless scanning configuration for AWS, GCP, and Azure |
@@ -234,6 +235,9 @@ pup monitors list
 # Check status
 pup auth status
 
+# Export the current access token to a credential-command integration
+pup auth token
+
 # Logout
 pup auth logout
 ```
@@ -302,6 +306,11 @@ The storage backend can be overridden with `DD_TOKEN_STORAGE` (env var) or `toke
 **Note**: OAuth2 requires Dynamic Client Registration (DCR) to be enabled on your Datadog site. If DCR is not available yet, use API key authentication.
 
 See [docs/OAUTH2.md](docs/OAUTH2.md) for detailed OAuth2 documentation.
+
+`pup auth token` prints the current OAuth access token for command-backed
+integrations, refreshing a stored token when needed. It writes only the token to
+stdout, is native-only, and is omitted from AI-agent schemas. Treat its output as
+a secret.
 
 ### API Key Authentication (Fallback)
 
@@ -423,6 +432,19 @@ pup incidents list
 
 # Get incident details
 pup incidents get abc-123-def
+```
+
+### IDP Entity Graph
+
+```bash
+# Discover available entity kinds and their query schema
+pup idp kinds list
+pup idp kinds describe service
+
+# Query services and walk ownership and system relations
+pup idp entities query 'kind:service AND owner:payments' \
+  --field name,owner,contacts \
+  --include owner_teams,systems
 ```
 
 ## Global Flags

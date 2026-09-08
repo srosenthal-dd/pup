@@ -175,6 +175,13 @@ fn test_on_call_pages_list_rejects_invalid_page_size() {
 }
 
 #[test]
+fn test_on_call_pages_list_accepts_page_zero() {
+    let result = crate::Cli::command()
+        .try_get_matches_from(["pup", "on-call", "pages", "list", "--page", "0"]);
+    assert!(result.is_ok());
+}
+
+#[test]
 fn test_on_call_pages_list_rejects_invalid_sort() {
     let result = crate::Cli::command().try_get_matches_from([
         "pup",
@@ -278,6 +285,33 @@ fn test_read_only_allows_skills_remote_reads() {
 // -------------------------------------------------------------------------
 // Auth status --site flag
 // -------------------------------------------------------------------------
+
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn test_auth_token_parses_and_appears_in_human_help() {
+    use clap::Parser;
+
+    let cli = crate::Cli::try_parse_from(["pup", "auth", "token"])
+        .expect("auth token should parse in native builds");
+    assert!(matches!(
+        cli.command,
+        crate::Commands::Auth {
+            action: crate::AuthActions::Token
+        }
+    ));
+
+    let help = crate::Cli::command()
+        .find_subcommand("auth")
+        .expect("auth command should exist")
+        .clone()
+        .render_long_help()
+        .to_string();
+    assert!(
+        help.lines()
+            .any(|line| line.split_whitespace().next() == Some("token")),
+        "auth token missing from help: {help}"
+    );
+}
 
 #[test]
 fn test_auth_status_accepts_site_flag() {
@@ -523,18 +557,34 @@ fn test_ddsql_table_query_accepts_explicit_stdin_marker() {
 }
 
 #[test]
-fn test_ddsql_time_series_query_accepts_explicit_stdin_marker() {
+fn test_ddsql_table_uses_api_row_limit_default() {
     use clap::Parser;
 
-    let cli = crate::Cli::try_parse_from(["pup", "ddsql", "time-series", "--query", "-"])
-        .expect("ddsql time-series --query - should parse");
+    let cli = crate::Cli::try_parse_from(["pup", "ddsql", "table", "--query", "SELECT 1"])
+        .expect("ddsql table should parse");
 
     match cli.command {
         crate::Commands::Ddsql { action } => match action {
-            crate::DdsqlActions::TimeSeries { query, .. } => {
-                assert_eq!(query, "-");
-            }
-            _ => panic!("expected DdsqlActions::TimeSeries"),
+            crate::DdsqlActions::Table { limit, .. } => assert_eq!(limit, 5000),
+            _ => panic!("expected DdsqlActions::Table"),
+        },
+        _ => panic!("expected Commands::Ddsql"),
+    }
+}
+
+#[test]
+fn test_ddsql_table_accepts_limit_override() {
+    use clap::Parser;
+
+    let cli = crate::Cli::try_parse_from([
+        "pup", "ddsql", "table", "--query", "SELECT 1", "--limit", "10000",
+    ])
+    .expect("ddsql table should accept a row limit override");
+
+    match cli.command {
+        crate::Commands::Ddsql { action } => match action {
+            crate::DdsqlActions::Table { limit, .. } => assert_eq!(limit, 10000),
+            _ => panic!("expected DdsqlActions::Table"),
         },
         _ => panic!("expected Commands::Ddsql"),
     }
@@ -547,6 +597,48 @@ fn test_ddsql_table_query_requires_explicit_value() {
         result.is_err(),
         "expected ddsql table --query to require a value"
     );
+}
+
+#[test]
+fn test_ddsql_time_help_documents_supported_formats() {
+    let root = crate::Cli::command();
+    let table_help = root
+        .find_subcommand("ddsql")
+        .unwrap()
+        .find_subcommand("table")
+        .unwrap()
+        .clone()
+        .render_long_help()
+        .to_string();
+    let security_help = root
+        .find_subcommand("security")
+        .unwrap()
+        .find_subcommand("findings")
+        .unwrap()
+        .find_subcommand("analyze")
+        .unwrap()
+        .clone()
+        .render_long_help()
+        .to_string();
+
+    for (command, help) in [
+        ("ddsql table", table_help),
+        ("security findings analyze", security_help),
+    ] {
+        for expected in [
+            "now-<duration>",
+            "now-24h",
+            "relative duration",
+            "RFC 3339 timestamp",
+            "Unix seconds",
+            "Unix milliseconds",
+        ] {
+            assert!(
+                help.contains(expected),
+                "{command} help is missing {expected:?}: {help}"
+            );
+        }
+    }
 }
 
 // -------------------------------------------------------------------------
@@ -677,6 +769,188 @@ fn test_logs_patterns_parses_and_is_read_only() {
         .find(|command| command["name"] == "patterns")
         .expect("logs patterns must be present in the agent schema");
     assert_eq!(patterns["read_only"], true);
+}
+
+#[test]
+fn test_idp_entity_graph_commands_parse() {
+    use clap::Parser;
+
+    let cli = crate::Cli::try_parse_from([
+        "pup",
+        "idp",
+        "entities",
+        "query",
+        "kind:service AND owner:payments",
+        "--field",
+        "name,owner",
+        "--include",
+        "owner_teams",
+        "--order-by",
+        "name:desc",
+        "--limit",
+        "50",
+        "--cursor",
+        "next-page",
+        "--free-text-match",
+        "fuzzy",
+        "--include-total-count",
+        "--timeseries-interval",
+        "24h",
+        "--relation-limit",
+        "10",
+        "--raw",
+    ])
+    .expect("IDP entity query should parse");
+
+    match cli.command {
+        crate::Commands::Idp {
+            action:
+                crate::IdpActions::Entities {
+                    action:
+                        crate::IdpEntitiesActions::Query {
+                            query,
+                            field,
+                            include,
+                            order_by,
+                            limit,
+                            cursor,
+                            free_text_match,
+                            include_total_count,
+                            timeseries_interval,
+                            relation_limit,
+                            raw,
+                        },
+                },
+        } => {
+            assert_eq!(query, "kind:service AND owner:payments");
+            assert_eq!(field, vec!["name", "owner"]);
+            assert_eq!(include, vec!["owner_teams"]);
+            assert_eq!(order_by, vec!["name:desc"]);
+            assert_eq!(limit, 50);
+            assert_eq!(cursor.as_deref(), Some("next-page"));
+            assert_eq!(free_text_match.as_deref(), Some("fuzzy"));
+            assert!(include_total_count);
+            assert_eq!(timeseries_interval, "24h");
+            assert_eq!(relation_limit, 10);
+            assert!(raw);
+        }
+        _ => panic!("expected IdpEntitiesActions::Query"),
+    }
+
+    let kinds = crate::Cli::try_parse_from([
+        "pup",
+        "idp",
+        "kinds",
+        "list",
+        "--all",
+        "--include-custom",
+        "--include-low-level",
+        "--exclude-experimental",
+    ])
+    .expect("IDP kinds list should parse");
+    match kinds.command {
+        crate::Commands::Idp {
+            action:
+                crate::IdpActions::Kinds {
+                    action:
+                        crate::IdpKindsActions::List {
+                            all,
+                            include_custom,
+                            include_low_level,
+                            exclude_experimental,
+                        },
+                },
+        } => {
+            assert!(all);
+            assert!(include_custom);
+            assert!(include_low_level);
+            assert!(exclude_experimental);
+        }
+        _ => panic!("expected IdpKindsActions::List"),
+    }
+}
+
+#[test]
+fn test_idp_entity_query_rejects_unknown_free_text_match_mode() {
+    use clap::Parser;
+
+    let result = crate::Cli::try_parse_from([
+        "pup",
+        "idp",
+        "entities",
+        "query",
+        "kind:service",
+        "--free-text-match",
+        "exact",
+    ]);
+    let Err(error) = result else {
+        panic!("unsupported matching modes should fail during CLI parsing");
+    };
+
+    let message = error.to_string();
+    assert!(message.contains("invalid value 'exact'"));
+    assert!(message.contains("partial"));
+    assert!(message.contains("fuzzy"));
+}
+
+#[test]
+fn test_idp_entity_graph_schema_marks_commands_read_only() {
+    use clap::CommandFactory;
+
+    let schema = crate::build_agent_schema(&crate::Cli::command());
+    let idp = schema["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|command| command["name"] == "idp")
+        .unwrap();
+    let kinds = idp["subcommands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|command| command["name"] == "kinds")
+        .unwrap();
+    let describe = kinds["subcommands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|command| command["name"] == "describe")
+        .unwrap();
+    assert_eq!(describe["read_only"], true);
+
+    let entities = idp["subcommands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|command| command["name"] == "entities")
+        .unwrap();
+    let query = entities["subcommands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|command| command["name"] == "query")
+        .unwrap();
+    assert_eq!(query["read_only"], true);
+    assert!(query["flags"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|flag| flag["name"] == "--relation-limit"));
+}
+
+#[test]
+fn test_read_only_guard_allows_idp_entity_graph_commands() {
+    use clap::CommandFactory;
+
+    for args in [
+        vec!["pup", "idp", "kinds", "list"],
+        vec!["pup", "idp", "kinds", "describe", "service"],
+        vec!["pup", "idp", "entities", "query", "kind:service"],
+    ] {
+        let matches = crate::Cli::command().try_get_matches_from(args).unwrap();
+        let leaf = crate::get_leaf_subcommand_name(&matches).unwrap();
+        assert!(!crate::is_write_command_name(&leaf));
+    }
 }
 
 #[test]
@@ -1320,4 +1594,141 @@ fn test_saved_widgets_get_parses() {
         },
         _ => panic!("expected Commands::SavedWidgets"),
     }
+}
+
+// -------------------------------------------------------------------------
+// Agent-mode --help intercept: subcommand resolution
+//
+// The `--help` intercept in `main_inner` emits a JSON schema only when the
+// requested command resolves. `find_subcommand` drives that decision:
+//   Some(_)          -> scoped schema
+//   None (empty)     -> root schema
+//   None (non-empty) -> fall through to clap, which reports the typo
+// -------------------------------------------------------------------------
+
+#[test]
+fn test_find_subcommand_resolves_when_name_valid() {
+    let cmd = crate::Cli::command();
+    let found = crate::find_subcommand(&cmd, &["monitors"]);
+    assert_eq!(
+        found.map(|c| c.get_name()),
+        Some("monitors"),
+        "a valid top-level subcommand should resolve to itself"
+    );
+}
+
+#[test]
+fn test_find_subcommand_returns_none_when_name_is_typo() {
+    let cmd = crate::Cli::command();
+    // `monitor` (singular) is a typo for `monitors`; it must not resolve so the
+    // intercept falls through to clap's "did you mean" suggestion.
+    assert!(
+        crate::find_subcommand(&cmd, &["monitor"]).is_none(),
+        "an unknown subcommand must not resolve"
+    );
+}
+
+#[test]
+fn test_find_subcommand_returns_none_when_path_empty() {
+    let cmd = crate::Cli::command();
+    // No subcommand given -> root schema branch, not scoped.
+    assert!(
+        crate::find_subcommand(&cmd, &[]).is_none(),
+        "an empty path must not resolve to any subcommand"
+    );
+}
+
+#[test]
+fn test_find_subcommand_resolves_when_alias_used() {
+    let cmd = crate::Cli::command();
+    // `audit` is a visible alias of `audit-logs`; it must resolve so agents
+    // still get the scoped JSON schema rather than clap's plain-text help.
+    let found = crate::find_subcommand(&cmd, &["audit"]);
+    assert_eq!(
+        found.map(|c| c.get_name()),
+        Some("audit-logs"),
+        "a visible alias should resolve to its canonical command"
+    );
+}
+
+#[test]
+fn test_clap_reports_invalid_nested_subcommand_with_suggestion() {
+    let result = crate::Cli::command()
+        .try_get_matches_from(["pup", "monitors", "lits", "--help", "--agent"]);
+    let err = result.expect_err("clap should reject an unknown subcommand");
+    assert_eq!(
+        err.kind(),
+        clap::error::ErrorKind::InvalidSubcommand,
+        "unknown subcommand should surface as InvalidSubcommand"
+    );
+    let rendered = err.to_string();
+    assert!(rendered.contains("unrecognized subcommand 'lits'"));
+    assert!(rendered.contains("a similar subcommand exists: 'list'"));
+}
+
+#[test]
+fn test_find_subcommand_resolves_nested_path() {
+    let cmd = crate::Cli::command();
+    // A valid two-level path resolves to the leaf command.
+    let found = crate::find_subcommand(&cmd, &["monitors", "list"]);
+    assert_eq!(
+        found.map(|c| c.get_name()),
+        Some("list"),
+        "a valid nested path should resolve to the leaf subcommand"
+    );
+}
+
+fn owned(args: &[&str]) -> Vec<String> {
+    args.iter().map(|s| s.to_string()).collect()
+}
+
+#[test]
+fn test_top_level_subcommand_returns_first_positional() {
+    let args = owned(&["pup", "monitors", "list", "--help", "--agent"]);
+    assert_eq!(crate::top_level_subcommand(&args), Some("monitors"));
+}
+
+#[test]
+fn test_top_level_subcommand_skips_value_global_before_subcommand() {
+    // The value of `--org` must not be mistaken for the subcommand.
+    let args = owned(&["pup", "--org", "myorg", "monitors", "--help", "--agent"]);
+    assert_eq!(crate::top_level_subcommand(&args), Some("monitors"));
+}
+
+#[test]
+fn test_top_level_subcommand_skips_short_value_global() {
+    let args = owned(&["pup", "-o", "table", "logs", "--help", "--agent"]);
+    assert_eq!(crate::top_level_subcommand(&args), Some("logs"));
+}
+
+#[test]
+fn test_top_level_subcommand_handles_attached_value_form() {
+    // `--output=table` is one token and consumes no following token.
+    let args = owned(&["pup", "--output=table", "logs", "--help"]);
+    assert_eq!(crate::top_level_subcommand(&args), Some("logs"));
+}
+
+#[test]
+fn test_top_level_subcommand_returns_none_when_flags_only() {
+    let args = owned(&["pup", "--agent", "--help"]);
+    assert_eq!(crate::top_level_subcommand(&args), None);
+}
+
+#[test]
+fn test_agent_help_schema_for_valid_nested_subcommand() {
+    let cmd = crate::Cli::command();
+    let args = owned(&["pup", "monitors", "list", "--help", "--agent"]);
+
+    let schema = crate::agent_help_schema(&cmd, &args)
+        .expect("valid nested agent help should return a schema");
+
+    assert_eq!(schema["description"], "Manage monitors");
+}
+
+#[test]
+fn test_agent_help_falls_through_for_invalid_nested_subcommand() {
+    let cmd = crate::Cli::command();
+    let args = owned(&["pup", "monitors", "lits", "--help", "--agent"]);
+
+    assert!(crate::agent_help_schema(&cmd, &args).is_none());
 }

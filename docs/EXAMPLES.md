@@ -15,6 +15,9 @@ pup --site=datadoghq.eu auth login
 # Check authentication status
 pup auth status
 
+# Print the current OAuth access token for a command-backed integration
+pup auth token
+
 # Logout
 pup auth logout
 ```
@@ -754,7 +757,18 @@ pup users get "user-id"
 ### List Roles
 ```bash
 pup users roles list
+
+# Paginate results (max page size 100)
+pup users roles list --page-size=50 --page-number=1
+
+# Sort by name descending and filter by a search string
+pup users roles list --sort="-name" --filter="admin"
+
+# Filter by specific role IDs
+pup users roles list --filter-id="id1,id2"
 ```
+
+Sort accepts: `name`, `-name`, `modified_at`, `-modified_at`, `user_count`, `-user_count` (a leading `-` sorts descending).
 
 ### Get Organization
 ```bash
