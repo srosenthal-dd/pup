@@ -472,6 +472,20 @@ mod tests {
     }
 
     #[test]
+    fn test_appsec_protect_scopes_requested_at_login() {
+        let scopes = default_scopes();
+        assert!(scopes.contains(&"appsec_protect_read"));
+        assert!(scopes.contains(&"appsec_protect_write"));
+    }
+
+    #[test]
+    fn test_appsec_protect_read_in_read_only_scopes() {
+        let ro = read_only_scopes();
+        assert!(ro.contains(&"appsec_protect_read"));
+        assert!(!ro.contains(&"appsec_protect_write"));
+    }
+
+    #[test]
     fn test_read_only_scopes_subset_of_default() {
         let default: std::collections::HashSet<&str> = default_scopes().into_iter().collect();
         for scope in read_only_scopes() {
